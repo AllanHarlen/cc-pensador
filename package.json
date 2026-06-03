@@ -1,0 +1,13 @@
+{
+  "name": "cc-pensador",
+  "version": "1.0.0",
+  "description": "Pensador PRD workflow skill and command",
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "fast-check": "4.1.1",
+    "vitest": "3.2.4"
+  }
+}

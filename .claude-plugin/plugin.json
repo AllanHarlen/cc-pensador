@@ -1,0 +1,30 @@
+{
+  "name": "cc-pensador",
+  "version": "1.0.0",
+  "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 5 sequential stages — PRD base generation, demand expansion, Codex refinement, AGY gap analysis, and final artifact delivery — producing prd.md, userhistory.md, and comunication_json.md.",
+  "author": {
+    "name": "allanharlen"
+  },
+  "dependencies": [
+    {
+      "name": "cc-antigravity-plugin",
+      "marketplace": "cc-antigravity-plugin"
+    },
+    {
+      "name": "codex",
+      "marketplace": "openai-codex"
+    }
+  ],
+  "keywords": [
+    "pensador",
+    "prd",
+    "product-requirements",
+    "planning",
+    "workflow",
+    "stages",
+    "codex",
+    "antigravity",
+    "agy",
+    "claude-code"
+  ]
+}

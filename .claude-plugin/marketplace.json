@@ -1,0 +1,39 @@
+﻿{
+    "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+    "name": "cc-pensador",
+    "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 5 sequential stages to produce high-quality Product Requirements Documents, coordinating with Codex (Stage 3) and AGY/Gemini (Stage 4) sub-agents.",
+    "owner": {
+        "name": "allanharlen",
+        "email": "allanharlen@gmail.com"
+    },
+    "allowCrossMarketplaceDependenciesOn": [
+        "cc-antigravity-plugin",
+        "openai-codex"
+    ],
+    "plugins": [
+        {
+            "name": "cc-pensador",
+            "description": "Pensador skill + /pensador slash command that drive a 5-stage PRD workflow: Stage 1 generates a PRD base from the Strict PRD Schema; Stage 2 expands the demand with user questions; Stage 3 delegates to Codex (effort high) for requirement refinement; Stage 4 delegates to AGY (gemini-3.1-pro-high) for gap analysis; Stage Final delivers prd.md, userhistory.md, and comunication_json.md. All dialogue routes exclusively through AskUserQuestion.",
+            "version": "1.0.0",
+            "author": {
+                "name": "allanharlen"
+            },
+            "source": "./",
+            "category": "planning",
+            "keywords": [
+                "pensador",
+                "prd",
+                "product-requirements",
+                "planning",
+                "workflow",
+                "stages",
+                "codex",
+                "antigravity",
+                "agy",
+                "claude-code"
+            ],
+            "homepage": "https://github.com/AllanHarlen/cc-pensador",
+            "repository": "https://github.com/AllanHarlen/cc-pensador"
+        }
+    ]
+}
