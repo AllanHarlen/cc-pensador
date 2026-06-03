@@ -52,7 +52,7 @@ Todos gravados sob `pensador-output/` (nunca na raiz do projeto, para não sobre
 
 - `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(sempre)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
-- `comunication_json.md` — Comunicação de back-end em JSON. *(somente em projetos fullstack — back-end **e** front-end)*
+- `comunication_json.md` — Contrato de comunicação/API em JSON. *(sempre que houver back-end — fullstack ou back-end-only)*
 
 ## Instalação
 
@@ -135,13 +135,13 @@ O Pensador não avança para o próximo estágio enquanto houver perguntas sem r
 
 ## Engine de referência e testes
 
-O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates de avanço, mapeamentos de effort/modelo, classificação de projeto (`classifyProject`), consolidação (`consolidate`/`withConsolidated`) e planejamento de artefatos. É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
+O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates de avanço, mapeamentos de effort/modelo, classificação de projeto (`classifyProject`), consolidação (`consolidate`/`withConsolidated`), planejamento de artefatos e serialização de checkpoint (`serializeState`/`deserializeState`). É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
 
 > **Importante:** o engine **não é importado em runtime**. A skill é Markdown interpretado pelo LLM, que aplica as mesmas regras descritas em prosa na `skills/pensador/SKILL.md`. O único script executado por shell é o `preflight.mjs`. O engine serve como (1) definição inequívoca e testável das regras e (2) guarda contra _drift_ via testes.
 
 ```bash
 npm install
-npm test       # Vitest — 82 testes (smoke · consolidate · artifacts)
+npm test       # Vitest — 102 testes (smoke · consolidate · artifacts · docs-consistency)
 ```
 
 ## Estrutura do projeto
@@ -166,5 +166,8 @@ cc-pensador/
 ├─ scripts/
 │  ├─ preflight.mjs          # verifica disponibilidade de Codex e AGY
 │  └─ pensador-engine.mjs    # especificação determinística de referência (validada por testes)
-└─ test/                     # smoke · consolidate · artifacts (Vitest)
+├─ test/                     # smoke · consolidate · artifacts · docs-consistency (Vitest)
+└─ LICENSE                   # MIT
 ```
+
+> **Nota sobre `.claude/settings.json`:** o repositório ignora `.claude/` (ver `.gitignore`). O `settings.json` ali são **guardrails de permissão locais do desenvolvedor** (ex.: `deny rm -rf`, `ask git push`) — não fazem parte do plugin distribuído nem afetam quem o instala, por isso não são versionados. Artefatos de execução ficam em `pensador-output/` (também ignorado).

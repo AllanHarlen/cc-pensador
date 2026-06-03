@@ -338,6 +338,12 @@ export function isFullstack(requirements) {
  * Plans which artifacts should be generated.
  * Returns an empty plan when not in FINAL or DONE stage (gate enforcement).
  *
+ * The comunication_json artifact documents the API/communication contract
+ * (endpoints, request/response schemas, error codes). That contract is valuable
+ * whenever a back-end exists — both for a fullstack front↔back boundary and for a
+ * back-end-only API consumed by external clients — so it is gated on hasBackend,
+ * not strictly on isFullstack.
+ *
  * @param {StageState} state
  * @returns {ArtifactPlan}
  */
@@ -350,14 +356,15 @@ export function planArtifacts(state) {
   return {
     prd: true,
     userhistory: true,
-    comunication: isFullstack(state.consolidated),
+    comunication: classifyProject(state.consolidated).hasBackend,
   };
 }
 
 /**
  * Builds the list of Artifact objects to be generated.
- * Always includes prd and userhistory; includes comunication iff fullstack.
- * Every artifact has a filename consistent with its kind and a non-empty path.
+ * Always includes prd and userhistory; includes comunication iff there is a
+ * back-end (see planArtifacts). Every artifact has a filename consistent with
+ * its kind and a non-empty path.
  *
  * @param {StageState} state
  * @returns {Artifact[]}
@@ -470,6 +477,70 @@ export function dispatchQuestion(question) {
     ...question,
     channel: ASK_USER_QUESTION,
   };
+}
+
+// ---------------------------------------------------------------------------
+// State persistence (checkpoint / resume)
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema version for the serialized checkpoint. Bump when the StageState shape
+ * changes incompatibly so deserializeState can reject stale checkpoints.
+ */
+export const CHECKPOINT_VERSION = 1;
+
+/**
+ * Serializes a StageState to a JSON string suitable for writing to a checkpoint
+ * file (e.g. pensador-output/.pensador-progress.json), enabling a /pensador run
+ * to be resumed after an interruption.
+ *
+ * StageState is already plain/JSON-able; this wraps it with a version tag and a
+ * timestamp. Pure: no I/O — the caller owns reading/writing the file.
+ *
+ * @param {StageState} state
+ * @returns {string}
+ */
+export function serializeState(state) {
+  return JSON.stringify(
+    { version: CHECKPOINT_VERSION, savedAt: new Date().toISOString(), state },
+    null,
+    2
+  );
+}
+
+/**
+ * Parses a checkpoint string produced by serializeState back into a StageState.
+ * Returns null (never throws) when the input is absent, malformed, or carries an
+ * incompatible version — the caller then starts a fresh flow.
+ *
+ * @param {string | null | undefined} serialized
+ * @returns {StageState | null}
+ */
+export function deserializeState(serialized) {
+  if (typeof serialized !== 'string' || serialized.trim() === '') return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    return null;
+  }
+
+  if (!parsed || parsed.version !== CHECKPOINT_VERSION) return null;
+
+  const { state } = parsed;
+  // Minimal structural validation — enough to trust the resume target.
+  if (
+    !state ||
+    typeof state.currentStage !== 'string' ||
+    !STAGE_ORDER.includes(state.currentStage) ||
+    !Array.isArray(state.questions) ||
+    !Array.isArray(state.consolidated)
+  ) {
+    return null;
+  }
+
+  return state;
 }
 
 // ---------------------------------------------------------------------------

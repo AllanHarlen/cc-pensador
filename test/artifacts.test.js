@@ -152,20 +152,30 @@ describe('planArtifacts(state)', () => {
       expect(plan.userhistory).toBe(true);
     });
 
-    it('sets comunication = true iff consolidated requirements are fullstack (FINAL)', () => {
+    it('sets comunication = true when a back-end is present (fullstack, FINAL)', () => {
       const fullstack = planArtifacts(stateAt('FINAL', [backendReq(), frontendReq()]));
       expect(fullstack.comunication).toBe(true);
 
-      const notFullstack = planArtifacts(stateAt('FINAL', [otherReq()]));
-      expect(notFullstack.comunication).toBe(false);
+      const noBackend = planArtifacts(stateAt('FINAL', [otherReq()]));
+      expect(noBackend.comunication).toBe(false);
     });
 
-    it('sets comunication = true iff consolidated requirements are fullstack (DONE)', () => {
+    it('sets comunication = true when a back-end is present (fullstack, DONE)', () => {
       const fullstack = planArtifacts(stateAt('DONE', [backendReq(), frontendReq()]));
       expect(fullstack.comunication).toBe(true);
 
-      const notFullstack = planArtifacts(stateAt('DONE', []));
-      expect(notFullstack.comunication).toBe(false);
+      const noBackend = planArtifacts(stateAt('DONE', []));
+      expect(noBackend.comunication).toBe(false);
+    });
+
+    it('sets comunication = true for a back-end-only project (no front-end)', () => {
+      const plan = planArtifacts(stateAt('FINAL', [backendReq()]));
+      expect(plan.comunication).toBe(true);
+    });
+
+    it('sets comunication = false for a front-end-only project (no back-end)', () => {
+      const plan = planArtifacts(stateAt('FINAL', [frontendReq()]));
+      expect(plan.comunication).toBe(false);
     });
 
     it('sets comunication = false when no requirements are present (empty consolidated)', () => {
@@ -211,14 +221,26 @@ describe('buildArtifactList(state)', () => {
     });
   });
 
-  describe('comunication artifact conditional on fullstack', () => {
-    it('includes comunication when requirements are fullstack', () => {
+  describe('comunication artifact conditional on back-end presence', () => {
+    it('includes comunication when a back-end is present (fullstack)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
       const com = artifacts.find((a) => a.kind === 'comunication');
       expect(com).toBeDefined();
     });
 
-    it('excludes comunication when requirements are not fullstack', () => {
+    it('includes comunication for a back-end-only project (no front-end)', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
+      const com = artifacts.find((a) => a.kind === 'comunication');
+      expect(com).toBeDefined();
+    });
+
+    it('excludes comunication when there is no back-end (front-end only)', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
+      const com = artifacts.find((a) => a.kind === 'comunication');
+      expect(com).toBeUndefined();
+    });
+
+    it('excludes comunication when there is no back-end (other/CLI)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
       const com = artifacts.find((a) => a.kind === 'comunication');
       expect(com).toBeUndefined();
@@ -270,12 +292,12 @@ describe('buildArtifactList(state)', () => {
   });
 
   describe('total artifact count', () => {
-    it('returns 2 artifacts (prd + userhistory) for non-fullstack project in FINAL', () => {
+    it('returns 2 artifacts (prd + userhistory) for a project with no back-end in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
       expect(artifacts).toHaveLength(2);
     });
 
-    it('returns 3 artifacts (prd + userhistory + comunication) for fullstack project in FINAL', () => {
+    it('returns 3 artifacts (prd + userhistory + comunication) for a back-end project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
       expect(artifacts).toHaveLength(3);
     });

@@ -65,6 +65,8 @@ const effort = mapEffort('extrahigh'); // 'high'
 - Verificado em tempo de chamada como membro do `AGY_MODEL_ALLOWLIST`.
 - Única fonte de verdade — nunca hardcode o valor.
 
+> ⚠️ **A confirmar:** o identificador `gemini-3.1-pro-high` precisa ser validado contra os modelos efetivamente aceitos pelo `cc-antigravity-plugin:antigravity-agent` na sua instalação. Se o plugin rejeitar o id, o estágio AGY cairá sempre em fallback. Ao confirmar o id correto, atualize **ao mesmo tempo** `AGY_STAGE_MODEL` e o `AGY_MODEL_ALLOWLIST` no engine (a allowlist existe justamente para tornar essa troca consciente).
+
 ```js
 import { agyStageModel } from '../../../scripts/pensador-engine.mjs';
 const model = agyStageModel(); // 'gemini-3.1-pro-high'

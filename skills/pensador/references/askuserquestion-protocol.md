@@ -78,7 +78,7 @@ Essa invariante é coberta pela **Propriedade 6** do design:
 
 ### FINAL / DONE
 
-- Pode haver **uma** pergunta de confirmação de fullstack (sinal ambíguo) via `AskUserQuestion`. Fora isso, o Pensador apenas reporta os caminhos dos artefatos — sem `AskUserQuestion`.
+- Há **sempre uma** pergunta de confirmação da presença de **back-end** via `AskUserQuestion` (a heurística `classifyProject` é apresentada como sugestão; a resposta do usuário decide o `comunication_json.md`). Fora isso, o Pensador apenas reporta os caminhos dos artefatos — sem `AskUserQuestion`.
 
 ---
 

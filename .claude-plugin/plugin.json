@@ -5,6 +5,7 @@
   "author": {
     "name": "allanharlen"
   },
+  "license": "MIT",
   "dependencies": [
     {
       "name": "cc-antigravity-plugin",

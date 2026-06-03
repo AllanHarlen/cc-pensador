@@ -1,7 +1,8 @@
 # Comunicação de Back-End — {{NOME_DO_PROJETO}}
 
-> **Instrução para o LLM:** Este template é gerado **somente para Projetos_Fullstack**
-> (quando `isFullstack(requisitosConsolidados) === true`).
+> **Instrução para o LLM:** Este template é gerado **sempre que o projeto tem back-end**
+> (quando `classifyProject(requisitosConsolidados).hasBackend === true`) — seja fullstack
+> (contrato front↔back) ou back-end-only (contrato de API para consumidores externos).
 > Documente aqui os contratos de comunicação JSON entre front-end e back-end:
 > endpoints REST (ou equivalente), schemas de request/response e códigos de erro.
 > Use os requisitos funcionais do `prd.md` como fonte de verdade para os recursos e operações.
@@ -161,4 +162,4 @@
 
 ---
 
-*Gerado pelo Pensador — Estágio Final. Aplicável apenas a Projetos_Fullstack.*
+*Gerado pelo Pensador — Estágio Final. Aplicável a projetos com back-end (fullstack ou back-end-only).*

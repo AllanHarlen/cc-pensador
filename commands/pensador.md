@@ -1,6 +1,5 @@
 ---
-name: pensador
-description: Conduz um fluxo de oito estágios de questionamento e pensamento sobre uma demanda — incluindo brainstorms por skill (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) — produzindo um PRD de alta qualidade com artefatos de apoio (prd.md, userhistory.md e comunication_json.md quando fullstack).
+description: Conduz um fluxo de oito estágios de questionamento e pensamento sobre uma demanda — incluindo brainstorms por skill (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) — produzindo um PRD de alta qualidade com artefatos de apoio (prd.md, userhistory.md e comunication_json.md quando há back-end).
 argument-hint: "<demanda em linguagem natural — ex.: 'Crie uma tela de login para os usuários'>"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), AskUserQuestion, Agent, Skill
 ---
@@ -17,7 +16,7 @@ Inicia o **Pensador** para a demanda descrita em `$ARGUMENTS`. O fluxo cobre **o
 6. **FRONTEND** — Brainstorm de design de front-end com a skill `frontend-design` *(se há front-end)*
 7. **CODEX** — Refinamento técnico com `codex:codex-rescue` (`--effort high`)
 8. **AGY** — Lacunas remanescentes com `cc-antigravity-plugin:antigravity-agent` (`--model gemini-3.1-pro-high`)
-9. **FINAL** — Geração dos artefatos: `prd.md`, `userhistory.md` e, se fullstack, `comunication_json.md`
+9. **FINAL** — Geração dos artefatos: `prd.md`, `userhistory.md` e, se há back-end, `comunication_json.md`
 
 As etapas de brainstorm (3–6) usam skills especializadas para reforçar a integridade do PRD; uma etapa de domínio não-aplicável produz zero perguntas e auto-avança.
 
@@ -41,6 +40,8 @@ Parse o JSON retornado e registre o status de cada subagente:
 - `status: "partial"` → um ou mais subagentes indisponíveis; prossiga e aplique o protocolo de fallback nos estágios afetados (ver `skills/pensador/references/stages.md`).
 - `status: "unavailable"` → nenhum subagente disponível; informe ao usuário e aplique fallback nos estágios **CODEX** e **AGY**.
 
+> **Degradação graciosa:** se o preflight **não puder ser executado** (ex.: `node` ausente do PATH, script não encontrado, saída não-JSON), **não aborte o fluxo**. Trate como `status: "partial"` — registre que a verificação falhou, informe ao usuário e aplique o protocolo de fallback nos estágios CODEX e AGY conforme a disponibilidade real for descoberta na invocação. O preflight é um sinal de conveniência, não um gate.
+
 ### Passo 2 — Verificar a demanda
 
 Leia `$ARGUMENTS`:
@@ -57,11 +58,13 @@ Leia `$ARGUMENTS`:
 Skill(skill="cc-pensador:pensador")
 ```
 
-A skill está em `${CLAUDE_PLUGIN_ROOT}/skills/pensador/SKILL.md`. Ela define o protocolo completo de cada estágio, os gates de avanço, a delegação ao Codex e ao AGY, e as regras de fallback.
+A skill está em `${CLAUDE_PLUGIN_ROOT}/skills/pensador/SKILL.md`. Ela define o protocolo completo de cada estágio, os gates de avanço, a delegação ao Codex e ao AGY, as regras de fallback e a **retomada por checkpoint**.
 
-### Passo 4 — Iniciar o estágio PRD_BASE
+> **Retomada:** no `INIT`, a skill verifica `pensador-output/.pensador-progress.json`. Se houver um checkpoint válido, ela pergunta (via `AskUserQuestion`) se você quer **retomar** do estágio salvo ou **recomeçar** — antes de seguir para o PRD_BASE.
 
-Com a demanda em mãos e o resultado do preflight registrado, inicie o estágio **PRD_BASE** conforme definido em `skills/pensador/SKILL.md`:
+### Passo 4 — Iniciar (ou retomar) o fluxo
+
+Com a demanda em mãos e o resultado do preflight registrado, inicie o estágio **PRD_BASE** (ou retome do estágio salvo, conforme a resposta de retomada) conforme definido em `skills/pensador/SKILL.md`:
 
 - O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo (gates, mapeamentos, classificação, artefatos), validada pelos testes — **não** é importado em runtime pela skill. Aplique as regras descritas em prosa na SKILL diretamente. O único script executado por shell é o `preflight.mjs` (Passo 1).
 - Aplique o `Strict_PRD_Schema` da `Skill_PRD_Base` (`${CLAUDE_PLUGIN_ROOT}/skills/prd/SKILL.md`) para gerar o `PRD_Base`.
@@ -73,7 +76,7 @@ Ao concluir cada estágio, informe brevemente o progresso. Ao concluir o estági
 
 - `prd.md` — sempre gerado
 - `userhistory.md` — sempre gerado
-- `comunication_json.md` — gerado apenas quando a demanda resultar em `Projeto_Fullstack`
+- `comunication_json.md` — gerado sempre que a demanda tiver back-end (`hasBackend`)
 
 ---
 

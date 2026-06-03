@@ -66,8 +66,10 @@ Estes quatro estágios delegam a uma **skill especializada** para aplicar uma le
    - Não-relevante → zero perguntas + auto-avanço (estágio visitado, não pulado).
 2. **Invocar a skill** via `Skill(skill="cc-pensador:<nome>")`, fornecendo demanda + PRD_Base + consolidado e pedindo lacunas/ambiguidades/decisões em aberto do domínio.
 3. **Converter** cada lacuna em pergunta (`origin = <origin da skill>`, `stage = <ID>`).
-4. **Apresentar** via `AskUserQuestion` (sem agrupar origens/estágios diferentes).
-5. **Registrar** respostas — entram no consolidado com `resolvesGap = true`.
+4. **Deduplicar:** descartar lacunas já resolvidas em estágios anteriores (sobretudo EXPAND) ou já cobertas pelo `PRD_Base`; reaproveitar a resposta existente.
+5. **Priorizar e limitar:** apresentar primeiro as lacunas de maior impacto (≈3–5 essenciais por estágio); lacunas menores podem virar `"TBD"` no PRD. Incluir sempre a opção "seguir sem responder as demais" — se escolhida, registrar as restantes como diferidas (satisfaz o gate sem forçar resposta).
+6. **Apresentar** via `AskUserQuestion` (sem agrupar origens/estágios diferentes).
+7. **Registrar** respostas — entram no consolidado com `resolvesGap = true`.
 
 ### Fallback (skill indisponível)
 
@@ -144,11 +146,11 @@ Cada pergunta → `origin = 'agy'`, `stage = 'AGY'` via `AskUserQuestion`; respo
 
 **Processo:**
 1. **`withConsolidated(state)`** — grava `consolidate(state)` em `state.consolidated`. **Obrigatório antes de planejar**: `planArtifacts`/`buildArtifactList` leem `state.consolidated`.
-2. `classifyProject(consolidated)` → `{hasBackend, hasFrontend, isFullstack}`. Sinal ambíguo → confirmar fullstack com o usuário via `AskUserQuestion`.
-3. `planArtifacts(state)` → `prd`/`userhistory` sempre; `comunication = isFullstack`.
+2. `classifyProject(consolidated)` → `{hasBackend, hasFrontend, isFullstack}` (heurística por palavra-chave). **Sempre** confirmar a presença de **back-end** com o usuário via `AskUserQuestion` — heurística como sugestão; a resposta prevalece — antes de decidir o `comunication_json.md`.
+3. `planArtifacts(state)` → `prd`/`userhistory` sempre; `comunication = hasBackend`.
 4. Gerar `prd.md` (Strict_PRD_Schema + template), incorporando as respostas de todos os estágios nas seções pertinentes.
 5. Gerar `userhistory.md` (`buildUserHistory`, passos contíguos a partir de 1).
-6. Se fullstack, gerar `comunication_json.md` (contratos levantados em BACKEND).
+6. Se há back-end, gerar `comunication_json.md` (contratos levantados em BACKEND).
 7. `buildArtifactList(state)` → informar o `path` de cada artefato.
 
 > **Destino e sobrescrita:** os artefatos são gravados sob `pensador-output/` (nunca na raiz). Antes de gravar cada arquivo, se ele já existir nesse diretório, **confirme a sobrescrita via `AskUserQuestion`**. Crie o diretório se ausente.
@@ -157,7 +159,7 @@ Cada pergunta → `origin = 'agy'`, `stage = 'AGY'` via `AskUserQuestion`; respo
 |---|---|---|
 | PRD Final | `prd.md` | Sempre |
 | Jornada do Usuário | `userhistory.md` | Sempre |
-| Comunicação Back-End | `comunication_json.md` | Somente se `isFullstack === true` |
+| Comunicação Back-End | `comunication_json.md` | Quando há back-end (`hasBackend === true`) |
 
 **Gate para DONE:** artefatos aplicáveis gerados e caminhos reportados.
 

@@ -28,6 +28,9 @@ import {
   buildPrdBase,
   buildUserHistory,
   dispatchQuestion,
+  CHECKPOINT_VERSION,
+  serializeState,
+  deserializeState,
 } from '../scripts/pensador-engine.mjs';
 
 describe('Pensador Engine — smoke', () => {
@@ -107,6 +110,8 @@ describe('Pensador Engine — smoke', () => {
       buildPrdBase,
       buildUserHistory,
       dispatchQuestion,
+      serializeState,
+      deserializeState,
     ];
     for (const fn of fns) {
       expect(typeof fn).toBe('function');
@@ -127,5 +132,50 @@ describe('Pensador Engine — smoke', () => {
     expect(initState('   ').needsDemanda).toBe(true);
     expect(initState(undefined).needsDemanda).toBe(true);
     expect(initState(null).needsDemanda).toBe(true);
+  });
+});
+
+describe('Pensador Engine — checkpoint serialization', () => {
+  /** Builds a non-trivial mid-flow state to exercise the round-trip. */
+  function midFlowState() {
+    let state = initState('Criar uma API REST com banco de dados');
+    state = addQuestions(state, 'EXPAND', [
+      { id: 'q1', text: 'Auth?', origin: 'pensador', answer: null },
+    ]);
+    state = recordAnswer(state, 'q1', 'JWT');
+    return { ...state, currentStage: 'CLARITY' };
+  }
+
+  it('round-trips a StageState through serialize → deserialize', () => {
+    const state = midFlowState();
+    const restored = deserializeState(serializeState(state));
+    expect(restored).toEqual(state);
+  });
+
+  it('serialize output carries the checkpoint version', () => {
+    const parsed = JSON.parse(serializeState(initState('x')));
+    expect(parsed.version).toBe(CHECKPOINT_VERSION);
+    expect(typeof parsed.savedAt).toBe('string');
+  });
+
+  it('deserialize returns null (never throws) for malformed / absent input', () => {
+    expect(deserializeState(undefined)).toBeNull();
+    expect(deserializeState(null)).toBeNull();
+    expect(deserializeState('')).toBeNull();
+    expect(deserializeState('{not json')).toBeNull();
+    expect(deserializeState(JSON.stringify({ version: CHECKPOINT_VERSION }))).toBeNull();
+  });
+
+  it('deserialize rejects an incompatible checkpoint version', () => {
+    const stale = JSON.stringify({ version: CHECKPOINT_VERSION + 1, state: initState('x') });
+    expect(deserializeState(stale)).toBeNull();
+  });
+
+  it('deserialize rejects a state with an unknown currentStage', () => {
+    const bad = JSON.stringify({
+      version: CHECKPOINT_VERSION,
+      state: { ...initState('x'), currentStage: 'BOGUS' },
+    });
+    expect(deserializeState(bad)).toBeNull();
   });
 });

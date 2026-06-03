@@ -64,6 +64,8 @@ curl -L -o skill.zip "https://mcp.directory/api/skills/download/1"    && unzip -
 ### CLARITY — `requirements-clarity`
 **Sempre relevante.** Primeira lente após a ampliação do Pensador. Foca em transformar requisitos vagos em verificáveis: termos ambíguos ("rápido", "fácil"), requisitos implícitos, escopo dentro/fora, dependências, e critérios de aceite testáveis. As respostas alimentam principalmente **Requisitos Funcionais**, **Critérios de Aceite** e **Casos de Uso** do PRD.
 
+> **Não repita o EXPAND.** EXPAND e CLARITY compartilham terreno (requisitos implícitos, RNFs, escopo). Antes de perguntar, descarte toda lacuna que EXPAND já resolveu e reaproveite a resposta existente — CLARITY só pergunta o que continua ambíguo *depois* da ampliação.
+
 ### BACKEND — `backend-development`
 **Relevante se há backend.** Foca em: modelo de dados e persistência, endpoints e contratos de API, integrações externas, autenticação/autorização, consistência transacional, escalabilidade, idempotência, observabilidade e tratamento de erros. Alimenta **Arquitetura**, **Requisitos Não-Funcionais** e o **`comunication_json.md`**.
 
