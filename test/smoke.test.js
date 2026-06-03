@@ -9,7 +9,7 @@ import {
   STAGE_DELEGATION,
   GAP_ORIGINS,
   AGY_MODEL_ALLOWLIST,
-  STAGE4_MODEL,
+  AGY_STAGE_MODEL,
   ASK_USER_QUESTION,
   initState,
   addQuestions,
@@ -20,7 +20,7 @@ import {
   consolidate,
   withConsolidated,
   mapEffort,
-  agyModelForStage4,
+  agyStageModel,
   classifyProject,
   isFullstack,
   planArtifacts,
@@ -78,10 +78,10 @@ describe('Pensador Engine — smoke', () => {
     expect(GAP_ORIGINS).not.toContain('pensador');
   });
 
-  it('exports AGY_MODEL_ALLOWLIST containing STAGE4_MODEL', () => {
+  it('exports AGY_MODEL_ALLOWLIST containing AGY_STAGE_MODEL', () => {
     expect(Array.isArray(AGY_MODEL_ALLOWLIST)).toBe(true);
-    expect(AGY_MODEL_ALLOWLIST).toContain(STAGE4_MODEL);
-    expect(STAGE4_MODEL).toBe('gemini-3.1-pro-high');
+    expect(AGY_MODEL_ALLOWLIST).toContain(AGY_STAGE_MODEL);
+    expect(AGY_STAGE_MODEL).toBe('gemini-3.1-pro-high');
   });
 
   it('exports ASK_USER_QUESTION channel constant', () => {
@@ -99,7 +99,7 @@ describe('Pensador Engine — smoke', () => {
       consolidate,
       withConsolidated,
       mapEffort,
-      agyModelForStage4,
+      agyStageModel,
       classifyProject,
       isFullstack,
       planArtifacts,

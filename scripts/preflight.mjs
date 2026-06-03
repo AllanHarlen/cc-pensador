@@ -211,9 +211,9 @@ function buildGuidance(codex, agy) {
   const lines = [];
 
   if (codex.available && agy.available) {
-    lines.push("Both Codex and AGY subagents are available. The full 5-stage Pensador workflow can proceed.");
-    lines.push(`  Stage 3 → ${codex.subagentKey} (${codex.parameter})`);
-    lines.push(`  Stage 4 → ${agy.subagentKey} (${agy.parameter})`);
+    lines.push("Both Codex and AGY subagents are available. The full 8-stage Pensador workflow can proceed.");
+    lines.push(`  CODEX stage → ${codex.subagentKey} (${codex.parameter})`);
+    lines.push(`  AGY stage   → ${agy.subagentKey} (${agy.parameter})`);
     return lines.join("\n");
   }
 
@@ -224,7 +224,7 @@ function buildGuidance(codex, agy) {
     lines.push(`  ✗ Codex (${codex.subagentKey}) — NOT available (plugin not found)`);
     if (!codex.plugin.ok)  lines.push(`    Plugin: ${codex.plugin.error}`);
     if (!codex.cli.ok)     lines.push(`    CLI (advisory): ${codex.cli.error}`);
-    lines.push(`    → Stage 3 fallback: ${codex.fallbackBehavior}`);
+    lines.push(`    → CODEX stage fallback: ${codex.fallbackBehavior}`);
     lines.push("");
   } else {
     lines.push(`  ✓ Codex (${codex.subagentKey}) — available (v${codex.plugin.version})`);
@@ -234,7 +234,7 @@ function buildGuidance(codex, agy) {
     lines.push(`  ✗ AGY (${agy.subagentKey}) — NOT available (plugin not found)`);
     if (!agy.plugin.ok)  lines.push(`    Plugin: ${agy.plugin.error}`);
     if (!agy.cli.ok)     lines.push(`    CLI (advisory): ${agy.cli.error}`);
-    lines.push(`    → Stage 4 fallback: ${agy.fallbackBehavior}`);
+    lines.push(`    → AGY stage fallback: ${agy.fallbackBehavior}`);
   } else {
     lines.push(`  ✓ AGY (${agy.subagentKey}) — available (v${agy.plugin.version})`);
   }

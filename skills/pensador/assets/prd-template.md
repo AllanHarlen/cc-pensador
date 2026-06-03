@@ -1,7 +1,7 @@
 # PRD — {{NOME_DO_PROJETO}}
 
 > **Instrução para o LLM:** Este template implementa o `Strict_PRD_Schema` definido em `skills/prd/SKILL.md`.
-> Preencha cada seção com base nos requisitos consolidados dos Estágios 1–4.
+> Preencha cada seção com base nos requisitos consolidados de todos os estágios de trabalho (EXPAND → AGY).
 > Seções sem informação disponível devem receber exatamente `"TBD"` — nunca deixe a seção vazia ou ausente.
 > Mantenha os IDs de requisitos (`RF-01`, `RNF-01`, `UC-01`, `CA-01`) únicos e com referências cruzadas consistentes.
 > Remova este bloco de instrução antes de entregar o artefato ao usuário.

@@ -26,7 +26,7 @@ Agent(subagent_type="codex:codex-rescue", prompt="... Use effort: high. ...")
 Agent(subagent_type="cc-antigravity-plugin:antigravity-agent", prompt="... Use model: gemini-3.1-pro-high. ...")
 ```
 
-Os valores vêm sempre do Engine: `mapEffort('extrahigh')` para o Codex e `agyModelForStage4()` para o AGY.
+Os valores vêm sempre do Engine: `mapEffort('extrahigh')` para o Codex e `agyStageModel()` para o AGY.
 
 ---
 
@@ -61,13 +61,13 @@ const effort = mapEffort('extrahigh'); // 'high'
 
 ### Modelo: `gemini-3.1-pro-high`
 
-- Retornado por `agyModelForStage4()`.
+- Retornado por `agyStageModel()`.
 - Verificado em tempo de chamada como membro do `AGY_MODEL_ALLOWLIST`.
 - Única fonte de verdade — nunca hardcode o valor.
 
 ```js
-import { agyModelForStage4 } from '../../../scripts/pensador-engine.mjs';
-const model = agyModelForStage4(); // 'gemini-3.1-pro-high'
+import { agyStageModel } from '../../../scripts/pensador-engine.mjs';
+const model = agyStageModel(); // 'gemini-3.1-pro-high'
 // → inclua "Use model: gemini-3.1-pro-high." no prompt do subagente
 ```
 
@@ -77,7 +77,7 @@ const model = agyModelForStage4(); // 'gemini-3.1-pro-high'
 export const AGY_MODEL_ALLOWLIST = ['gemini-3.1-pro-high'];
 ```
 
-**Propósito:** guardar contra _model drift_ — o identificador do modelo mudar (atualização, renomeação, substituição) sem que o fluxo seja atualizado conscientemente. `agyModelForStage4()` lança erro explícito se `STAGE4_MODEL` não estiver na allowlist. Adotar um novo modelo deve ser **intencional**: adicionar à allowlist e atualizar `STAGE4_MODEL`.
+**Propósito:** guardar contra _model drift_ — o identificador do modelo mudar (atualização, renomeação, substituição) sem que o fluxo seja atualizado conscientemente. `agyStageModel()` lança erro explícito se `AGY_STAGE_MODEL` não estiver na allowlist. Adotar um novo modelo deve ser **intencional**: adicionar à allowlist e atualizar `AGY_STAGE_MODEL`.
 
 ---
 
@@ -96,7 +96,7 @@ Parâmetro : effort high   (de mapEffort('extrahigh') === 'high'; comunicado no 
 
 # AGY (Estágio 8)
 Subagente : cc-antigravity-plugin:antigravity-agent
-Parâmetro : model gemini-3.1-pro-high   (de agyModelForStage4(); comunicado no prompt)
+Parâmetro : model gemini-3.1-pro-high   (de agyStageModel(); comunicado no prompt)
 ```
 
 ---
@@ -106,4 +106,4 @@ Parâmetro : model gemini-3.1-pro-high   (de agyModelForStage4(); comunicado no 
 - `references/skill-stack.md` — as 4 skills de brainstorm (CLARITY/BACKEND/UIUX/FRONTEND).
 - `references/stages.md` — gates por estágio e protocolo de fallback.
 - `references/askuserquestion-protocol.md` — canal único de diálogo.
-- `scripts/pensador-engine.mjs` — `mapEffort`, `agyModelForStage4`, `AGY_MODEL_ALLOWLIST`, `STAGE_DELEGATION`.
+- `scripts/pensador-engine.mjs` — `mapEffort`, `agyStageModel`, `AGY_MODEL_ALLOWLIST`, `STAGE_DELEGATION`.

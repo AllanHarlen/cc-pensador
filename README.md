@@ -48,6 +48,8 @@ O funil vai de **gerar → ampliar → clarificar → mergulhos por domínio →
 
 ## Artefatos gerados
 
+Todos gravados sob `pensador-output/` (nunca na raiz do projeto, para não sobrescrever um `prd.md` existente). Se um arquivo já existir nesse diretório, o Pensador confirma a sobrescrita via `AskUserQuestion` antes de escrever.
+
 - `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(sempre)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
 - `comunication_json.md` — Comunicação de back-end em JSON. *(somente em projetos fullstack — back-end **e** front-end)*

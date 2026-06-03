@@ -202,7 +202,7 @@ Para cada ponto: crie `Question` com `origin = 'codex'`, `stage = 'CODEX'`; apre
 
 ## AGY — Lacunas de produto
 
-**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyModelForStage4()`, verificado no `AGY_MODEL_ALLOWLIST`).
+**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyStageModel()`, verificado no `AGY_MODEL_ALLOWLIST`).
 
 > **Como o parâmetro é passado:** comunique o modelo **no corpo do prompt** (ou conforme a interface do antigravity-agent) e registre para rastreabilidade. Veja `references/agent-stack.md`.
 
@@ -236,7 +236,9 @@ Para cada pergunta: `origin = 'agy'`, `stage = 'AGY'`; apresente via `AskUserQue
 
 1. **Consolide:** aplique `withConsolidated(state)` — isto grava `consolidate(state)` em `state.consolidated`. **Este passo é obrigatório antes de planejar artefatos**, pois `planArtifacts`/`buildArtifactList` leem `state.consolidated` (que está vazio até aqui). Saltar este passo faz o `comunication_json.md` nunca ser planejado.
 2. **Classifique o projeto:** `classifyProject(consolidated)` → `{hasBackend, hasFrontend, isFullstack}`. Se o sinal for ambíguo, **confirme com o usuário via `AskUserQuestion`** se é fullstack antes de decidir o `comunication_json.md`.
-3. **Planeje:** `planArtifacts(state)` → `prd` e `userhistory` sempre; `comunication = isFullstack`. `buildArtifactList(state)` → lista com `filename` e `path`.
+3. **Planeje:** `planArtifacts(state)` → `prd` e `userhistory` sempre; `comunication = isFullstack`. `buildArtifactList(state)` → lista com `filename` e `path` (sob `pensador-output/`).
+
+> **Destino e sobrescrita (regra invariante):** todo artefato é gravado sob `pensador-output/` (caminho de `buildArtifactList`) — **nunca** na raiz do projeto, para não clobberar um `prd.md` existente. Antes de gravar cada arquivo, verifique se ele já existe nesse diretório; **se existir, confirme a sobrescrita via `AskUserQuestion`** (canal único) antes de escrever. Crie o diretório se ausente.
 
 ### Geração do `prd.md`
 Consolide o `PRD_Base` com as respostas de EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX e AGY. Aplique o `Strict_PRD_Schema` e o template `assets/prd-template.md`. Seções sem informação → `"TBD"`. As respostas das skills de brainstorm devem aparecer nas seções pertinentes (CLARITY→Requisitos/Critérios; BACKEND→Arquitetura/RNF; UIUX/FRONTEND→Casos de Uso/Arquitetura/UI). Grave em `prd.md`.

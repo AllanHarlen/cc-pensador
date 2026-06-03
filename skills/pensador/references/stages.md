@@ -116,7 +116,7 @@ Cada ponto → pergunta (`origin = 'codex'`, `stage = 'CODEX'`) via `AskUserQues
 
 ## AGY — Lacunas de produto
 
-**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyModelForStage4()`, no `AGY_MODEL_ALLOWLIST`).
+**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyStageModel()`, no `AGY_MODEL_ALLOWLIST`).
 
 > **Passagem do parâmetro:** comunique `model: gemini-3.1-pro-high` no corpo do prompt (ou conforme a interface do antigravity-agent) e registre para rastreabilidade.
 
@@ -150,6 +150,8 @@ Cada pergunta → `origin = 'agy'`, `stage = 'AGY'` via `AskUserQuestion`; respo
 5. Gerar `userhistory.md` (`buildUserHistory`, passos contíguos a partir de 1).
 6. Se fullstack, gerar `comunication_json.md` (contratos levantados em BACKEND).
 7. `buildArtifactList(state)` → informar o `path` de cada artefato.
+
+> **Destino e sobrescrita:** os artefatos são gravados sob `pensador-output/` (nunca na raiz). Antes de gravar cada arquivo, se ele já existir nesse diretório, **confirme a sobrescrita via `AskUserQuestion`**. Crie o diretório se ausente.
 
 | Artefato | Arquivo | Condição |
 |---|---|---|

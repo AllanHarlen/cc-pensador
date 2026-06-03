@@ -80,7 +80,7 @@ export const AGY_MODEL_ALLOWLIST = [
 ];
 
 /** AGY model used in the AGY stage. Must be a member of AGY_MODEL_ALLOWLIST. */
-export const STAGE4_MODEL = 'gemini-3.1-pro-high';
+export const AGY_STAGE_MODEL = 'gemini-3.1-pro-high';
 
 /** Channel constant for all user-facing questions. */
 export const ASK_USER_QUESTION = 'ASK_USER_QUESTION';
@@ -280,11 +280,11 @@ export function mapEffort(requested) {
  *
  * @returns {'gemini-3.1-pro-high'}
  */
-export function agyModelForStage4() {
-  const model = STAGE4_MODEL;
+export function agyStageModel() {
+  const model = AGY_STAGE_MODEL;
   if (!AGY_MODEL_ALLOWLIST.includes(model)) {
     throw new Error(
-      `STAGE4_MODEL '${model}' is not in AGY_MODEL_ALLOWLIST: [${AGY_MODEL_ALLOWLIST.join(', ')}]`
+      `AGY_STAGE_MODEL '${model}' is not in AGY_MODEL_ALLOWLIST: [${AGY_MODEL_ALLOWLIST.join(', ')}]`
     );
   }
   return model;
@@ -364,7 +364,10 @@ export function planArtifacts(state) {
  */
 export function buildArtifactList(state) {
   const plan = planArtifacts(state);
-  const basePath = './';
+  // Artifacts are written under a dedicated output directory so a /pensador run
+  // never clobbers a pre-existing prd.md (or sibling) at the project root. The
+  // LLM still confirms before overwriting a file that already exists in here.
+  const basePath = './pensador-output/';
 
   /** @type {Artifact[]} */
   const artifacts = [];

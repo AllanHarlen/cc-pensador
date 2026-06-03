@@ -37,9 +37,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.mjs"
 
 Parse o JSON retornado e registre o status de cada subagente:
 
-- `status: "ok"` → ambos disponíveis; o fluxo completo de 5 estágios pode prosseguir.
+- `status: "ok"` → ambos disponíveis; o fluxo completo de oito estágios pode prosseguir.
 - `status: "partial"` → um ou mais subagentes indisponíveis; prossiga e aplique o protocolo de fallback nos estágios afetados (ver `skills/pensador/references/stages.md`).
-- `status: "unavailable"` → nenhum subagente disponível; informe ao usuário e aplique fallback nos Estágios 3 e 4.
+- `status: "unavailable"` → nenhum subagente disponível; informe ao usuário e aplique fallback nos estágios **CODEX** e **AGY**.
 
 ### Passo 2 — Verificar a demanda
 

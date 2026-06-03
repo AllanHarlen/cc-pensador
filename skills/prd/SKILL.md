@@ -115,7 +115,7 @@ Estas regras aplicam-se tanto ao `PRD_Base` (estágio PRD_BASE) quanto ao `prd.m
 
 ### 5. Rastreabilidade
 
-- O `prd.md` final deve refletir as respostas registradas nos Estágios 2, 3 e 4.
+- O `prd.md` final deve refletir as respostas registradas nos estágios de trabalho (EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX e AGY).
 - Requisitos derivados de lacunas identificadas pelo Codex ou pelo AGY devem ser incorporados nas seções pertinentes do `Strict_PRD_Schema`.
 
 ---
