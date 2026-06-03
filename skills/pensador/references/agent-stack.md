@@ -1,117 +1,109 @@
 # Agent Stack do Pensador — Referência
 
-Este documento descreve os subagentes utilizados pelo Pensador, o mapeamento de effort do Codex e o modelo do AGY.
+Este documento descreve os **subagentes** usados pelo Pensador nos estágios CODEX e AGY, o mapeamento de effort do Codex e o modelo do AGY.
+
+Para as quatro **skills de brainstorm** (CLARITY/BACKEND/UIUX/FRONTEND), veja `references/skill-stack.md`.
 
 ---
 
 ## Visão Geral dos Subagentes
 
-O Pensador delega tarefas a dois subagentes especializados em estágios distintos do fluxo:
-
-| Subagente | Identificador | Estágio | Parâmetro |
+| Subagente | Identificador | Estágio | Parâmetro efetivo |
 |---|---|---|---|
-| Codex | `codex:codex-rescue` | Estágio 3 | `--effort high` |
-| AGY | `cc-antigravity-plugin:antigravity-agent` | Estágio 4 | `--model gemini-3.1-pro-high` |
+| Codex | `codex:codex-rescue` | CODEX (7) | `--effort high` |
+| AGY | `cc-antigravity-plugin:antigravity-agent` | AGY (8) | `--model gemini-3.1-pro-high` |
+
+---
+
+## Como invocar subagentes — passagem de parâmetros (importante)
+
+O tool `Agent` recebe `subagent_type` e `prompt`; **não há um campo para flags CLI** (`--effort`, `--model`). Portanto:
+
+> O parâmetro efetivo é **comunicado no corpo do prompt** ao subagente (e/ou conforme a interface própria do subagente), e o valor é **registrado para rastreabilidade**. Nunca dependa de um campo de flag inexistente.
+
+```
+Agent(subagent_type="codex:codex-rescue", prompt="... Use effort: high. ...")
+Agent(subagent_type="cc-antigravity-plugin:antigravity-agent", prompt="... Use model: gemini-3.1-pro-high. ...")
+```
+
+Os valores vêm sempre do Engine: `mapEffort('extrahigh')` para o Codex e `agyModelForStage4()` para o AGY.
 
 ---
 
 ## Codex — `codex:codex-rescue`
 
-### Como chamar
-
-```
-Agent(codex:codex-rescue, --effort high, <prompt>)
-```
-
 ### Mapeamento de Effort: `extrahigh → high`
 
-O usuário solicita effort `extrahigh` ao Codex. Contudo, o `codex:codex-rescue` reconhece apenas dois níveis de effort efetivo:
+O usuário solicita effort `extrahigh`, mas o `codex:codex-rescue` reconhece apenas:
 
-- `--effort medium`
-- `--effort high`
+- `medium`
+- `high`
 
-O Pensador Engine mapeia o nível solicitado para o nível efetivo via `mapEffort(requested)`:
-
-| Solicitado (`requested`) | Efetivo (parâmetro passado ao Codex) |
+| Solicitado (`requested`) | Efetivo (comunicado ao Codex) |
 |---|---|
-| `medium` | `--effort medium` |
-| `high` | `--effort high` |
-| `extrahigh` | `--effort high` |
+| `medium` | `medium` |
+| `high` | `high` |
+| `extrahigh` | `high` |
 
-Portanto, `extrahigh` é mapeado para `high` — o nível máximo real do Codex. O termo `extrahigh` preserva a intenção do usuário no vocabulário do fluxo; o parâmetro passado ao subagente é **sempre** `--effort high`.
+`extrahigh` é mapeado para `high` (o nível máximo real do Codex). O termo `extrahigh` preserva a intenção do usuário no vocabulário do fluxo; o valor passado é **sempre** `high`.
 
-**Regra:** nunca passe `--effort extrahigh` ao `codex:codex-rescue`. Use sempre o retorno de `mapEffort('extrahigh')` (que é `'high'`) para construir o parâmetro.
-
-### Função do Engine
+**Regra:** nunca comunique `extrahigh` ao Codex. Use sempre o retorno de `mapEffort('extrahigh')` (que é `'high'`).
 
 ```js
 import { mapEffort } from '../../../scripts/pensador-engine.mjs';
-
-const effortParam = `--effort ${mapEffort('extrahigh')}`;
-// effortParam === '--effort high'
+const effort = mapEffort('extrahigh'); // 'high'
+// → inclua "Use effort: high." no prompt do subagente
 ```
 
 ---
 
 ## AGY — `cc-antigravity-plugin:antigravity-agent`
 
-### Como chamar
-
-```
-Agent(cc-antigravity-plugin:antigravity-agent, --model gemini-3.1-pro-high, <prompt>)
-```
-
 ### Modelo: `gemini-3.1-pro-high`
 
-O modelo utilizado no Estágio 4 é `gemini-3.1-pro-high`. Esse identificador é:
-
-- Retornado por `agyModelForStage4()` no Pensador Engine.
+- Retornado por `agyModelForStage4()`.
 - Verificado em tempo de chamada como membro do `AGY_MODEL_ALLOWLIST`.
-- A única fonte de verdade para o modelo do AGY — nunca hardcode o valor diretamente.
-
-### Função do Engine
+- Única fonte de verdade — nunca hardcode o valor.
 
 ```js
 import { agyModelForStage4 } from '../../../scripts/pensador-engine.mjs';
-
-const modelParam = `--model ${agyModelForStage4()}`;
-// modelParam === '--model gemini-3.1-pro-high'
+const model = agyModelForStage4(); // 'gemini-3.1-pro-high'
+// → inclua "Use model: gemini-3.1-pro-high." no prompt do subagente
 ```
 
-### `AGY_MODEL_ALLOWLIST` — Por que existe
-
-O `AGY_MODEL_ALLOWLIST` é a lista de identificadores de modelo AGY reconhecidos pelo Pensador:
+### `AGY_MODEL_ALLOWLIST` — por que existe
 
 ```js
-export const AGY_MODEL_ALLOWLIST = [
-  'gemini-3.1-pro-high',
-];
+export const AGY_MODEL_ALLOWLIST = ['gemini-3.1-pro-high'];
 ```
 
-**Propósito:** guardar contra _model drift_ — a situação em que o identificador do modelo AGY muda (por atualização, renomeação ou substituição de versão) sem que o fluxo do Pensador seja atualizado conscientemente. Ao verificar o membro da allowlist em `agyModelForStage4()`, qualquer tentativa de usar um modelo não autorizado lança um erro explícito em vez de falhar silenciosamente ou produzir resultados inesperados.
+**Propósito:** guardar contra _model drift_ — o identificador do modelo mudar (atualização, renomeação, substituição) sem que o fluxo seja atualizado conscientemente. `agyModelForStage4()` lança erro explícito se `STAGE4_MODEL` não estiver na allowlist. Adotar um novo modelo deve ser **intencional**: adicionar à allowlist e atualizar `STAGE4_MODEL`.
 
-Se um novo modelo AGY for adotado, a atualização deve ser **intencional**: adicionar o identificador ao `AGY_MODEL_ALLOWLIST` e atualizar `STAGE4_MODEL` no Engine.
+---
+
+## Disponibilidade e preflight
+
+O `scripts/preflight.mjs` verifica a presença do Codex e do AGY antes do fluxo. **Atenção:** a verificação por binário CLI (`codex --version` / `agy --version`) pode gerar falso-negativo quando o subagente é distribuído apenas como *plugin* (sem binário homônimo no PATH) — em especial o AGY. Trate "indisponível" do preflight como um **sinal**, não veredito: confirme aplicando o protocolo de fallback no estágio correspondente. Veja `references/stages.md`.
 
 ---
 
 ## Resumo de Identificadores e Parâmetros
 
 ```
-# Estágio 3 — Codex
+# CODEX (Estágio 7)
 Subagente : codex:codex-rescue
-Parâmetro : --effort high
-Origem    : mapEffort('extrahigh') === 'high'
+Parâmetro : effort high   (de mapEffort('extrahigh') === 'high'; comunicado no prompt)
 
-# Estágio 4 — AGY
+# AGY (Estágio 8)
 Subagente : cc-antigravity-plugin:antigravity-agent
-Parâmetro : --model gemini-3.1-pro-high
-Origem    : agyModelForStage4() === 'gemini-3.1-pro-high' (verificado no AGY_MODEL_ALLOWLIST)
+Parâmetro : model gemini-3.1-pro-high   (de agyModelForStage4(); comunicado no prompt)
 ```
 
 ---
 
 ## Leitura relacionada
 
-- `references/stages.md` — gates de avanço por estágio e protocolo de fallback por indisponibilidade.
-- `references/askuserquestion-protocol.md` — canal único de diálogo com o usuário.
-- `scripts/pensador-engine.mjs` — implementação de referência de `mapEffort`, `agyModelForStage4` e `AGY_MODEL_ALLOWLIST`.
+- `references/skill-stack.md` — as 4 skills de brainstorm (CLARITY/BACKEND/UIUX/FRONTEND).
+- `references/stages.md` — gates por estágio e protocolo de fallback.
+- `references/askuserquestion-protocol.md` — canal único de diálogo.
+- `scripts/pensador-engine.mjs` — `mapEffort`, `agyModelForStage4`, `AGY_MODEL_ALLOWLIST`, `STAGE_DELEGATION`.

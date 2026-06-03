@@ -3,19 +3,22 @@
  * Preflight check for cc-pensador (Pensador PRD Workflow).
  *
  * Checks the availability of the two subagents used by the /pensador command:
- *   - Codex  (codex:codex-rescue)           — used in Stage 3 (effort high)
- *   - AGY    (cc-antigravity-plugin:antigravity-agent) — used in Stage 4 (gemini-3.1-pro-high)
+ *   - Codex  (codex:codex-rescue)           — used in the CODEX stage (effort high)
+ *   - AGY    (cc-antigravity-plugin:antigravity-agent) — used in the AGY stage (gemini-3.1-pro-high)
  *
  * Detection strategy: inspect the Claude Code plugin cache on disk to determine
  * whether each plugin is installed. Claude Code caches plugins under
  * ~/.claude/plugins/cache/<marketplace>/<plugin-name>/<version>/
  *
- * The script also checks for the `codex` and `agy` CLI binaries, since the
- * Pensador skill delegates to them via the Agent/Skill mechanism.
+ * Availability is based on the PLUGIN being installed. The `codex`/`agy` CLI
+ * binaries are also probed, but only as ADVISORY info: these subagents are
+ * invoked via the plugin (Agent/Skill mechanism), not a global CLI, so a
+ * missing binary must not produce a false-negative.
  *
- * Output: JSON to stdout. Exit 0 if both subagents are available; exit 1 if
- * one or more required dependencies are missing (so the /pensador command can
- * decide whether to fall back to user questions for those stages).
+ * Output: JSON to stdout. Always exits 0 — the /pensador command reads the
+ * `status` field to decide whether to fall back to user questions for a stage.
+ * (The brainstorm skills CLARITY/BACKEND/UIUX/FRONTEND have their own in-flow
+ * fallback and are not preflighted here.)
  *
  * Requirements: 4.4, 5.4
  */
@@ -123,13 +126,17 @@ function checkCodex() {
   const plugin = checkPlugin(CODEX_MARKETPLACE, CODEX_PLUGIN_NAME);
   const cli = checkCli("codex");
 
-  const available = plugin.ok && cli.ok;
+  // The subagent is invoked as a Claude Code plugin (codex:codex-rescue), not via
+  // a global CLI. Availability hinges on the plugin being installed; the CLI check
+  // is advisory only (many setups have no `codex` binary on PATH).
+  const available = plugin.ok;
   return {
     subagentKey: CODEX_SUBAGENT_KEY,
     available,
     plugin,
     cli,
-    stage: "stage_3",
+    cliAdvisory: true,
+    stage: "CODEX",
     parameter: "--effort high",
     fallbackBehavior:
       "If unavailable, the Pensador will ask the user (via AskUserQuestion) whether to proceed without Codex refinement.",
@@ -144,13 +151,17 @@ function checkAgy() {
   const plugin = checkPlugin(AGY_MARKETPLACE, AGY_PLUGIN_NAME);
   const cli = checkCli("agy");
 
-  const available = plugin.ok && cli.ok;
+  // AGY ships as a plugin (cc-antigravity-plugin) with a bridge script — there is
+  // typically no `agy` binary on PATH. Base availability on the plugin; the CLI
+  // check is advisory only (avoids a guaranteed false-negative).
+  const available = plugin.ok;
   return {
     subagentKey: AGY_SUBAGENT_KEY,
     available,
     plugin,
     cli,
-    stage: "stage_4",
+    cliAdvisory: true,
+    stage: "AGY",
     parameter: "--model gemini-3.1-pro-high",
     fallbackBehavior:
       "If unavailable, the Pensador will ask the user (via AskUserQuestion) whether to proceed without AGY gap analysis.",
@@ -185,7 +196,10 @@ const report = {
 };
 
 console.log(JSON.stringify(report, null, 2));
-process.exit(allAvailable ? 0 : 1);
+// Always exit 0: the /pensador command reads the `status` field from stdout to
+// decide fallbacks. A non-zero exit is reserved for the script itself failing,
+// not for a subagent being unavailable (which is a normal, handled condition).
+process.exit(0);
 
 // ── Guidance builder ───────────────────────────────────────────────────────
 
@@ -207,9 +221,9 @@ function buildGuidance(codex, agy) {
   lines.push("");
 
   if (!codex.available) {
-    lines.push(`  ✗ Codex (${codex.subagentKey}) — NOT available`);
+    lines.push(`  ✗ Codex (${codex.subagentKey}) — NOT available (plugin not found)`);
     if (!codex.plugin.ok)  lines.push(`    Plugin: ${codex.plugin.error}`);
-    if (!codex.cli.ok)     lines.push(`    CLI:    ${codex.cli.error}`);
+    if (!codex.cli.ok)     lines.push(`    CLI (advisory): ${codex.cli.error}`);
     lines.push(`    → Stage 3 fallback: ${codex.fallbackBehavior}`);
     lines.push("");
   } else {
@@ -217,9 +231,9 @@ function buildGuidance(codex, agy) {
   }
 
   if (!agy.available) {
-    lines.push(`  ✗ AGY (${agy.subagentKey}) — NOT available`);
+    lines.push(`  ✗ AGY (${agy.subagentKey}) — NOT available (plugin not found)`);
     if (!agy.plugin.ok)  lines.push(`    Plugin: ${agy.plugin.error}`);
-    if (!agy.cli.ok)     lines.push(`    CLI:    ${agy.cli.error}`);
+    if (!agy.cli.ok)     lines.push(`    CLI (advisory): ${agy.cli.error}`);
     lines.push(`    → Stage 4 fallback: ${agy.fallbackBehavior}`);
   } else {
     lines.push(`  ✓ AGY (${agy.subagentKey}) — available (v${agy.plugin.version})`);

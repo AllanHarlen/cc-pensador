@@ -1,7 +1,7 @@
 {
   "name": "cc-pensador",
   "version": "1.0.0",
-  "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 5 sequential stages — PRD base generation, demand expansion, Codex refinement, AGY gap analysis, and final artifact delivery — producing prd.md, userhistory.md, and comunication_json.md.",
+  "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 8 sequential stages — PRD base, demand expansion, and brainstorm passes with specialized skills (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design), then Codex refinement and AGY gap analysis — producing prd.md, userhistory.md, and comunication_json.md. All dialogue routes through AskUserQuestion.",
   "author": {
     "name": "allanharlen"
   },
@@ -22,6 +22,11 @@
     "planning",
     "workflow",
     "stages",
+    "brainstorm",
+    "requirements-clarity",
+    "backend",
+    "ui-ux",
+    "frontend",
     "codex",
     "antigravity",
     "agy",

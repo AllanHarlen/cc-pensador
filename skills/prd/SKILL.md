@@ -1,6 +1,11 @@
+---
+name: prd
+description: Skill_PRD_Base — fonte da verdade do PRD do Pensador. Define o Strict_PRD_Schema (10 seções obrigatórias), a entrevista de descoberta e os padrões de qualidade (completude, clareza, testabilidade, consistência, rastreabilidade). Aplicada no estágio PRD_BASE e no estágio FINAL para estruturar prd.md.
+---
+
 # Skill_PRD_Base — Base de PRD
 
-Esta skill é a **fonte da verdade** para a estrutura, entrevista de descoberta e padrões de qualidade de todo PRD produzido pelo Pensador. Ela define o `Strict_PRD_Schema` que deve ser aplicado no Estágio 1 (geração do `PRD_Base`) e no Estágio Final (geração do `prd.md`).
+Esta skill é a **fonte da verdade** para a estrutura, entrevista de descoberta e padrões de qualidade de todo PRD produzido pelo Pensador. Ela define o `Strict_PRD_Schema` que deve ser aplicado no estágio **PRD_BASE** (geração do `PRD_Base`) e no estágio **FINAL** (geração do `prd.md`).
 
 ---
 
@@ -25,14 +30,14 @@ O `Strict_PRD_Schema` define as seções obrigatórias que **todo** PRD produzid
 
 #### Regra TBD
 
-> Quando uma seção obrigatória não puder ser preenchida com base nas informações disponíveis no momento da geração (demanda inicial no Estágio 1, ou requisitos consolidados no Estágio Final), o valor dessa seção deve ser exatamente a string `"TBD"`.  
+> Quando uma seção obrigatória não puder ser preenchida com base nas informações disponíveis no momento da geração (demanda inicial no estágio PRD_BASE, ou requisitos consolidados no estágio FINAL), o valor dessa seção deve ser exatamente a string `"TBD"`.  
 > Uma seção marcada `"TBD"` indica lacuna explícita — não ausência — e deve ser resolvida nos estágios subsequentes ou na revisão humana.
 
 ---
 
-## Entrevista de Descoberta (Estágio 1)
+## Entrevista de Descoberta (estágio PRD_BASE)
 
-A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Aplique-a no Estágio 1 para extrair informações da demanda e identificar quais seções ficam como `"TBD"`.
+A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Aplique-a no estágio PRD_BASE para extrair informações da demanda e identificar quais seções ficam como `"TBD"`.
 
 ### Roteiro de Perguntas
 
@@ -82,7 +87,7 @@ Use estas perguntas como guia para inferir o conteúdo de cada seção a partir 
 
 ## Padrões de Qualidade do PRD
 
-Estas regras aplicam-se tanto ao `PRD_Base` (Estágio 1) quanto ao `prd.md` final (Estágio Final).
+Estas regras aplicam-se tanto ao `PRD_Base` (estágio PRD_BASE) quanto ao `prd.md` final (estágio FINAL).
 
 ### 1. Completude
 
@@ -119,7 +124,7 @@ Estas regras aplicam-se tanto ao `PRD_Base` (Estágio 1) quanto ao `prd.md` fina
 
 | Componente | Como usa esta skill |
 |------------|---------------------|
-| `skills/pensador/SKILL.md` | Carrega esta skill para aplicar o `Strict_PRD_Schema` no Estágio 1 e no Estágio Final. |
+| `skills/pensador/SKILL.md` | Carrega esta skill para aplicar o `Strict_PRD_Schema` no estágio PRD_BASE e no estágio FINAL. |
 | `scripts/pensador-engine.mjs` | Recebe as seções obrigatórias como `requiredSections` em `buildPrdBase(demanda, requiredSections)`. |
 | `skills/pensador/assets/prd-template.md` | Template de saída que espelha as 10 seções do schema. |
 

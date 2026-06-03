@@ -7,9 +7,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   isFullstack,
+  classifyProject,
   planArtifacts,
   buildArtifactList,
+  withConsolidated,
   initState,
+  addQuestions,
+  recordAnswer,
 } from '../scripts/pensador-engine.mjs';
 
 // ---------------------------------------------------------------------------
@@ -24,21 +28,21 @@ function stateAt(currentStage, consolidated = []) {
 /** A requirement with backend keywords only. */
 const backendReq = (id = 'b1') => ({
   id,
-  source: 'stage_2',
+  source: 'expand',
   text: 'We need a REST API with a database backend',
 });
 
 /** A requirement with frontend keywords only. */
 const frontendReq = (id = 'f1') => ({
   id,
-  source: 'stage_2',
+  source: 'expand',
   text: 'We need a React frontend UI component',
 });
 
 /** A requirement with neither backend nor frontend keywords. */
 const otherReq = (id = 'o1') => ({
   id,
-  source: 'stage_2',
+  source: 'expand',
   text: 'We need a CLI tool for batch processing',
 });
 
@@ -73,7 +77,7 @@ describe('isFullstack(requirements)', () => {
     it('returns true when a single requirement mentions both backend and frontend', () => {
       const combined = {
         id: 'c1',
-        source: 'stage_2',
+        source: 'expand',
         text: 'REST API backend server with a React web frontend interface',
       };
       expect(isFullstack([combined])).toBe(true);
@@ -93,7 +97,7 @@ describe('isFullstack(requirements)', () => {
 
     it('recognises "servidor" (Portuguese) as a backend keyword', () => {
       const ptReqs = [
-        { id: 'pt1', source: 'stage_2', text: 'Precisamos de um servidor com banco de dados' },
+        { id: 'pt1', source: 'expand', text: 'Precisamos de um servidor com banco de dados' },
         frontendReq(),
       ];
       expect(isFullstack(ptReqs)).toBe(true);
@@ -102,15 +106,15 @@ describe('isFullstack(requirements)', () => {
     it('recognises "tela" (Portuguese) as a frontend keyword', () => {
       const ptReqs = [
         backendReq(),
-        { id: 'pt2', source: 'stage_2', text: 'Criar uma tela de login' },
+        { id: 'pt2', source: 'expand', text: 'Criar uma tela de login' },
       ];
       expect(isFullstack(ptReqs)).toBe(true);
     });
 
     it('is case-insensitive (uppercase keywords)', () => {
       const upperReqs = [
-        { id: 'u1', source: 'stage_2', text: 'BACKEND API SERVER with DATABASE' },
-        { id: 'u2', source: 'stage_2', text: 'FRONTEND WEB UI' },
+        { id: 'u1', source: 'expand', text: 'BACKEND API SERVER with DATABASE' },
+        { id: 'u2', source: 'expand', text: 'FRONTEND WEB UI' },
       ];
       expect(isFullstack(upperReqs)).toBe(true);
     });
@@ -123,7 +127,7 @@ describe('isFullstack(requirements)', () => {
 
 describe('planArtifacts(state)', () => {
   describe('gate: empty plan outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'STAGE_1', 'STAGE_2', 'STAGE_3', 'STAGE_4'];
+    const nonFinalStages = ['INIT', 'PRD_BASE', 'EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty plan for currentStage = ${stage}`, () => {
@@ -177,7 +181,7 @@ describe('planArtifacts(state)', () => {
 
 describe('buildArtifactList(state)', () => {
   describe('gate enforcement — no artifacts outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'STAGE_1', 'STAGE_2', 'STAGE_3', 'STAGE_4'];
+    const nonFinalStages = ['INIT', 'PRD_BASE', 'EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty list for currentStage = ${stage}`, () => {
@@ -275,5 +279,72 @@ describe('buildArtifactList(state)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
       expect(artifacts).toHaveLength(3);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyProject
+// ---------------------------------------------------------------------------
+
+describe('classifyProject(requirements)', () => {
+  it('flags backend-only requirements', () => {
+    const c = classifyProject([backendReq()]);
+    expect(c.hasBackend).toBe(true);
+    expect(c.hasFrontend).toBe(false);
+    expect(c.isFullstack).toBe(false);
+  });
+
+  it('flags frontend-only requirements', () => {
+    const c = classifyProject([frontendReq()]);
+    expect(c.hasFrontend).toBe(true);
+    expect(c.hasBackend).toBe(false);
+    expect(c.isFullstack).toBe(false);
+  });
+
+  it('flags fullstack when both layers are present', () => {
+    const c = classifyProject([backendReq(), frontendReq()]);
+    expect(c.isFullstack).toBe(true);
+  });
+
+  it('is total: handles empty and missing input without throwing', () => {
+    expect(() => classifyProject([])).not.toThrow();
+    expect(() => classifyProject(undefined)).not.toThrow();
+    expect(classifyProject([]).isFullstack).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// End-to-end: withConsolidated → planArtifacts (regression for the prior
+// wiring gap where state.consolidated stayed empty and comunication_json
+// was never planned).
+// ---------------------------------------------------------------------------
+
+describe('withConsolidated wires consolidated requirements into artifact planning', () => {
+  /** Drives a state through answered questions, then to FINAL with consolidation applied. */
+  function finalStateFrom(questions) {
+    let state = initState('demanda');
+    state = addQuestions(state, 'EXPAND', questions);
+    for (const q of questions) {
+      state = recordAnswer(state, q.id, q.answerText);
+    }
+    state = { ...state, currentStage: 'FINAL' };
+    return withConsolidated(state);
+  }
+
+  it('plans comunication when answered requirements are fullstack', () => {
+    const state = finalStateFrom([
+      { id: 'a', text: 'backend?', origin: 'pensador', answer: null, answerText: 'A REST API with a database' },
+      { id: 'b', text: 'frontend?', origin: 'pensador', answer: null, answerText: 'A React web UI' },
+    ]);
+    expect(planArtifacts(state).comunication).toBe(true);
+    expect(buildArtifactList(state).find((a) => a.kind === 'comunication')).toBeDefined();
+  });
+
+  it('does NOT plan comunication when answered requirements are not fullstack', () => {
+    const state = finalStateFrom([
+      { id: 'a', text: 'what?', origin: 'pensador', answer: null, answerText: 'A CLI batch tool' },
+    ]);
+    expect(planArtifacts(state).comunication).toBe(false);
+    expect(buildArtifactList(state).find((a) => a.kind === 'comunication')).toBeUndefined();
   });
 });

@@ -3,8 +3,19 @@
  *
  * Pure, deterministic module — no I/O, no side effects.
  * Encapsulates the state machine, advancement gates, effort/model mappings,
- * consolidation, fullstack detection, and artifact planning for the Pensador
- * PRD workflow.
+ * consolidation, project classification, and artifact planning for the
+ * Pensador PRD workflow.
+ *
+ * IMPORTANT — runtime role of this module:
+ *   This file is the *deterministic reference specification* of the flow,
+ *   exercised by the test suite. A Claude Code skill/command is Markdown
+ *   interpreted by the LLM; it does NOT import this module at runtime nor keep
+ *   a live `state` object across turns. The Pensador (the LLM) applies the same
+ *   rules encoded here directly from the prose in `skills/pensador/SKILL.md`.
+ *   If/when a CLI wrapper + state persistence are added, the skill can shell
+ *   out to it; until then, this module's value is: (1) an unambiguous, testable
+ *   definition of the rules, and (2) a guard against drift via property/unit
+ *   tests.
  *
  * All data transformations are referentially transparent: same input → same output.
  */
@@ -13,15 +24,62 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Canonical stage order. Never reordered or skipped. */
-export const STAGE_ORDER = ['INIT', 'STAGE_1', 'STAGE_2', 'STAGE_3', 'STAGE_4', 'FINAL', 'DONE'];
+/**
+ * Canonical stage order. Never reordered or skipped.
+ * Semantic identifiers (not numeric) so each stage is self-describing and
+ * insertion of new brainstorm stages does not silently shift a numbered label.
+ *
+ * Funnel: generate → expand → clarify → domain deep-dives → technical sweep
+ * (Codex) → product sweep (AGY) → consolidate.
+ */
+export const STAGE_ORDER = [
+  'INIT',
+  'PRD_BASE',   // Stage 1 — PRD base from Strict_PRD_Schema
+  'EXPAND',     // Stage 2 — Pensador's own requirement expansion
+  'CLARITY',    // Stage 3 — brainstorm: requirements-clarity skill
+  'BACKEND',    // Stage 4 — brainstorm: backend-development skill
+  'UIUX',       // Stage 5 — brainstorm: ui-ux-pro-max skill
+  'FRONTEND',   // Stage 6 — brainstorm: frontend-design skill
+  'CODEX',      // Stage 7 — technical refinement (codex:codex-rescue)
+  'AGY',        // Stage 8 — remaining product gaps (antigravity-agent)
+  'FINAL',      // Artifact generation
+  'DONE',
+];
+
+/**
+ * Stages that produce consolidated requirements (every working stage after the
+ * PRD base scaffold). Used by consolidate().
+ */
+export const REQUIREMENT_STAGES = ['EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
+
+/**
+ * Stages that delegate to an external brainstorm skill or subagent, mapped to
+ * the concrete delegation target. The Pensador uses this map so the skill/agent
+ * choice per stage is deterministic and traceable.
+ *
+ * `relevantWhen` is an advisory signal (computed from classifyProject) telling
+ * the LLM when a domain brainstorm is expected to surface questions. A stage
+ * that is not relevant simply yields zero questions and auto-advances — it is
+ * still *visited*, never skipped.
+ */
+export const STAGE_DELEGATION = {
+  CLARITY:  { kind: 'skill',    ref: 'requirements-clarity', origin: 'requirements-clarity', relevantWhen: 'always' },
+  BACKEND:  { kind: 'skill',    ref: 'backend-development',  origin: 'backend-development',  relevantWhen: 'hasBackend' },
+  UIUX:     { kind: 'skill',    ref: 'ui-ux-pro-max',        origin: 'ui-ux-pro-max',        relevantWhen: 'hasFrontend' },
+  FRONTEND: { kind: 'skill',    ref: 'frontend-design',      origin: 'frontend-design',      relevantWhen: 'hasFrontend' },
+  CODEX:    { kind: 'subagent', ref: 'codex:codex-rescue',                          origin: 'codex', param: '--effort high' },
+  AGY:      { kind: 'subagent', ref: 'cc-antigravity-plugin:antigravity-agent',     origin: 'agy',   param: '--model gemini-3.1-pro-high' },
+};
+
+/** Origins that represent a resolved gap (anything not authored by the Pensador itself). */
+export const GAP_ORIGINS = ['requirements-clarity', 'backend-development', 'ui-ux-pro-max', 'frontend-design', 'codex', 'agy'];
 
 /** Allowlist of valid AGY model identifiers. */
 export const AGY_MODEL_ALLOWLIST = [
   'gemini-3.1-pro-high',
 ];
 
-/** AGY model used in Stage 4. Must be a member of AGY_MODEL_ALLOWLIST. */
+/** AGY model used in the AGY stage. Must be a member of AGY_MODEL_ALLOWLIST. */
 export const STAGE4_MODEL = 'gemini-3.1-pro-high';
 
 /** Channel constant for all user-facing questions. */
@@ -39,7 +97,7 @@ export const ASK_USER_QUESTION = 'ASK_USER_QUESTION';
  *
  * Behaviour:
  *   - demanda empty / whitespace-only / absent → needsDemanda=true, currentStage='INIT'
- *   - demanda non-empty → needsDemanda=false, currentStage='INIT' (first advance targets STAGE_1)
+ *   - demanda non-empty → needsDemanda=false, currentStage='INIT' (first advance targets PRD_BASE)
  */
 export function initState(demanda) {
   const trimmed = typeof demanda === 'string' ? demanda.trim() : '';
@@ -123,6 +181,10 @@ export function canAdvance(state) {
  * Advances the state by one step in STAGE_ORDER if canAdvance is true.
  * Returns the same state (no-op) when blocked by pending questions.
  *
+ * A brainstorm stage with zero questions (e.g. a domain skill judged not
+ * relevant) trivially satisfies the gate and advances on the next call — the
+ * stage is visited, never skipped.
+ *
  * @param {StageState} state
  * @returns {StageState}
  */
@@ -148,14 +210,15 @@ export function advance(state) {
 // ---------------------------------------------------------------------------
 
 /**
- * Consolidates all answered questions from stages 2, 3, and 4 into
- * Requirement objects.
+ * Consolidates all answered questions from the requirement-producing stages
+ * (EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX, AGY) into Requirement
+ * objects. Unanswered questions are excluded.
  *
  * @param {StageState} state
  * @returns {Requirement[]}
  */
 export function consolidate(state) {
-  const targetStages = new Set(['STAGE_2', 'STAGE_3', 'STAGE_4']);
+  const targetStages = new Set(REQUIREMENT_STAGES);
 
   return state.questions
     .filter((q) => targetStages.has(q.stage) && q.answer !== null)
@@ -163,8 +226,28 @@ export function consolidate(state) {
       id: q.id,
       source: q.stage.toLowerCase(),
       text: q.answer,
-      resolvesGap: q.origin === 'codex' || q.origin === 'agy' ? true : undefined,
+      origin: q.origin,
+      // Any non-pensador origin (a brainstorm skill, Codex, or AGY) closes a gap.
+      resolvesGap: q.origin && q.origin !== 'pensador' ? true : undefined,
     }));
+}
+
+/**
+ * Returns a new state whose `consolidated` field is the result of consolidate().
+ *
+ * This is the bridge the FINAL stage MUST use before planning artifacts:
+ * `planArtifacts`/`buildArtifactList` read `state.consolidated`, which is empty
+ * until this is called. (Fixes the prior wiring gap where consolidate() was
+ * computed but never stored, leaving comunication_json never planned.)
+ *
+ * @param {StageState} state
+ * @returns {StageState}
+ */
+export function withConsolidated(state) {
+  return {
+    ...state,
+    consolidated: consolidate(state),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,7 +275,7 @@ export function mapEffort(requested) {
 }
 
 /**
- * Returns the AGY model identifier for Stage 4.
+ * Returns the AGY model identifier for the AGY stage.
  * Asserts membership in AGY_MODEL_ALLOWLIST at call time.
  *
  * @returns {'gemini-3.1-pro-high'}
@@ -208,29 +291,43 @@ export function agyModelForStage4() {
 }
 
 // ---------------------------------------------------------------------------
-// Fullstack detection
+// Project classification & fullstack detection
 // ---------------------------------------------------------------------------
+
+/**
+ * Classifies a set of consolidated requirements by the layers they mention.
+ * Deterministic and total: same input → same result, never throws.
+ *
+ * NOTE: this is a keyword heuristic to *signal* relevance of the BACKEND /
+ * UIUX / FRONTEND brainstorm stages and to gate the comunication_json artifact.
+ * It is intentionally conservative; the Pensador confirms project nature with
+ * the user (via AskUserQuestion) when the signal is ambiguous.
+ *
+ * @param {Requirement[]} requirements
+ * @returns {{ hasBackend: boolean, hasFrontend: boolean, isFullstack: boolean }}
+ */
+export function classifyProject(requirements) {
+  const combined = (requirements ?? []).map((r) => r.text).join(' ').toLowerCase();
+  const hasBackend =
+    /\b(api|back[\s-]?end|servidor|server|endpoint|banco de dados|database|rest|graphql|webhook|micro[\s-]?servi[çc]o|fila|queue|autentica[çc][ãa]o|persist[êe]ncia)\b/.test(
+      combined
+    );
+  const hasFrontend =
+    /\b(front[\s-]?end|tela|interface|ui|ux|componente|component|web|mobile|app|cliente|layout|p[áa]gina|design|responsiv)\b/.test(
+      combined
+    );
+  return { hasBackend, hasFrontend, isFullstack: hasBackend && hasFrontend };
+}
 
 /**
  * Determines whether a set of consolidated requirements represents a
  * fullstack project (back-end + front-end with inter-layer data exchange).
  *
- * This function is deterministic and total: same input → same result.
- *
  * @param {Requirement[]} requirements
  * @returns {boolean}
  */
 export function isFullstack(requirements) {
-  const combined = requirements.map((r) => r.text).join(' ').toLowerCase();
-  const hasBackend =
-    /\b(api|back[\s-]?end|servidor|server|endpoint|banco de dados|database|rest|graphql|webhook)\b/.test(
-      combined
-    );
-  const hasFrontend =
-    /\b(front[\s-]?end|tela|interface|ui|ux|componente|component|web|mobile|app|cliente)\b/.test(
-      combined
-    );
-  return hasBackend && hasFrontend;
+  return classifyProject(requirements).isFullstack;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +388,7 @@ export function buildArtifactList(state) {
   if (plan.comunication) {
     artifacts.push({
       kind: 'comunication',
+      // Deliberate spelling — matches the user-requested filename, do NOT "fix" to "communication".
       filename: 'comunication_json.md',
       path: `${basePath}comunication_json.md`,
     });
@@ -304,18 +402,17 @@ export function buildArtifactList(state) {
 // ---------------------------------------------------------------------------
 
 /**
- * Builds the initial PRD scaffold (Stage 1) from a user demand and the list
- * of required sections defined by the Strict_PRD_Schema.
+ * Builds the initial PRD scaffold (PRD_BASE stage) from a user demand and the
+ * list of required sections defined by the Strict_PRD_Schema.
  *
  * Rules:
  *  - Every section in `requiredSections` is guaranteed to appear as a key in
  *    the returned `PrdDocument.sections`.
- *  - Sections whose content cannot be deterministically derived from the
- *    demanda string are set to exactly `"TBD"` as a placeholder.
+ *  - Sections are set to exactly `"TBD"` as a placeholder.
  *  - The function is pure: same inputs → same output, no I/O, no side effects.
  *
  * Note: actual content derivation (replacing "TBD" with inferred text) is the
- * responsibility of the LLM skill layer, which interprets the demanda.  The
+ * responsibility of the LLM skill layer, which interprets the demanda. The
  * Engine's job here is only to ensure structural completeness — every required
  * section is always present.
  *
@@ -359,7 +456,8 @@ export function buildUserHistory(requirements) {
 /**
  * Dispatches a question to the user by assigning the ASK_USER_QUESTION channel.
  * The channel is always ASK_USER_QUESTION regardless of the question's origin
- * (pensador | codex | agy), including fallback questions.
+ * (pensador | requirements-clarity | backend-development | ui-ux-pro-max |
+ * frontend-design | codex | agy), including fallback questions.
  *
  * @param {Question} question
  * @returns {Question}
@@ -376,14 +474,18 @@ export function dispatchQuestion(question) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'INIT'|'STAGE_1'|'STAGE_2'|'STAGE_3'|'STAGE_4'|'FINAL'|'DONE'} Stage
+ * @typedef {'INIT'|'PRD_BASE'|'EXPAND'|'CLARITY'|'BACKEND'|'UIUX'|'FRONTEND'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
+ */
+
+/**
+ * @typedef {'pensador'|'requirements-clarity'|'backend-development'|'ui-ux-pro-max'|'frontend-design'|'codex'|'agy'} Origin
  */
 
 /**
  * @typedef {Object} Question
  * @property {string} id
  * @property {Stage} stage
- * @property {'pensador'|'codex'|'agy'} origin
+ * @property {Origin} origin
  * @property {string} text
  * @property {string[]} [options]
  * @property {string|null} answer
@@ -393,9 +495,10 @@ export function dispatchQuestion(question) {
 /**
  * @typedef {Object} Requirement
  * @property {string} id
- * @property {'prd_base'|'stage_2'|'stage_3'|'stage_4'} source
+ * @property {string} source           // originating stage, lowercased
  * @property {string} text
- * @property {boolean} [resolvesGap]
+ * @property {Origin} [origin]
+ * @property {boolean} [resolvesGap]   // true when origin is a brainstorm skill / Codex / AGY
  */
 
 /**

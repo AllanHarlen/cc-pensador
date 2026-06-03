@@ -12,10 +12,11 @@ Isso se aplica **sem exceção** a todas as origens e todos os estágios:
 
 | Origem da pergunta | Exemplo | Canal |
 |---|---|---|
-| Própria do Pensador | Demanda ausente no INIT; requisitos candidatos no Estágio 2 | `AskUserQuestion` |
-| Originada pelo Codex | Ponto em aberto retornado pelo `codex:codex-rescue` no Estágio 3 | `AskUserQuestion` |
-| Originada pelo AGY | Pergunta de lacuna retornada pelo `cc-antigravity-plugin:antigravity-agent` no Estágio 4 | `AskUserQuestion` |
-| Fallback (subagente indisponível) | Decisão de prosseguir sem o Codex ou sem o AGY | `AskUserQuestion` |
+| Própria do Pensador | Demanda ausente no INIT; requisitos candidatos no EXPAND | `AskUserQuestion` |
+| Skill de brainstorm | Lacuna retornada por `requirements-clarity`/`backend-development`/`ui-ux-pro-max`/`frontend-design` nos estágios CLARITY/BACKEND/UIUX/FRONTEND | `AskUserQuestion` |
+| Originada pelo Codex | Ponto em aberto retornado pelo `codex:codex-rescue` no estágio CODEX | `AskUserQuestion` |
+| Originada pelo AGY | Pergunta de lacuna retornada pelo `cc-antigravity-plugin:antigravity-agent` no estágio AGY | `AskUserQuestion` |
+| Fallback (skill/subagente indisponível) | Decisão de prosseguir sem uma skill de brainstorm, sem o Codex ou sem o AGY | `AskUserQuestion` |
 
 O Pensador nunca exibe perguntas por texto livre no chat fora da ferramenta `AskUserQuestion`, nem por meio de qualquer outro mecanismo de diálogo.
 
@@ -35,7 +36,7 @@ export function dispatchQuestion(question) {
 }
 ```
 
-**A invariante é:** independentemente do valor de `question.origin` (`'pensador'`, `'codex'`, `'agy'`) ou do estágio em que a pergunta foi criada, `dispatchQuestion` **sempre** define `channel = ASK_USER_QUESTION`. Não há ramificação por origem — o canal é atribuído incondicionalmente.
+**A invariante é:** independentemente do valor de `question.origin` (`'pensador'`, `'requirements-clarity'`, `'backend-development'`, `'ui-ux-pro-max'`, `'frontend-design'`, `'codex'`, `'agy'`) ou do estágio em que a pergunta foi criada, `dispatchQuestion` **sempre** define `channel = ASK_USER_QUESTION`. Não há ramificação por origem — o canal é atribuído incondicionalmente.
 
 Essa invariante é coberta pela **Propriedade 6** do design:
 
@@ -47,32 +48,37 @@ Essa invariante é coberta pela **Propriedade 6** do design:
 
 ### INIT
 
-- Se a demanda estiver ausente ou vazia (`needsDemanda = true`), o Pensador usa `AskUserQuestion` para solicitá-la antes de iniciar o Estágio 1.
+- Se a demanda estiver ausente ou vazia (`needsDemanda = true`), o Pensador usa `AskUserQuestion` para solicitá-la antes de iniciar o `PRD_BASE`.
 
-### STAGE_1
+### PRD_BASE
 
 - Nenhuma pergunta ao usuário neste estágio. O Pensador gera o PRD Base automaticamente. Não há chamada a `AskUserQuestion`.
 
-### STAGE_2
+### EXPAND
 
-- Requisitos candidatos identificados pelo Pensador a partir do `PRD_Base` são apresentados ao usuário via `AskUserQuestion`.
+- Requisitos candidatos identificados pelo Pensador a partir do `PRD_Base` são apresentados via `AskUserQuestion`.
 - `origin = 'pensador'`.
 
-### STAGE_3
+### CLARITY / BACKEND / UIUX / FRONTEND (brainstorm)
 
-- Pontos em aberto retornados pelo Codex são convertidos em perguntas e apresentados via `AskUserQuestion`.
-- `origin = 'codex'`.
-- Se o Codex estiver indisponível, a pergunta de decisão de fallback também é apresentada via `AskUserQuestion`.
+- Lacunas retornadas pela skill do estágio são convertidas em perguntas e apresentadas via `AskUserQuestion`.
+- `origin` = id da skill (`requirements-clarity`, `backend-development`, `ui-ux-pro-max`, `frontend-design`).
+- Estágio de domínio não-aplicável → zero perguntas (auto-avanço), sem chamada a `AskUserQuestion`.
+- Se a skill estiver indisponível, a pergunta de decisão de fallback é apresentada **individualmente** via `AskUserQuestion` (`origin = 'pensador'`).
 
-### STAGE_4
+### CODEX
 
-- Perguntas de lacunas retornadas pelo AGY são apresentadas via `AskUserQuestion`.
-- `origin = 'agy'`.
-- Se o AGY estiver indisponível, a pergunta de decisão de fallback também é apresentada via `AskUserQuestion`.
+- Pontos em aberto do Codex viram perguntas via `AskUserQuestion`. `origin = 'codex'`.
+- Indisponibilidade → pergunta de fallback individual via `AskUserQuestion`.
+
+### AGY
+
+- Perguntas de lacunas do AGY via `AskUserQuestion`. `origin = 'agy'`.
+- Indisponibilidade → pergunta de fallback individual via `AskUserQuestion`.
 
 ### FINAL / DONE
 
-- Não há perguntas neste estágio. O Pensador reporta os caminhos dos artefatos gerados — não usa `AskUserQuestion` para isso.
+- Pode haver **uma** pergunta de confirmação de fullstack (sinal ambíguo) via `AskUserQuestion`. Fora isso, o Pensador apenas reporta os caminhos dos artefatos — sem `AskUserQuestion`.
 
 ---
 

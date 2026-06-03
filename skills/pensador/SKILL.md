@@ -1,6 +1,13 @@
+---
+name: pensador
+description: Orquestra o fluxo de oito estágios do Pensador que transforma uma demanda em linguagem natural num PRD de alta qualidade. Gera o PRD base (Strict_PRD_Schema), amplia a demanda, faz brainstorm dirigido por skills especializadas (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design), refina com Codex e fecha lacunas de produto com AGY/Gemini. Entrega prd.md, userhistory.md e comunication_json.md (fullstack). Toda pergunta ao usuário passa exclusivamente por AskUserQuestion.
+---
+
 # Skill: Pensador
 
-Esta skill orquestra o fluxo de cinco estágios do Pensador. Ela consulta o **Pensador Engine** para decisões de gate, mapeamentos e planejamento de artefatos, aplica a **Skill_PRD_Base** para o conteúdo do PRD, delega ao **Codex** (Estágio 3) e ao **AGY** (Estágio 4), e roteia **toda** pergunta — própria, do Codex, do AGY e de fallback — exclusivamente via `AskUserQuestion`.
+Esta skill orquestra o fluxo de **oito estágios de trabalho** do Pensador. Ela aplica a **Skill_PRD_Base** para o conteúdo do PRD, conduz **brainstorms dirigidos por skills especializadas** (Estágios 3–6), delega ao **Codex** (Estágio 7) e ao **AGY** (Estágio 8), e roteia **toda** pergunta — própria, das skills de brainstorm, do Codex, do AGY e de fallback — exclusivamente via `AskUserQuestion`.
+
+O objetivo das etapas de brainstorm é **maximizar a integridade do PRD**: cada skill aplica uma lente de domínio (clareza de requisitos, backend, UI/UX, design de front-end) sobre o que já foi consolidado, expondo lacunas que de outra forma só apareceriam na implementação.
 
 ---
 
@@ -9,25 +16,41 @@ Esta skill orquestra o fluxo de cinco estágios do Pensador. Ela consulta o **Pe
 | Arquivo | Propósito |
 |---|---|
 | `skills/prd/SKILL.md` | Skill_PRD_Base — `Strict_PRD_Schema`, entrevista de descoberta, padrões de qualidade do PRD |
-| `scripts/pensador-engine.mjs` | Pensador Engine — máquina de estados, gates, mapeamentos, planejamento de artefatos |
+| `scripts/pensador-engine.mjs` | Pensador Engine — **especificação determinística de referência** (máquina de estados, gates, mapeamentos, classificação, planejamento de artefatos) |
 | `skills/pensador/references/stages.md` | Comportamento detalhado de cada estágio e gates de avanço |
-| `skills/pensador/references/agent-stack.md` | Subagentes: mapeamento `extrahigh → high` (Codex) e modelo AGY |
+| `skills/pensador/references/skill-stack.md` | As 4 skills de brainstorm: estágio, lente de domínio, invocação e gating de relevância |
+| `skills/pensador/references/agent-stack.md` | Subagentes Codex/AGY: mapeamento `extrahigh → high` e modelo AGY |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal único de diálogo — protocolo `AskUserQuestion` |
 | `skills/pensador/assets/prd-template.md` | Template do artefato `prd.md` |
 | `skills/pensador/assets/userhistory-template.md` | Template do artefato `userhistory.md` |
 | `skills/pensador/assets/comunication_json-template.md` | Template do artefato `comunication_json.md` (somente Projeto_Fullstack) |
 
+### Skills de brainstorm consumidas
+
+| Skill | Estágio | Lente |
+|---|---|---|
+| `requirements-clarity` | CLARITY (3) | Ambiguidades, requisitos implícitos, critérios de aceite verificáveis |
+| `backend-development` | BACKEND (4) | Dados, APIs, integrações, segurança, escalabilidade, contratos |
+| `ui-ux-pro-max` | UIUX (5) | Fluxos de UX, estados de tela, acessibilidade, hierarquia visual |
+| `frontend-design` | FRONTEND (6) | Componentização, design system, responsividade, layout |
+
+---
+
+## Papel do Engine em runtime — leitura obrigatória
+
+> O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo, validada pelos testes. Uma skill/command do Claude Code é Markdown interpretado pelo LLM: **ela não importa esse módulo em runtime nem mantém um objeto `state` vivo entre turnos**. O Pensador (o LLM) aplica as **mesmas regras** descritas aqui em prosa.
+
+Na prática isto significa: quando este documento diz "o gate só libera quando não há perguntas pendentes" ou "`extrahigh` mapeia para `high`", essas são regras que **você (o Pensador) deve seguir diretamente**. O Engine existe para (1) definir essas regras de forma inequívoca e testável e (2) impedir desvio (drift) via testes. Se um CLI + persistência de estado forem adicionados no futuro, a skill poderá delegar a ele; até lá, siga as regras em prosa.
+
+O único script efetivamente executado por shell hoje é `scripts/preflight.mjs` (verificação de disponibilidade), invocado pelo command.
+
 ---
 
 ## Canal único de diálogo — regra invariante
 
-> **Toda** pergunta apresentada ao usuário durante o fluxo — demanda ausente, requisitos candidatos (Estágio 2), pontos do Codex (Estágio 3), perguntas do AGY (Estágio 4) e decisões de fallback por indisponibilidade — usa **exclusivamente** a ferramenta `AskUserQuestion`.
+> **Toda** pergunta apresentada ao usuário durante o fluxo — demanda ausente, requisitos candidatos (EXPAND), pontos das skills de brainstorm (CLARITY/BACKEND/UIUX/FRONTEND), pontos do Codex (CODEX), perguntas do AGY (AGY) e decisões de fallback por indisponibilidade — usa **exclusivamente** a ferramenta `AskUserQuestion`.
 
-Nenhum outro mecanismo de diálogo é utilizado. Esta regra não tem exceções.
-
-O Engine modela esse invariante em `dispatchQuestion(question)`, que sempre retorna `channel = ASK_USER_QUESTION` independentemente da origem (`pensador | codex | agy`).
-
-Consulte `references/askuserquestion-protocol.md` para o protocolo completo de quando agrupar ou separar perguntas.
+Nenhum outro mecanismo de diálogo é utilizado. Esta regra não tem exceções. Consulte `references/askuserquestion-protocol.md` para quando agrupar ou separar perguntas.
 
 ---
 
@@ -35,14 +58,13 @@ Consulte `references/askuserquestion-protocol.md` para o protocolo completo de q
 
 > O Pensador **nunca avança** para o próximo estágio enquanto existir ao menos uma pergunta sem resposta registrada no estágio atual.
 
-O Engine implementa esse controle em:
-- `canAdvance(state)` — retorna `true` somente se não há perguntas pendentes no `currentStage`.
-- `advance(state)` — avança um passo em `STAGE_ORDER` se `canAdvance` for `true`; retorna o mesmo estado sem modificação quando bloqueado (no-op).
+- `canAdvance(state)` é verdadeiro **se e somente se** não há perguntas pendentes no `currentStage`.
+- Um estágio de brainstorm que produz **zero perguntas** (skill julgada não-aplicável àquela demanda) satisfaz o gate trivialmente e auto-avança. O estágio é **visitado**, nunca pulado.
 
 A sequência canônica é fixa e nunca reordenada:
 
 ```
-INIT → STAGE_1 → STAGE_2 → STAGE_3 → STAGE_4 → FINAL → DONE
+INIT → PRD_BASE → EXPAND → CLARITY → BACKEND → UIUX → FRONTEND → CODEX → AGY → FINAL → DONE
 ```
 
 ---
@@ -52,272 +74,189 @@ INIT → STAGE_1 → STAGE_2 → STAGE_3 → STAGE_4 → FINAL → DONE
 ```
 INIT
   Demanda ausente → AskUserQuestion para coletar a demanda
-  Demanda presente → avança para STAGE_1
+  Demanda presente → avança para PRD_BASE
 
-STAGE_1 — Geração do PRD Base
-  Gate de saída: PRD_Base concluído (todas as seções preenchidas ou "TBD")
-  Sem perguntas ao usuário neste estágio — avanço automático
+PRD_BASE — Geração do PRD Base (Strict_PRD_Schema). Sem perguntas — avanço automático.
 
-STAGE_2 — Identificação de requisitos candidatos
-  Gate de saída: todas as perguntas do estágio respondidas
+EXPAND — Requisitos candidatos do próprio Pensador.
 
-STAGE_3 — Refinamento com Codex
-  Gate de saída: todas as perguntas do estágio respondidas (incluindo fallback, se aplicável)
+CLARITY — Brainstorm com requirements-clarity (sempre relevante).
 
-STAGE_4 — Questionamento com AGY
-  Gate de saída: todas as perguntas do estágio respondidas (incluindo fallback, se aplicável)
+BACKEND — Brainstorm com backend-development (relevante se houver backend).
 
-FINAL — Geração de artefatos
-  Gate de entrada: STAGE_4 concluído (planArtifacts retorna plano não-vazio)
-  Gate de saída: todos os artefatos gerados e seus caminhos reportados ao usuário
+UIUX — Brainstorm com ui-ux-pro-max (relevante se houver front-end).
 
-DONE — Estado terminal
+FRONTEND — Brainstorm com frontend-design (relevante se houver front-end).
+
+CODEX — Refinamento técnico com Codex (--effort high).
+
+AGY — Lacunas remanescentes de produto com AGY (gemini-3.1-pro-high).
+
+FINAL — Consolidação (withConsolidated) e geração de artefatos.
+
+DONE — Estado terminal.
 ```
+
+Cada estágio de trabalho (exceto PRD_BASE) só avança quando todas as suas perguntas têm resposta registrada.
 
 ---
 
 ## INIT — Verificação da demanda
 
-**Função do Engine:** `initState(demanda)`
-
-Ao iniciar a skill, verifique se a demanda está presente:
-
-1. Chame `initState(demanda)`.
-2. Se `state.needsDemanda === true` (demanda vazia, só espaços ou ausente):
-   - Apresente ao usuário via `AskUserQuestion`:
-     > "Qual é a demanda? Descreva em linguagem natural o que você quer construir ou resolver."
-   - Aguarde a resposta e use-a como demanda. Chame `initState(resposta)` novamente.
-3. Quando `state.needsDemanda === false`, avance chamando `advance(state)` — o próximo estágio é `STAGE_1`.
+1. Se a demanda estiver vazia, só com espaços ou ausente (`needsDemanda === true`), apresente via `AskUserQuestion`:
+   > "Qual é a demanda? Descreva em linguagem natural o que você quer construir ou resolver."
+2. Aguarde a resposta e use-a como demanda.
+3. Com a demanda presente e não vazia, avance para `PRD_BASE`.
 
 ---
 
-## STAGE_1 — Geração do PRD Base
+## PRD_BASE — Geração do PRD Base
 
-**Objetivo:** produzir o `PRD_Base` estruturado a partir da demanda, aplicando o `Strict_PRD_Schema` definido na `Skill_PRD_Base` (`skills/prd/SKILL.md`).
+**Objetivo:** produzir o `PRD_Base` estruturado a partir da demanda, aplicando o `Strict_PRD_Schema` da `Skill_PRD_Base` (`skills/prd/SKILL.md`).
 
-**Funções do Engine:** `buildPrdBase(demanda, requiredSections)`
+1. Carregue a `Skill_PRD_Base` para obter o `Strict_PRD_Schema` (10 seções na ordem) e o roteiro da Entrevista de Descoberta.
+2. Aplique a entrevista sobre a demanda para inferir o conteúdo de cada seção.
+3. Para cada seção: preencha se inferível; caso contrário marque exatamente `"TBD"` — nunca omita, nunca invente.
 
-### Procedimento
-
-1. Carregue a `Skill_PRD_Base` (`skills/prd/SKILL.md`) para obter:
-   - O `Strict_PRD_Schema` — lista das 10 seções obrigatórias na ordem definida.
-   - O roteiro da Entrevista de Descoberta — perguntas guia para inferir o conteúdo de cada seção.
-2. Aplique a Entrevista de Descoberta sobre a demanda para extrair o conteúdo de cada seção.
-3. Para cada seção obrigatória do `Strict_PRD_Schema`:
-   - Se a informação for inferível da demanda: preencha com o conteúdo inferido.
-   - Se não for inferível: marque com o valor exato `"TBD"` — nunca omita a seção, nunca invente conteúdo.
-4. Armazene o resultado em `state.prdBase` (via `buildPrdBase`).
-
-### Gate de saída
-
-Todas as 10 seções obrigatórias do `Strict_PRD_Schema` preenchidas ou marcadas `"TBD"`. Nenhuma pergunta ao usuário neste estágio — avanço automático via `advance(state)`.
+**Gate de saída:** todas as 10 seções preenchidas ou `"TBD"`. Sem perguntas — avanço automático.
 
 ---
 
-## STAGE_2 — Identificação de requisitos candidatos
+## EXPAND — Ampliação pelo Pensador
 
-**Objetivo:** ampliar a demanda identificando requisitos adicionais não previstos no enunciado original.
+**Objetivo:** ampliar a demanda com requisitos candidatos não previstos no enunciado.
 
-**Funções do Engine:** `addQuestions(state, 'STAGE_2', questions)`, `recordAnswer(state, id, answer)`, `canAdvance(state)`, `advance(state)`
+1. Revise as seções `"TBD"` do `PRD_Base` (cada uma é uma lacuna candidata), funcionalidades implícitas, fluxos alternativos e requisitos não-funcionais (auth, erros, desempenho, acessibilidade, persistência, mobile…).
+2. Para cada candidato, formule uma pergunta clara. Registre com `origin = 'pensador'`, `stage = 'EXPAND'`.
+3. Apresente via `AskUserQuestion` (agrupe apenas candidatos estreitamente relacionados, mesma origem/estágio). Registre cada resposta.
 
-### Como identificar requisitos candidatos
-
-Com base no `PRD_Base` e na demanda, revise:
-
-1. Seções marcadas como `"TBD"` no `PRD_Base` — cada uma representa uma lacuna candidata.
-2. Funcionalidades implícitas que a demanda sugere mas não descreve explicitamente.
-3. Fluxos alternativos, integrações, restrições não funcionais (autenticação, tratamento de erros, desempenho, acessibilidade, persistência de dados, suporte móvel, etc.).
-
-Para cada requisito candidato identificado, formule uma pergunta clara e objetiva.
-
-### Apresentação ao usuário
-
-- Registre as perguntas com `origin = 'pensador'` e `stage = 'STAGE_2'` usando `addQuestions`.
-- Apresente cada pergunta (ou grupo de perguntas estreitamente relacionadas) via `AskUserQuestion`.
-- Perguntas de origens diferentes **não** devem ser agrupadas.
-- Aguarde a resposta e registre com `recordAnswer(state, questionId, answer)`.
-
-### Gate de saída
-
-`canAdvance(state)` retorna `true` (todas as perguntas do Estágio 2 com resposta registrada). Chame `advance(state)` para transitar ao STAGE_3.
+**Gate de saída:** todas as perguntas de EXPAND respondidas.
 
 ---
 
-## STAGE_3 — Refinamento com Codex
+## Estágios de Brainstorm (CLARITY, BACKEND, UIUX, FRONTEND) — procedimento comum
 
-**Objetivo:** aprofundar os requisitos com análise especializada do Codex, identificando lacunas técnicas não previstas nos Estágios 1 e 2.
+Os quatro estágios seguem o **mesmo procedimento**, mudando apenas a skill e a lente. Veja `references/skill-stack.md` para os detalhes de cada skill.
 
-**Funções do Engine:** `mapEffort('extrahigh')`, `addQuestions(state, 'STAGE_3', questions)`, `recordAnswer`, `canAdvance`, `advance`
+### Procedimento genérico
 
-### Delegação ao Codex
+1. **Avalie a relevância** (apenas para BACKEND/UIUX/FRONTEND; CLARITY é sempre relevante):
+   - Classifique a natureza do projeto a partir da demanda + `PRD_Base` + requisitos consolidados até aqui (sinais `hasBackend` / `hasFrontend`).
+   - `BACKEND` é relevante quando há backend; `UIUX` e `FRONTEND` quando há front-end.
+   - Se **não for relevante**, registre zero perguntas e auto-avance (o estágio é visitado, não pulado). Informe brevemente: "Estágio <X> não se aplica a esta demanda."
+2. **Invoque a skill** para obter a lente de domínio:
+   ```
+   Skill(skill="cc-pensador:<nome-da-skill>")
+   ```
+   Forneça à skill a demanda, o `PRD_Base` e os requisitos consolidados, pedindo que ela identifique **lacunas, ambiguidades e decisões em aberto** no seu domínio.
+3. **Converta** cada lacuna retornada em uma pergunta objetiva. Registre com `origin = <origin da skill>` (ex.: `requirements-clarity`) e `stage = <ID do estágio>`.
+4. **Apresente** via `AskUserQuestion`. Não agrupe perguntas de origens diferentes nem de estágios diferentes.
+5. **Registre** cada resposta. Respostas de brainstorm entram no consolidado com `resolvesGap = true`.
 
-**Subagente:** `codex:codex-rescue`
-**Parâmetro de effort:** `--effort high` (resultado de `mapEffort('extrahigh')` — nunca passe `--effort extrahigh`)
+### Fallback (skill indisponível)
+
+Se a skill não puder ser carregada/invocada:
+1. Registre a indisponibilidade com a evidência.
+2. Apresente via `AskUserQuestion`, **individualmente**:
+   > "A skill `<nome>` está indisponível. Deseja prosseguir sem este brainstorm, ou prefere aguardar/retentar?"
+3. Registre como `origin = 'pensador'`, `stage = <ID do estágio>`. O gate não avança até essa pergunta ter resposta.
+
+### Foco de cada estágio
+
+- **CLARITY → `requirements-clarity`** *(sempre)*: ambiguidades, termos vagos, requisitos implícitos, critérios de aceite verificáveis, escopo fora/dentro.
+- **BACKEND → `backend-development`** *(se backend)*: modelo de dados, endpoints/contratos, integrações, autenticação/autorização, consistência, escalabilidade, observabilidade.
+- **UIUX → `ui-ux-pro-max`** *(se front-end)*: fluxos de UX, estados de tela (vazio/carregando/erro), acessibilidade, hierarquia visual, microcopy.
+- **FRONTEND → `frontend-design`** *(se front-end)*: componentização, design system, responsividade, layout, padrões de interação.
+
+**Gate de saída (cada estágio):** todas as perguntas do estágio (incl. fallback) respondidas.
+
+---
+
+## CODEX — Refinamento técnico
+
+**Subagente:** `codex:codex-rescue` · **Parâmetro efetivo:** `--effort high` (de `mapEffort('extrahigh')` — nunca `extrahigh`).
+
+> **Como o parâmetro é passado:** o tool `Agent` não tem campo de flags. Comunique o effort **no corpo do prompt** ao subagente (ex.: "Use effort 'high'.") e registre o valor para rastreabilidade. Veja `references/agent-stack.md`.
 
 ```
-Agent(codex:codex-rescue, --effort high, <prompt>)
+Agent(subagent_type="codex:codex-rescue", prompt=<prompt incluindo "effort: high">)
 ```
 
-**Prompt mínimo para o Codex:**
-
+**Prompt mínimo:**
 ```
 Analise os requisitos abaixo e identifique lacunas técnicas, funcionalidades não previstas,
-inconsistências ou riscos. Retorne uma lista de pontos em aberto que precisam ser esclarecidos.
+inconsistências ou riscos. Use effort: high. Retorne uma lista de pontos em aberto.
 
 Demanda: <demanda>
 PRD Base: <seções do PRD_Base>
-Requisitos consolidados até agora: <lista do Estágio 2>
+Requisitos consolidados até agora: <consolidado de EXPAND..FRONTEND>
 ```
 
-### Processamento do retorno do Codex
+Para cada ponto: crie `Question` com `origin = 'codex'`, `stage = 'CODEX'`; apresente via `AskUserQuestion`; registre a resposta (`resolvesGap = true`).
 
-Para cada ponto em aberto retornado pelo Codex:
+**Fallback (indisponível):** pergunta individual via `AskUserQuestion` ("O Codex está indisponível… prosseguir ou aguardar/retentar?"), `origin = 'pensador'`, `stage = 'CODEX'`. Em "aguardar/retentar", retente antes de nova pergunta de fallback.
 
-1. Crie uma `Question` com `origin = 'codex'` e `stage = 'STAGE_3'`.
-2. Registre com `addQuestions(state, 'STAGE_3', [question])`.
-3. Apresente ao usuário via `AskUserQuestion`.
-4. Registre a resposta com `recordAnswer`.
-
-As respostas incorporadas ao consolidado terão `source = 'stage_3'` e `resolvesGap = true`.
-
-### Indisponibilidade do Codex (fallback)
-
-Se o Codex retornar erro operacional (timeout, quota esgotada, bloqueio):
-
-1. Registre a indisponibilidade com a evidência retornada pelo subagente.
-2. Apresente ao usuário via `AskUserQuestion` — **individualmente, nunca agrupada**:
-   > "O Codex (codex:codex-rescue) está indisponível no momento. Deseja prosseguir sem o refinamento técnico do Codex, ou prefere aguardar/retentar?"
-3. Registre a pergunta de fallback com `origin = 'pensador'` e `stage = 'STAGE_3'`.
-4. Se o usuário optar por **prosseguir**: registre a resposta; `canAdvance` liberará o avanço.
-5. Se o usuário optar por **aguardar/retentar**: retente a delegação antes de apresentar nova pergunta de fallback.
-
-O gate não avança enquanto a pergunta de fallback não tiver resposta registrada.
-
-### Gate de saída
-
-`canAdvance(state)` retorna `true` (todas as perguntas do Estágio 3, incluindo eventuais fallbacks, respondidas). Chame `advance(state)` para transitar ao STAGE_4.
+**Gate de saída:** todas as perguntas de CODEX (incl. fallback) respondidas.
 
 ---
 
-## STAGE_4 — Questionamento com AGY
+## AGY — Lacunas de produto
 
-**Objetivo:** fechar lacunas remanescentes com uma perspectiva diferente, usando o AGY com Gemini 3.1 Pro high.
+**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyModelForStage4()`, verificado no `AGY_MODEL_ALLOWLIST`).
 
-**Funções do Engine:** `agyModelForStage4()`, `addQuestions(state, 'STAGE_4', questions)`, `recordAnswer`, `canAdvance`, `advance`
-
-### Delegação ao AGY
-
-**Subagente:** `cc-antigravity-plugin:antigravity-agent`
-**Parâmetro de modelo:** `--model gemini-3.1-pro-high` (resultado de `agyModelForStage4()` — verificado no `AGY_MODEL_ALLOWLIST`)
+> **Como o parâmetro é passado:** comunique o modelo **no corpo do prompt** (ou conforme a interface do antigravity-agent) e registre para rastreabilidade. Veja `references/agent-stack.md`.
 
 ```
-Agent(cc-antigravity-plugin:antigravity-agent, --model gemini-3.1-pro-high, <prompt>)
+Agent(subagent_type="cc-antigravity-plugin:antigravity-agent", prompt=<prompt incluindo "model: gemini-3.1-pro-high">)
 ```
 
-**Prompt mínimo para o AGY:**
-
+**Prompt mínimo:**
 ```
-Analise os requisitos abaixo e levante perguntas sobre lacunas remanescentes,
-aspectos não cobertos, cenários de uso não considerados ou riscos de produto.
-Retorne uma lista de perguntas abertas para o usuário responder.
+Levante perguntas sobre lacunas remanescentes, aspectos não cobertos, cenários de uso não
+considerados ou riscos de produto. Retorne uma lista de perguntas abertas para o usuário.
 
 Demanda: <demanda>
 PRD Base: <seções do PRD_Base>
-Requisitos consolidados até agora: <lista dos Estágios 2 e 3>
+Requisitos consolidados até agora: <consolidado de EXPAND..CODEX>
 ```
 
-### Processamento do retorno do AGY
+Para cada pergunta: `origin = 'agy'`, `stage = 'AGY'`; apresente via `AskUserQuestion`; registre (`resolvesGap = true`).
 
-Para cada pergunta retornada pelo AGY:
+**Fallback (indisponível):** espelha o do Codex (`QUOTA_EXHAUSTED`, `AUTH_REQUIRED`, `AGY_MISSING`, `TIMEOUT`), pergunta individual, `origin = 'pensador'`, `stage = 'AGY'`.
 
-1. Crie uma `Question` com `origin = 'agy'` e `stage = 'STAGE_4'`.
-2. Registre com `addQuestions(state, 'STAGE_4', [question])`.
-3. Apresente ao usuário via `AskUserQuestion`.
-4. Registre a resposta com `recordAnswer`.
-
-As respostas incorporadas ao consolidado terão `source = 'stage_4'` e `resolvesGap = true`.
-
-### Indisponibilidade do AGY (fallback)
-
-Se o AGY retornar erro operacional (`QUOTA_EXHAUSTED`, `AUTH_REQUIRED`, `AGY_MISSING`, `TIMEOUT`):
-
-1. Registre a indisponibilidade com o status retornado pelo bridge AGY.
-2. Apresente ao usuário via `AskUserQuestion` — **individualmente, nunca agrupada**:
-   > "O AGY (cc-antigravity-plugin:antigravity-agent) está indisponível no momento. Deseja prosseguir sem as perguntas adicionais do AGY, ou prefere aguardar/retentar?"
-3. Registre a pergunta de fallback com `origin = 'pensador'` e `stage = 'STAGE_4'`.
-4. Se o usuário optar por **prosseguir**: registre a resposta; `canAdvance` liberará o avanço.
-5. Se o usuário optar por **aguardar/retentar**: retente a delegação antes de apresentar nova pergunta de fallback.
-
-O gate não avança enquanto a pergunta de fallback não tiver resposta registrada.
-
-### Gate de saída
-
-`canAdvance(state)` retorna `true` (todas as perguntas do Estágio 4, incluindo eventuais fallbacks, respondidas). Chame `advance(state)` para transitar ao FINAL.
+**Gate de saída:** todas as perguntas de AGY (incl. fallback) respondidas. Avança para FINAL.
 
 ---
 
 ## FINAL — Geração de artefatos
 
-**Objetivo:** consolidar todo o debate dos estágios anteriores e gerar os artefatos finais.
-
-**Gate de entrada:** `currentStage` deve estar em `{FINAL, DONE}` — `planArtifacts(state)` retorna plano vazio fora desses estágios.
-
-**Funções do Engine:** `consolidate(state)`, `planArtifacts(state)`, `buildArtifactList(state)`, `buildUserHistory(consolidated)`, `isFullstack(consolidated)`
+**Gate de entrada:** `currentStage ∈ {FINAL, DONE}`.
 
 ### Procedimento
 
-1. Chame `consolidate(state)` para obter todos os requisitos consolidados dos Estágios 2, 3 e 4.
-2. Chame `planArtifacts(state)` para determinar quais artefatos gerar:
-   - `prd: true` — sempre.
-   - `userhistory: true` — sempre.
-   - `comunication: isFullstack(consolidated)` — somente se a demanda resultar em `Projeto_Fullstack`.
-3. Chame `buildArtifactList(state)` para obter a lista de artefatos com `filename` e `path`.
+1. **Consolide:** aplique `withConsolidated(state)` — isto grava `consolidate(state)` em `state.consolidated`. **Este passo é obrigatório antes de planejar artefatos**, pois `planArtifacts`/`buildArtifactList` leem `state.consolidated` (que está vazio até aqui). Saltar este passo faz o `comunication_json.md` nunca ser planejado.
+2. **Classifique o projeto:** `classifyProject(consolidated)` → `{hasBackend, hasFrontend, isFullstack}`. Se o sinal for ambíguo, **confirme com o usuário via `AskUserQuestion`** se é fullstack antes de decidir o `comunication_json.md`.
+3. **Planeje:** `planArtifacts(state)` → `prd` e `userhistory` sempre; `comunication = isFullstack`. `buildArtifactList(state)` → lista com `filename` e `path`.
 
-### Geração do prd.md
+### Geração do `prd.md`
+Consolide o `PRD_Base` com as respostas de EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX e AGY. Aplique o `Strict_PRD_Schema` e o template `assets/prd-template.md`. Seções sem informação → `"TBD"`. As respostas das skills de brainstorm devem aparecer nas seções pertinentes (CLARITY→Requisitos/Critérios; BACKEND→Arquitetura/RNF; UIUX/FRONTEND→Casos de Uso/Arquitetura/UI). Grave em `prd.md`.
 
-- Consolide o `PRD_Base` (Estágio 1) com os requisitos respondidos nos Estágios 2, 3 e 4.
-- Aplique o `Strict_PRD_Schema` da `Skill_PRD_Base` (`skills/prd/SKILL.md`) como estrutura obrigatória.
-- Use `skills/pensador/assets/prd-template.md` como template de saída.
-- Seções sem informação disponível recebem `"TBD"`.
-- Grave o arquivo em `prd.md`.
+### Geração do `userhistory.md`
+Use `buildUserHistory(consolidated)` (passos contíguos a partir de 1) e o template `assets/userhistory-template.md`, derivando o fluxo principal dos casos de uso do `prd.md`. Incorpore os fluxos/estados levantados em UIUX. Grave em `userhistory.md`.
 
-### Geração do userhistory.md
-
-- Chame `buildUserHistory(consolidated)` para obter os `JourneyStep[]` — passos sequenciais numerados a partir de 1.
-- Use `skills/pensador/assets/userhistory-template.md` como template de saída.
-- Documente o fluxo principal derivado dos casos de uso do `prd.md`.
-- Grave o arquivo em `userhistory.md`.
-
-### Geração do comunication_json.md (somente Projeto_Fullstack)
-
-- **Condição:** `planArtifacts(state).comunication === true` (ou seja, `isFullstack(consolidated) === true`).
-- Use `skills/pensador/assets/comunication_json-template.md` como template de saída.
-- Documente os contratos de comunicação JSON entre front-end e back-end: endpoints REST (ou equivalente), schemas de request/response e códigos de erro.
-- Mantenha consistência de nomenclatura com o `prd.md` (IDs RF-XX, terminologia do glossário).
-- Grave o arquivo em `comunication_json.md`.
-- Se `isFullstack` for falso, **não** gere este arquivo. Registre no `prd.md` que o `comunication_json.md` não se aplica.
+### Geração do `comunication_json.md` (somente Projeto_Fullstack)
+**Condição:** `planArtifacts(state).comunication === true`. Use `assets/comunication_json-template.md`; documente endpoints, schemas de request/response e códigos de erro, incorporando os contratos levantados em BACKEND e mantendo consistência com os IDs `RF-XX`. Grave em `comunication_json.md`. Se não-fullstack, **não** gere e registre no `prd.md` que não se aplica.
 
 ### Reporte ao usuário
+Informe o `path` de cada artefato gerado (sem `AskUserQuestion`).
 
-Após gerar todos os artefatos aplicáveis, informe ao usuário o caminho de cada um:
-
-- `prd.md` — sempre gerado.
-- `userhistory.md` — sempre gerado.
-- `comunication_json.md` — gerado apenas quando `Projeto_Fullstack`.
-
-Use o `path` retornado por `buildArtifactList(state)` para cada artefato. **Não use `AskUserQuestion` nesta etapa** — apenas informe os caminhos.
-
-### Gate de saída para DONE
-
-Todos os artefatos aplicáveis foram gerados e seus caminhos foram reportados ao usuário. Chame `advance(state)` para transitar ao estado terminal `DONE`.
+**Gate de saída para DONE:** todos os artefatos aplicáveis gerados e caminhos reportados.
 
 ---
 
 ## DONE — Estado terminal
 
-O fluxo está encerrado. Todos os artefatos foram entregues ao usuário. Não há perguntas nem ações pendentes.
-
-O Pensador pode apresentar um resumo final com os caminhos dos artefatos gerados e uma breve confirmação de conclusão.
+Fluxo encerrado. Apresente um resumo final com os caminhos dos artefatos e uma breve confirmação.
 
 ---
 
@@ -326,46 +265,24 @@ O Pensador pode apresentar um resumo final com os caminhos dos artefatos gerados
 | Estágio | Gate de Avanço |
 |---|---|
 | `INIT` | Demanda presente e não vazia |
-| `STAGE_1` | PRD_Base concluído — todas as 10 seções preenchidas ou `"TBD"` |
-| `STAGE_2` | Todas as perguntas do estágio respondidas |
-| `STAGE_3` | Todas as perguntas respondidas (incluindo fallback do Codex, se aplicável) |
-| `STAGE_4` | Todas as perguntas respondidas (incluindo fallback do AGY, se aplicável) |
-| `FINAL` | Todos os artefatos aplicáveis gerados e caminhos reportados |
-| `DONE` | — (estado terminal) |
+| `PRD_BASE` | PRD_Base concluído — 10 seções preenchidas ou `"TBD"` |
+| `EXPAND` | Todas as perguntas respondidas |
+| `CLARITY` | Todas as perguntas respondidas (incl. fallback) |
+| `BACKEND` | Todas as perguntas respondidas (incl. fallback); zero perguntas se não-aplicável |
+| `UIUX` | Todas as perguntas respondidas (incl. fallback); zero perguntas se não-aplicável |
+| `FRONTEND` | Todas as perguntas respondidas (incl. fallback); zero perguntas se não-aplicável |
+| `CODEX` | Todas as perguntas respondidas (incl. fallback) |
+| `AGY` | Todas as perguntas respondidas (incl. fallback) |
+| `FINAL` | `withConsolidated` aplicado + todos os artefatos gerados e caminhos reportados |
+| `DONE` | — (terminal) |
 
----
+## Delegação por estágio (de `STAGE_DELEGATION`)
 
-## Resumo das funções do Engine por estágio
-
-| Estágio | Funções do Engine utilizadas |
-|---|---|
-| INIT | `initState(demanda)` |
-| STAGE_1 | `buildPrdBase(demanda, requiredSections)`, `advance(state)` |
-| STAGE_2 | `addQuestions`, `recordAnswer`, `canAdvance`, `advance` |
-| STAGE_3 | `mapEffort('extrahigh')`, `addQuestions`, `recordAnswer`, `canAdvance`, `advance` |
-| STAGE_4 | `agyModelForStage4()`, `addQuestions`, `recordAnswer`, `canAdvance`, `advance` |
-| FINAL | `consolidate`, `planArtifacts`, `buildArtifactList`, `buildUserHistory`, `isFullstack` |
-| DONE | — |
-
----
-
-## Rastreabilidade de requisitos
-
-Esta skill implementa diretamente os seguintes requisitos:
-
-| Requisito | Descrição resumida | Cobertura nesta skill |
-|---|---|---|
-| 1.3 | Ordem fixa dos estágios | Máquina de estados e gates de avanço |
-| 2.4 | Avanço somente após respostas registradas | Gate de STAGE_2 |
-| 3.1 | Identificar e apresentar requisitos candidatos | Procedimento do STAGE_2 |
-| 5.5 | Avanço do STAGE_4 somente após todas as respostas | Gate de STAGE_4 |
-| 6.1 | Usar `AskUserQuestion` para toda pergunta | Regra invariante documentada |
-| 6.2 | Encaminhar perguntas do Codex e AGY via `AskUserQuestion` | STAGE_3 e STAGE_4 |
-| 6.3 | `AskUserQuestion` como único canal | Regra invariante documentada |
-| 7.1 | Instruir Codex e AGY a identificar lacunas | Prompts mínimos do STAGE_3 e STAGE_4 |
-| 8.1 | Gerar `prd.md` consolidando todo o debate | Procedimento do FINAL |
-| 8.3 | `prd.md` com requisitos refinados dos estágios 2–4 | `consolidate` + `Strict_PRD_Schema` |
-| 11.3 | Gerar artefatos somente após STAGE_4 | Gate de entrada do FINAL |
-| 12.1 | Entregar `prd.md` e `userhistory.md` | Procedimento do FINAL |
-| 12.3 | Informar caminhos de cada artefato | Reporte ao usuário no FINAL |
-| 13.1 | Disponibilizar o Pensador como skill | Este arquivo |
+| Estágio | Tipo | Alvo | Parâmetro |
+|---|---|---|---|
+| CLARITY | skill | `requirements-clarity` | — |
+| BACKEND | skill | `backend-development` | — |
+| UIUX | skill | `ui-ux-pro-max` | — |
+| FRONTEND | skill | `frontend-design` | — |
+| CODEX | subagente | `codex:codex-rescue` | `--effort high` (no prompt) |
+| AGY | subagente | `cc-antigravity-plugin:antigravity-agent` | `--model gemini-3.1-pro-high` (no prompt) |

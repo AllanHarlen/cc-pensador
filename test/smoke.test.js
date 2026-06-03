@@ -5,6 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   STAGE_ORDER,
+  REQUIREMENT_STAGES,
+  STAGE_DELEGATION,
+  GAP_ORIGINS,
   AGY_MODEL_ALLOWLIST,
   STAGE4_MODEL,
   ASK_USER_QUESTION,
@@ -15,8 +18,10 @@ import {
   canAdvance,
   advance,
   consolidate,
+  withConsolidated,
   mapEffort,
   agyModelForStage4,
+  classifyProject,
   isFullstack,
   planArtifacts,
   buildArtifactList,
@@ -29,13 +34,48 @@ describe('Pensador Engine — smoke', () => {
   it('exports STAGE_ORDER with the correct canonical sequence', () => {
     expect(STAGE_ORDER).toEqual([
       'INIT',
-      'STAGE_1',
-      'STAGE_2',
-      'STAGE_3',
-      'STAGE_4',
+      'PRD_BASE',
+      'EXPAND',
+      'CLARITY',
+      'BACKEND',
+      'UIUX',
+      'FRONTEND',
+      'CODEX',
+      'AGY',
       'FINAL',
       'DONE',
     ]);
+  });
+
+  it('exports REQUIREMENT_STAGES covering every working stage after PRD_BASE', () => {
+    expect(REQUIREMENT_STAGES).toEqual([
+      'EXPAND',
+      'CLARITY',
+      'BACKEND',
+      'UIUX',
+      'FRONTEND',
+      'CODEX',
+      'AGY',
+    ]);
+  });
+
+  it('maps each brainstorm/refinement stage to a delegation target', () => {
+    expect(STAGE_DELEGATION.CLARITY.ref).toBe('requirements-clarity');
+    expect(STAGE_DELEGATION.BACKEND.ref).toBe('backend-development');
+    expect(STAGE_DELEGATION.UIUX.ref).toBe('ui-ux-pro-max');
+    expect(STAGE_DELEGATION.FRONTEND.ref).toBe('frontend-design');
+    expect(STAGE_DELEGATION.CODEX.ref).toBe('codex:codex-rescue');
+    expect(STAGE_DELEGATION.AGY.ref).toBe('cc-antigravity-plugin:antigravity-agent');
+  });
+
+  it('GAP_ORIGINS lists every non-pensador origin', () => {
+    expect(GAP_ORIGINS).toContain('requirements-clarity');
+    expect(GAP_ORIGINS).toContain('backend-development');
+    expect(GAP_ORIGINS).toContain('ui-ux-pro-max');
+    expect(GAP_ORIGINS).toContain('frontend-design');
+    expect(GAP_ORIGINS).toContain('codex');
+    expect(GAP_ORIGINS).toContain('agy');
+    expect(GAP_ORIGINS).not.toContain('pensador');
   });
 
   it('exports AGY_MODEL_ALLOWLIST containing STAGE4_MODEL', () => {
@@ -57,8 +97,10 @@ describe('Pensador Engine — smoke', () => {
       canAdvance,
       advance,
       consolidate,
+      withConsolidated,
       mapEffort,
       agyModelForStage4,
+      classifyProject,
       isFullstack,
       planArtifacts,
       buildArtifactList,
