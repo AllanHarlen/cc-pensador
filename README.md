@@ -99,19 +99,6 @@ Exemplo:
 
 Se `<demanda>` for omitida, o Pensador a solicita via `AskUserQuestion` antes de iniciar o estágio **PRD_BASE**.
 
-## Skills de brainstorm (empacotadas)
-
-Os estágios CLARITY/BACKEND/UIUX/FRONTEND usam skills especializadas, versionadas no plugin sob `skills/`. Cada `SKILL.md` já traz um checklist de domínio autossuficiente (com frontmatter `name`/`description`) e pode ser enriquecido com o conteúdo upstream de mcp.directory:
-
-```bash
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/2157" && unzip -o skill.zip -d skills/requirements-clarity && rm skill.zip
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/1186" && unzip -o skill.zip -d skills/backend-development && rm skill.zip
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/191"  && unzip -o skill.zip -d skills/ui-ux-pro-max && rm skill.zip
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/1"    && unzip -o skill.zip -d skills/frontend-design && rm skill.zip
-```
-
-> Garanta que cada diretório tenha um `SKILL.md` com frontmatter (`name`, `description`) na raiz. Se o zip extrair aninhado, mova o `SKILL.md` para `skills/<id>/`.
-
 ## Effort e modelo
 
 | Parâmetro | Valor |
