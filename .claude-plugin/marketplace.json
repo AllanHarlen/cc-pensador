@@ -1,4 +1,4 @@
-﻿{
+{
     "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
     "name": "cc-pensador",
     "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 8 sequential stages to produce high-quality Product Requirements Documents, with skill-driven brainstorm passes (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) and coordination with Codex and AGY/Gemini sub-agents.",
