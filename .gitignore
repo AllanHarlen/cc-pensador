@@ -4,4 +4,5 @@ node_modules/
 pensador-output/
 .pensador/
 .pensador-output/
-.openspec/
+.openspec/ 
+openspec/ 
