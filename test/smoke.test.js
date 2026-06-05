@@ -28,6 +28,9 @@ import {
   buildPrdBase,
   buildUserHistory,
   dispatchQuestion,
+  detectComplexity,
+  allocateFeatureDir,
+  buildFeaturePath,
   CHECKPOINT_VERSION,
   serializeState,
   deserializeState,
@@ -38,11 +41,10 @@ describe('Pensador Engine — smoke', () => {
     expect(STAGE_ORDER).toEqual([
       'INIT',
       'PRD_BASE',
+      'ARCH',
       'EXPAND',
-      'CLARITY',
-      'BACKEND',
-      'UIUX',
-      'FRONTEND',
+      'COMPLEXITY',
+      'BRAINSTORM_GERAL',
       'CODEX',
       'AGY',
       'FINAL',
@@ -53,20 +55,17 @@ describe('Pensador Engine — smoke', () => {
   it('exports REQUIREMENT_STAGES covering every working stage after PRD_BASE', () => {
     expect(REQUIREMENT_STAGES).toEqual([
       'EXPAND',
-      'CLARITY',
-      'BACKEND',
-      'UIUX',
-      'FRONTEND',
+      'BRAINSTORM_GERAL',
       'CODEX',
       'AGY',
     ]);
   });
 
   it('maps each brainstorm/refinement stage to a delegation target', () => {
-    expect(STAGE_DELEGATION.CLARITY.ref).toBe('requirements-clarity');
-    expect(STAGE_DELEGATION.BACKEND.ref).toBe('backend-development');
-    expect(STAGE_DELEGATION.UIUX.ref).toBe('ui-ux-pro-max');
-    expect(STAGE_DELEGATION.FRONTEND.ref).toBe('frontend-design');
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.kind).toBe('parallel');
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.requirements.ref).toBe('requirements-clarity');
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.backend.ref).toBe('codex:codex-rescue');
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.uiux.ref).toBe('cc-antigravity-plugin:antigravity-agent');
     expect(STAGE_DELEGATION.CODEX.ref).toBe('codex:codex-rescue');
     expect(STAGE_DELEGATION.AGY.ref).toBe('cc-antigravity-plugin:antigravity-agent');
   });
@@ -110,6 +109,9 @@ describe('Pensador Engine — smoke', () => {
       buildPrdBase,
       buildUserHistory,
       dispatchQuestion,
+      detectComplexity,
+      allocateFeatureDir,
+      buildFeaturePath,
       serializeState,
       deserializeState,
     ];
@@ -125,6 +127,7 @@ describe('Pensador Engine — smoke', () => {
     expect(state.demanda).toBe('Criar uma tela de login');
     expect(state.questions).toEqual([]);
     expect(state.consolidated).toEqual([]);
+    expect(state.featurePath).toBeNull();
   });
 
   it('initState signals needsDemanda for empty/absent demanda', () => {
@@ -143,8 +146,12 @@ describe('Pensador Engine — checkpoint serialization', () => {
       { id: 'q1', text: 'Auth?', origin: 'pensador', answer: null },
     ]);
     state = recordAnswer(state, 'q1', 'JWT');
-    return { ...state, currentStage: 'CLARITY' };
+    return { ...state, currentStage: 'BRAINSTORM_GERAL' };
   }
+
+  it('CHECKPOINT_VERSION is 2', () => {
+    expect(CHECKPOINT_VERSION).toBe(2);
+  });
 
   it('round-trips a StageState through serialize → deserialize', () => {
     const state = midFlowState();
@@ -169,6 +176,15 @@ describe('Pensador Engine — checkpoint serialization', () => {
   it('deserialize rejects an incompatible checkpoint version', () => {
     const stale = JSON.stringify({ version: CHECKPOINT_VERSION + 1, state: initState('x') });
     expect(deserializeState(stale)).toBeNull();
+  });
+
+  it('deserialize rejects a v1 checkpoint (version 1)', () => {
+    const v1 = JSON.stringify({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      state: { ...initState('x'), currentStage: 'EXPAND' },
+    });
+    expect(deserializeState(v1)).toBeNull();
   });
 
   it('deserialize rejects a state with an unknown currentStage', () => {

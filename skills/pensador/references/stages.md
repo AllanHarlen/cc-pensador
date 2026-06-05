@@ -1,194 +1,245 @@
-# Estágios do Pensador — Referência
+# Estagios do Pensador v2
 
-Este documento detalha cada estágio do fluxo do Pensador, seus gates de avanço e as regras de delegação e fallback para as skills de brainstorm, o Codex e o AGY.
+Este documento detalha os estagios do protocolo v2, seus gates e as regras de delegacao. Os antigos estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` foram removidos da maquina de estados. Suas responsabilidades agora vivem dentro de `BRAINSTORM_GERAL`.
 
 ---
 
-## Visão Geral da Máquina de Estados
+## Visao geral
 
+```text
+INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
-INIT → PRD_BASE → EXPAND → CLARITY → BACKEND → UIUX → FRONTEND → CODEX → AGY → FINAL → DONE
-```
 
-A sequência é **fixa e nunca reordenada**. O avanço é controlado por um **gate**: o Pensador só avança quando **todas** as perguntas do estágio atual têm resposta registrada. Nenhum estágio é pulado — um estágio de brainstorm não-aplicável é **visitado** e auto-avança com zero perguntas.
+A sequencia e fixa e nunca reordenada. O avanco e controlado por gate: o Pensador so avanca quando todas as perguntas do estagio atual tem resposta, diferimento explicito ou fallback registrado.
 
-Funil de raciocínio: **gerar** (PRD base) → **ampliar** (Pensador) → **clarificar** (requirements-clarity) → **aprofundar por domínio** (backend, ui/ux, frontend) → **varredura técnica** (Codex) → **varredura de produto** (AGY) → **consolidar** (Final).
-
-> **Nota sobre o Engine:** `scripts/pensador-engine.mjs` é a especificação determinística de referência (testada), não um runtime importado pela skill. `canAdvance`/`advance` descrevem regras que o Pensador (LLM) segue diretamente. Veja a seção "Papel do Engine em runtime" em `SKILL.md`.
+Funil v2: **iniciar/retomar** -> **PRD base** -> **arquitetura** -> **expandir** -> **calibrar complexidade** -> **brainstorm geral por dominio** -> **varredura tecnica** -> **varredura de produto** -> **consolidar** -> **entregar**.
 
 ---
 
 ## INIT
 
-**Propósito:** receber a demanda antes de iniciar o fluxo.
+**Proposito:** obter demanda, resolver retomada e definir isolamento por feature.
 
-- Demanda fornecida (`$ARGUMENTS` não vazio) → `needsDemanda = false`, avança para `PRD_BASE`.
-- Demanda ausente/só espaços → `needsDemanda = true`, o Pensador a solicita via `AskUserQuestion` antes de sair do `INIT`.
+- Checkpoints v2 ficam em `.pensador/feature-nN/.pensador-progress.json`.
+- Checkpoint valido: perguntar via `AskUserQuestion` se o usuario quer retomar ou criar nova feature.
+- Checkpoint v1 em `pensador-output/.pensador-progress.json`: incompativel. Perguntar se deve iniciar fluxo v2 novo.
+- Novo fluxo: executar `allocateFeatureDir()` e gravar `featurePath`.
+- Demanda ausente: solicitar via `AskUserQuestion`.
 
-**Gate:** demanda presente e não vazia.
-
----
-
-## PRD_BASE — Geração do PRD Base
-
-**Propósito:** rascunho estruturado do PRD a partir da demanda, aplicando o `Strict_PRD_Schema` da `Skill_PRD_Base`.
-
-- Aplica a Entrevista de Descoberta para inferir cada seção.
-- Seção não inferível → valor exato `"TBD"` (nunca omitida/inventada).
-- Resultado é o `PRD_Base`, base dos estágios seguintes.
-
-**Gate:** `PRD_Base` completo (10 seções preenchidas ou `"TBD"`). Sem perguntas — avanço automático.
+**Gate:** demanda presente, `featurePath` definido e decisao de retomada/novo fluxo registrada.
 
 ---
 
-## EXPAND — Ampliação pelo Pensador
+## PRD_BASE
 
-**Propósito:** ampliar a demanda com requisitos candidatos não previstos.
+**Proposito:** criar rascunho estruturado do PRD pela `Skill_PRD_Base`.
 
-1. Revisar seções `"TBD"`, funcionalidades implícitas, fluxos alternativos, integrações e RNFs sugeridos mas não descritos.
-2. Formular uma pergunta clara por candidato (`origin = 'pensador'`, `stage = 'EXPAND'`).
-3. Apresentar via `AskUserQuestion` (agrupando só candidatos relacionados de mesma origem/estágio). Registrar respostas.
+- Aplicar `Strict_PRD_Schema`.
+- Inferir secoes a partir da demanda.
+- Usar exatamente `"TBD"` quando a informacao nao for inferivel.
 
-**Exemplos de candidatos:** autenticação/controle de acesso, tratamento de erros e validação, desempenho/disponibilidade, mobile/acessibilidade, persistência e backup.
-
-**Gate:** todas as perguntas de EXPAND respondidas.
+**Gate:** PRD Base completo com todas as secoes preenchidas ou `"TBD"`. Sem perguntas.
 
 ---
 
-## Estágios de Brainstorm — CLARITY, BACKEND, UIUX, FRONTEND
+## ARCH
 
-Estes quatro estágios delegam a uma **skill especializada** para aplicar uma lente de domínio sobre o que já foi consolidado, expondo lacunas. Eles compartilham o mesmo protocolo (detalhado em `references/skill-stack.md`).
+**Proposito:** entender arquitetura, stack e contexto tecnico antes de fazer perguntas de produto.
 
-### Protocolo comum
+### Projeto existente
 
-1. **Relevância** (BACKEND/UIUX/FRONTEND; CLARITY é sempre relevante):
-   - Classificar a natureza do projeto (`hasBackend` / `hasFrontend`) a partir da demanda + `PRD_Base` + consolidado parcial.
-   - Não-relevante → zero perguntas + auto-avanço (estágio visitado, não pulado).
-2. **Invocar a skill** via `Skill(skill="cc-pensador:<nome>")`, fornecendo demanda + PRD_Base + consolidado e pedindo lacunas/ambiguidades/decisões em aberto do domínio.
-3. **Converter** cada lacuna em pergunta (`origin = <origin da skill>`, `stage = <ID>`).
-4. **Deduplicar:** descartar lacunas já resolvidas em estágios anteriores (sobretudo EXPAND) ou já cobertas pelo `PRD_Base`; reaproveitar a resposta existente.
-5. **Priorizar e limitar:** apresentar primeiro as lacunas de maior impacto (≈3–5 essenciais por estágio); lacunas menores podem virar `"TBD"` no PRD. Incluir sempre a opção "seguir sem responder as demais" — se escolhida, registrar as restantes como diferidas (satisfaz o gate sem forçar resposta).
-6. **Apresentar** via `AskUserQuestion` (sem agrupar origens/estágios diferentes).
-7. **Registrar** respostas — entram no consolidado com `resolvesGap = true`.
+Use `Read`, `Glob` e `Grep` para identificar:
 
-### Fallback (skill indisponível)
+- Stack, framework, linguagem e gerenciador de pacotes.
+- Estrutura de pastas, entrypoints e padroes locais.
+- Front-end, back-end, persistencia, jobs, integracoes e autenticacao.
+- Artefatos relevantes ja existentes.
+- Riscos, convencoes e lacunas tecnicas.
 
-1. Registrar indisponibilidade com evidência.
-2. `AskUserQuestion` **individual**: "A skill `<nome>` está indisponível. Prosseguir sem este brainstorm, ou aguardar/retentar?" (`origin = 'pensador'`, `stage = <ID>`).
-3. Prosseguir → registra resposta, gate libera. Aguardar/retentar → retenta antes de nova pergunta.
+### Greenfield
 
-### Detalhe por estágio
+Se nao houver base de codigo relevante:
 
-| Estágio | Skill | Relevante quando | Foco |
-|---|---|---|---|
-| **CLARITY** | `requirements-clarity` | sempre | Ambiguidades, termos vagos, requisitos implícitos, critérios de aceite verificáveis, escopo |
-| **BACKEND** | `backend-development` | há backend | Modelo de dados, endpoints/contratos, integrações, auth, consistência, escalabilidade, observabilidade |
-| **UIUX** | `ui-ux-pro-max` | há front-end | Fluxos de UX, estados de tela (vazio/carregando/erro), acessibilidade, hierarquia visual, microcopy |
-| **FRONTEND** | `frontend-design` | há front-end | Componentização, design system, responsividade, layout, padrões de interação |
+- Marque `isGreenfield = true`.
+- Entreviste o usuario via `AskUserQuestion` sobre stack, front-end, back-end, persistencia, integracoes, deploy e restricoes.
+- Use respostas diferidas como `"TBD"` no `architecture.md`.
 
-**Gate (cada estágio):** todas as perguntas do estágio (incl. fallback) respondidas.
+### Saida
+
+Grave `<featurePath>/architecture.md` com:
+
+- Resumo da arquitetura.
+- Sinais `hasBackend`, `hasFrontend`, `isGreenfield`.
+- Dominios detectados.
+- Decisoes conhecidas e lacunas.
+- Entradas para `detectComplexity()`.
+
+**Gate:** `architecture.md` gravado e perguntas greenfield fechadas.
 
 ---
 
-## CODEX — Refinamento técnico
+## EXPAND
 
-**Subagente:** `codex:codex-rescue` · **Effort efetivo:** `--effort high`.
+**Proposito:** ampliar a demanda com requisitos candidatos do proprio Pensador.
 
-> O usuário solicita `extrahigh`, mas o Codex reconhece só `medium` e `high`. `mapEffort('extrahigh') === 'high'`. **Sempre** use `high`, nunca `extrahigh`.
->
-> **Passagem do parâmetro:** o tool `Agent` não possui campo de flags — comunique `effort: high` **no corpo do prompt** e registre o valor para rastreabilidade.
+1. Revisar demanda, PRD Base e `architecture.md`.
+2. Identificar requisitos implicitos, fluxos alternativos, RNFs, integracoes, seguranca, erros, acessibilidade e persistencia.
+3. Converter lacunas importantes em perguntas `origin = 'pensador'`, `stage = 'EXPAND'`.
+4. Apresentar via `AskUserQuestion`, com opcao recomendada quando aplicavel.
 
-**Entrada mínima:**
+**Gate:** todas as perguntas respondidas ou diferidas.
+
+---
+
+## COMPLEXITY
+
+**Proposito:** decidir a profundidade de execucao antes do brainstorm geral.
+
+`detectComplexity()` usa:
+
+| Sinal | Como interpretar |
+|---|---|
+| `domainCount` | Quantidade de dominios funcionais/tecnicos distintos |
+| `hasBackend` | API, servidor, dados, auth, jobs, integracoes ou contratos |
+| `hasBroadScopeKeywords` | Plataforma, sistema, multiusuario, dashboard amplo, automacao, pagamentos, compliance ou escopo amplo |
+| `isGreenfield` | Projeto novo sem arquitetura existente |
+
+Resultado:
+
+- **Lite:** poucas areas, baixo risco, pouco ou nenhum back-end.
+- **Completo:** back-end, escopo amplo, multiplos dominios, integracoes, greenfield relevante ou alto risco.
+
+Pergunte ao usuario via `AskUserQuestion` se aceita a sugestao. Inclua:
+
+- Opcao recomendada.
+- Preview do que muda no fluxo.
+- Profundidade por dominio.
+- Possibilidade de seguir com a alternativa.
+
+**Gate:** modo `Lite` ou `Completo` registrado.
+
+---
+
+## BRAINSTORM_GERAL
+
+**Proposito:** executar um brainstorm unico, orientado por dominios, substituindo CLARITY/BACKEND/UIUX/FRONTEND.
+
+### Contexto compartilhado
+
+Grave antes da delegacao:
+
+```text
+<featurePath>/shared-agents/context-pack.md
 ```
-Analise os requisitos abaixo e identifique lacunas técnicas, funcionalidades não previstas,
-inconsistências ou riscos. Use effort: high. Retorne uma lista de pontos em aberto.
 
-Demanda: <demanda>
-PRD Base: <seções do PRD_Base>
-Requisitos consolidados até agora: <consolidado de EXPAND..FRONTEND>
-```
+O arquivo deve conter demanda, PRD Base, `architecture.md`, respostas de EXPAND, modo Lite/Completo, sinais de complexidade, dominios detectados e instrucoes de saida.
 
-Cada ponto → pergunta (`origin = 'codex'`, `stage = 'CODEX'`) via `AskUserQuestion`; resposta consolidada com `source = 'codex'`, `resolvesGap = true`.
+### Roteamento
 
-**Fallback:** pergunta individual via `AskUserQuestion` ("Codex indisponível… prosseguir ou aguardar/retentar?"). O gate trata como qualquer pergunta.
-
-**Gate:** todas as perguntas de CODEX (incl. fallback) respondidas.
-
----
-
-## AGY — Lacunas de produto
-
-**Subagente:** `cc-antigravity-plugin:antigravity-agent` · **Modelo:** `gemini-3.1-pro-high` (de `agyStageModel()`, no `AGY_MODEL_ALLOWLIST`).
-
-> **Passagem do parâmetro:** comunique `model: gemini-3.1-pro-high` no corpo do prompt (ou conforme a interface do antigravity-agent) e registre para rastreabilidade.
-
-**Entrada mínima:**
-```
-Levante perguntas sobre lacunas remanescentes, aspectos não cobertos, cenários de uso não
-considerados ou riscos de produto. Retorne uma lista de perguntas abertas para o usuário.
-
-Demanda: <demanda>
-PRD Base: <seções do PRD_Base>
-Requisitos consolidados até agora: <consolidado de EXPAND..CODEX>
-```
-
-Cada pergunta → `origin = 'agy'`, `stage = 'AGY'` via `AskUserQuestion`; resposta consolidada com `source = 'agy'`, `resolvesGap = true`.
-
-**Fallback:** status crus do bridge (`QUOTA_EXHAUSTED`, `AUTH_REQUIRED`, `AGY_MISSING`, `TIMEOUT`) preservados; pergunta individual via `AskUserQuestion`.
-
-**Gate:** todas as perguntas de AGY (incl. fallback) respondidas. Avança para FINAL.
-
----
-
-## FINAL — Geração dos Artefatos
-
-**Gate de entrada:** `currentStage ∈ {FINAL, DONE}`.
-
-**Processo:**
-1. **`withConsolidated(state)`** — grava `consolidate(state)` em `state.consolidated`. **Obrigatório antes de planejar**: `planArtifacts`/`buildArtifactList` leem `state.consolidated`.
-2. `classifyProject(consolidated)` → `{hasBackend, hasFrontend, isFullstack}` (heurística por palavra-chave). **Sempre** confirmar a presença de **back-end** com o usuário via `AskUserQuestion` — heurística como sugestão; a resposta prevalece — antes de decidir o `comunication_json.md`.
-3. `planArtifacts(state)` → `prd`/`userhistory` sempre; `comunication = hasBackend`.
-4. Gerar `prd.md` (Strict_PRD_Schema + template), incorporando as respostas de todos os estágios nas seções pertinentes.
-5. Gerar `userhistory.md` (`buildUserHistory`, passos contíguos a partir de 1).
-6. Se há back-end, gerar `comunication_json.md` (contratos levantados em BACKEND).
-7. `buildArtifactList(state)` → informar o `path` de cada artefato.
-
-> **Destino e sobrescrita:** os artefatos são gravados sob `pensador-output/` (nunca na raiz). Antes de gravar cada arquivo, se ele já existir nesse diretório, **confirme a sobrescrita via `AskUserQuestion`**. Crie o diretório se ausente.
-
-| Artefato | Arquivo | Condição |
+| Participante | Quando roda | Papel |
 |---|---|---|
-| PRD Final | `prd.md` | Sempre |
-| Jornada do Usuário | `userhistory.md` | Sempre |
-| Comunicação Back-End | `comunication_json.md` | Quando há back-end (`hasBackend === true`) |
+| `requirements-clarity` | sempre | Clareza, ambiguidades, aceite, escopo |
+| Codex `effort high` | `hasBackend` | Dados, APIs, seguranca, contratos, riscos tecnicos |
+| AGY `gemini-3.1-pro-high` | `hasFrontend` | Experiencia, produto, jornadas, telas, cenarios |
 
-**Gate para DONE:** artefatos aplicáveis gerados e caminhos reportados.
+Em modo Lite, limite a quantidade de perguntas por dominio e favoreca `"TBD"` para lacunas menores. Em modo Completo, aprofunde dominios de maior risco.
+
+### Saidas
+
+Cada participante grava sua resposta em `shared-agents/*.response.md`. O Pensador consolida em:
+
+```text
+<featurePath>/shared-agents/agent.response.md
+```
+
+`agent.response.md` deve registrar autoria, dominio, severidade, pergunta candidata, evidencias e se houve deduplicacao.
+
+### Fallback por dominio
+
+Se um participante falhar:
+
+1. Registre evidencia da falha.
+2. Pergunte via `AskUserQuestion` se deve retentar, seguir sem aquele dominio ou registrar lacunas como `"TBD"`.
+3. Nao bloqueie dominios independentes que ja responderam.
+
+### Perguntas ao usuario
+
+- Deduplicate contra PRD Base, EXPAND e respostas anteriores.
+- Agrupe por dominio quando fizer sentido.
+- Preserve selo de autoria: `Pensador`, `requirements-clarity`, `Codex` ou `AGY`.
+- Use PT-BR por padrao.
+
+**Gate:** `agent.response.md` produzido ou fallback registrado; todas as perguntas respondidas ou diferidas.
+
+---
+
+## CODEX
+
+**Proposito:** varredura tecnica final, apos o brainstorm geral.
+
+- Subagente: `codex:codex-rescue`.
+- Parametro efetivo: `effort high` no prompt.
+- Entrada: demanda, PRD Base, `architecture.md`, EXPAND, `agent.response.md` e respostas consolidadas.
+- Saida: pontos tecnicos em aberto, convertidos em perguntas `origin = 'codex'`.
+
+**Fallback:** pergunta individual via `AskUserQuestion` para retentar, seguir sem Codex ou registrar lacunas como `"TBD"`.
+
+**Gate:** todas as perguntas/fallbacks de CODEX respondidos ou diferidos.
+
+---
+
+## AGY
+
+**Proposito:** varredura final de produto.
+
+- Subagente: `cc-antigravity-plugin:antigravity-agent`.
+- Modelo: `gemini-3.1-pro-high` no prompt.
+- Entrada: demanda, PRD Base, `architecture.md`, EXPAND, `agent.response.md`, CODEX e consolidado parcial.
+- Saida: lacunas de produto, riscos e cenarios nao cobertos, convertidos em perguntas `origin = 'agy'`.
+
+**Fallback:** preservar status como `QUOTA_EXHAUSTED`, `AUTH_REQUIRED`, `AGY_MISSING` ou `TIMEOUT` quando disponivel; perguntar via `AskUserQuestion`.
+
+**Gate:** todas as perguntas/fallbacks de AGY respondidos ou diferidos.
+
+---
+
+## FINAL
+
+**Proposito:** consolidar respostas e gerar artefatos finais.
+
+1. Aplicar `withConsolidated(state)`.
+2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao.
+3. Gerar artefatos em `<featurePath>/pensador-output/`.
+4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
+5. Apresentar recap final e handoff.
+
+| Artefato | Condicao |
+|---|---|
+| `prd.md` | Sempre |
+| `userhistory.md` | Sempre |
+| `comunication_json.md` | Quando ha back-end confirmado |
+
+**Gate:** artefatos aplicaveis gerados, caminhos reportados, recap final e handoff entregues.
 
 ---
 
 ## DONE
 
-Estado terminal. Sem perguntas nem ações pendentes. Resumo final com os caminhos dos artefatos.
+Estado terminal. Sem perguntas ou acoes pendentes.
 
 ---
 
-## Resumo dos Gates
+## Resumo dos gates
 
-| Estágio | Gate de Avanço |
+| Estagio | Gate |
 |---|---|
-| `INIT` | Demanda presente e não vazia |
-| `PRD_BASE` | PRD_Base completo (10 seções preenchidas ou `"TBD"`) |
-| `EXPAND` | Todas as perguntas respondidas |
-| `CLARITY` | Todas respondidas (incl. fallback) |
-| `BACKEND` | Todas respondidas (incl. fallback); zero se não-aplicável |
-| `UIUX` | Todas respondidas (incl. fallback); zero se não-aplicável |
-| `FRONTEND` | Todas respondidas (incl. fallback); zero se não-aplicável |
-| `CODEX` | Todas respondidas (incl. fallback) |
-| `AGY` | Todas respondidas (incl. fallback) |
-| `FINAL` | `withConsolidated` + artefatos gerados e caminhos reportados |
-| `DONE` | — (terminal) |
-
----
-
-## Canal Único de Diálogo
-
-**Toda** pergunta — do Pensador, das skills de brainstorm, do Codex, do AGY ou de fallback — usa **exclusivamente** `AskUserQuestion`. Consulte `references/askuserquestion-protocol.md` e `references/skill-stack.md` / `references/agent-stack.md`.
+| `INIT` | Demanda presente, `featurePath` definido e retomada/novo fluxo resolvido |
+| `PRD_BASE` | PRD Base completo |
+| `ARCH` | `architecture.md` gravado |
+| `EXPAND` | Perguntas respondidas ou diferidas |
+| `COMPLEXITY` | Modo Lite/Completo escolhido |
+| `BRAINSTORM_GERAL` | `agent.response.md` ou fallback por dominio; perguntas fechadas |
+| `CODEX` | Perguntas/fallbacks fechados |
+| `AGY` | Perguntas/fallbacks fechados |
+| `FINAL` | Artefatos, recap e handoff entregues |
+| `DONE` | Terminal |

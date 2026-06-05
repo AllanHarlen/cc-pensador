@@ -31,16 +31,16 @@ describe('consolidate(state)', () => {
       expect(result[0].source).toBe('expand');
     });
 
-    it('sets source to "clarity" for questions from CLARITY', () => {
+    it('sets source to "brainstorm_geral" for questions from BRAINSTORM_GERAL', () => {
       let state = initState('Test demanda');
-      state = addQuestions(state, 'CLARITY', [
+      state = addQuestions(state, 'BRAINSTORM_GERAL', [
         { id: 'q2', text: 'Ambiguous req?', origin: 'requirements-clarity', answer: null },
       ]);
       state = recordAnswer(state, 'q2', 'Clarified');
 
       const result = consolidate(state);
       expect(result).toHaveLength(1);
-      expect(result[0].source).toBe('clarity');
+      expect(result[0].source).toBe('brainstorm_geral');
     });
 
     it('sets source to "codex" for questions from CODEX', () => {
@@ -70,10 +70,9 @@ describe('consolidate(state)', () => {
 
   describe('resolvesGap flag for non-pensador origins', () => {
     it.each([
-      ['CLARITY', 'requirements-clarity'],
-      ['BACKEND', 'backend-development'],
-      ['UIUX', 'ui-ux-pro-max'],
-      ['FRONTEND', 'frontend-design'],
+      ['BRAINSTORM_GERAL', 'requirements-clarity'],
+      ['BRAINSTORM_GERAL', 'codex'],
+      ['BRAINSTORM_GERAL', 'agy'],
       ['CODEX', 'codex'],
       ['AGY', 'agy'],
     ])('sets resolvesGap = true for %s questions (origin %s)', (stage, origin) => {
@@ -162,17 +161,8 @@ describe('consolidate(state)', () => {
       state = addQuestions(state, 'EXPAND', [
         { id: 'expandq', text: 'expand', origin: 'pensador', answer: null },
       ]);
-      state = addQuestions(state, 'CLARITY', [
-        { id: 'clarityq', text: 'clarity', origin: 'requirements-clarity', answer: null },
-      ]);
-      state = addQuestions(state, 'BACKEND', [
-        { id: 'backendq', text: 'backend', origin: 'backend-development', answer: null },
-      ]);
-      state = addQuestions(state, 'UIUX', [
-        { id: 'uiuxq', text: 'uiux', origin: 'ui-ux-pro-max', answer: null },
-      ]);
-      state = addQuestions(state, 'FRONTEND', [
-        { id: 'frontendq', text: 'frontend', origin: 'frontend-design', answer: null },
+      state = addQuestions(state, 'BRAINSTORM_GERAL', [
+        { id: 'brainstormq', text: 'brainstorm', origin: 'requirements-clarity', answer: null },
       ]);
       state = addQuestions(state, 'CODEX', [
         { id: 'codexq', text: 'codex', origin: 'codex', answer: null },
@@ -180,7 +170,7 @@ describe('consolidate(state)', () => {
       state = addQuestions(state, 'AGY', [
         { id: 'agyq', text: 'agy', origin: 'agy', answer: null },
       ]);
-      for (const id of ['baseq', 'expandq', 'clarityq', 'backendq', 'uiuxq', 'frontendq', 'codexq', 'agyq']) {
+      for (const id of ['baseq', 'expandq', 'brainstormq', 'codexq', 'agyq']) {
         state = recordAnswer(state, id, `ans ${id}`);
       }
 
@@ -188,9 +178,9 @@ describe('consolidate(state)', () => {
       const ids = result.map((r) => r.id);
       expect(ids).not.toContain('baseq');
       expect(ids).toEqual(
-        expect.arrayContaining(['expandq', 'clarityq', 'backendq', 'uiuxq', 'frontendq', 'codexq', 'agyq'])
+        expect.arrayContaining(['expandq', 'brainstormq', 'codexq', 'agyq'])
       );
-      expect(result).toHaveLength(7);
+      expect(result).toHaveLength(4);
     });
   });
 
@@ -202,7 +192,7 @@ describe('consolidate(state)', () => {
         { id: 'pq1', text: 'OAuth needed?', origin: 'pensador', answer: null },
         { id: 'pq2', text: 'MFA needed?', origin: 'pensador', answer: null },
       ]);
-      state = addQuestions(state, 'CLARITY', [
+      state = addQuestions(state, 'BRAINSTORM_GERAL', [
         { id: 'rcq1', text: 'Which roles can log in?', origin: 'requirements-clarity', answer: null },
       ]);
       state = addQuestions(state, 'CODEX', [
@@ -227,7 +217,7 @@ describe('consolidate(state)', () => {
       expect(pq1Req.text).toBe('Yes, OAuth');
 
       const rcq1Req = result.find((r) => r.id === 'rcq1');
-      expect(rcq1Req.source).toBe('clarity');
+      expect(rcq1Req.source).toBe('brainstorm_geral');
       expect(rcq1Req.resolvesGap).toBe(true);
 
       const cq1Req = result.find((r) => r.id === 'cq1');

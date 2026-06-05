@@ -1,6 +1,6 @@
 {
   "name": "cc-pensador",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Pensador PRD workflow skill and command",
   "license": "MIT",
   "type": "module",

@@ -1,0 +1,89 @@
+Wave 3 do projeto cc-pensador: atualizar e criar testes vitest para cobrir o engine v2.
+
+Stack: Node.js ESM, vitest 3.2.4, fast-check 4.1.1
+Engine: scripts/pensador-engine.mjs
+
+IMPORTANTE: Leia scripts/pensador-engine.mjs e todos os arquivos de teste existentes antes de modificar qualquer coisa. Adapte os testes à API real exportada.
+
+NAO modifique: scripts/pensador-engine.mjs, test/docs-consistency.test.js, skills/, README.md, package.json, plugin.json, marketplace.json
+
+ESCOPO DE MUDANCAS (apenas estes arquivos):
+- test/smoke.test.js (atualizar)
+- test/engine-complexity.test.js (criar novo)
+- test/feature-isolation.test.js (criar novo)
+- test/consolidate.test.js (atualizar)
+- test/artifacts.test.js (atualizar)
+
+=== T19: Atualizar test/smoke.test.js ===
+
+1. Adicionar ao import: detectComplexity, allocateFeatureDir, buildFeaturePath do engine
+
+2. Teste STAGE_ORDER deve esperar: ['INIT','PRD_BASE','ARCH','EXPAND','COMPLEXITY','BRAINSTORM_GERAL','CODEX','AGY','FINAL','DONE']
+
+3. Teste REQUIREMENT_STAGES deve esperar: ['EXPAND','BRAINSTORM_GERAL','CODEX','AGY']
+
+4. Teste de delegacao (STAGE_DELEGATION):
+   - Remover expectativas de CLARITY/BACKEND/UIUX/FRONTEND
+   - Adicionar: STAGE_DELEGATION.BRAINSTORM_GERAL.kind === 'parallel', STAGE_DELEGATION.BRAINSTORM_GERAL.domains.requirements.ref === 'requirements-clarity', STAGE_DELEGATION.BRAINSTORM_GERAL.domains.backend.ref === 'codex:codex-rescue', STAGE_DELEGATION.BRAINSTORM_GERAL.domains.uiux.ref === 'cc-antigravity-plugin:antigravity-agent', STAGE_DELEGATION.CODEX.ref === 'codex:codex-rescue', STAGE_DELEGATION.AGY.ref === 'cc-antigravity-plugin:antigravity-agent'
+
+5. Teste de public API: incluir detectComplexity, allocateFeatureDir, buildFeaturePath
+
+6. Teste initState: verificar state.featurePath === null
+
+7. No checkpoint serialization midFlowState: mudar currentStage de 'CLARITY' para 'BRAINSTORM_GERAL'
+
+8. Adicionar: it('CHECKPOINT_VERSION is 2', () => { expect(CHECKPOINT_VERSION).toBe(2); });
+
+9. Adicionar: it('deserialize rejects a v1 checkpoint (version 1)', () => { const v1 = JSON.stringify({ version: 1, savedAt: new Date().toISOString(), state: { ...initState('x'), currentStage: 'EXPAND' } }); expect(deserializeState(v1)).toBeNull(); });
+
+=== T20+T21: Criar test/engine-complexity.test.js ===
+
+Criar arquivo com testes para detectComplexity(signals):
+- import { describe, it, expect } from 'vitest'; import fc from 'fast-check'; import { detectComplexity } from '../scripts/pensador-engine.mjs';
+- Testes de sinais individuais: score 0 (todos false) -> Lite; score 1 (so domainCount>1) -> Lite; score 1 (so hasBackend) -> Lite; score 1 (so hasBroadScopeKeywords) -> Lite; score 1 (so isGreenfield) -> Lite
+- Testes de threshold: score 2 (dois sinais) -> Completo; score 3 (tres sinais) -> Completo; score 4 (todos) -> Completo; empate em 2 -> Completo
+- Testes de totalidade: nao joga para {} e para chamada sem args; domainCount ausente tratado como 1
+- Testes de propriedade com fast-check: score entre 0 e 4 sempre; mode sempre Lite ou Completo; determinismo (mesma entrada = mesma saida); score >= 2 sempre Completo
+
+=== T22: Criar test/feature-isolation.test.js ===
+
+Criar arquivo com testes para allocateFeatureDir e buildFeaturePath:
+- import { describe, it, expect } from 'vitest'; import { allocateFeatureDir, buildFeaturePath } from '../scripts/pensador-engine.mjs';
+- allocateFeatureDir([]) -> { featureDir: '.pensador/feature-n1', featureN: 1, isResume: false }
+- allocateFeatureDir(['feature-n1']) -> featureDir: '.pensador/feature-n2', featureN: 2
+- allocateFeatureDir(['feature-n1','feature-n2','feature-n3']) -> featureDir: '.pensador/feature-n4', featureN: 4
+- allocateFeatureDir(['other-dir','not-a-feature']) -> featureDir: '.pensador/feature-n1', featureN: 1
+- allocateFeatureDir(['feature-n1'], { nameSuffix: 'login' }) -> featureDir: '.pensador/feature-n2-login'
+- allocateFeatureDir([], {}) -> featureDir: '.pensador/feature-n1'
+- allocateFeatureDir(['feature-n1','feature-n2'], { incompleteCheckpoint: 'feature-n2' }) -> { featureDir: '.pensador/feature-n2', isResume: true, featureN: 2 }
+- allocateFeatureDir(['feature-n1','feature-n2'], { incompleteCheckpoint: 'feature-n1' }) -> { featureDir: '.pensador/feature-n1', isResume: true }
+- nao joga para [] e para ([], undefined)
+- buildFeaturePath('.pensador/feature-n1', 'shared-agents') === '.pensador/feature-n1/shared-agents'
+- buildFeaturePath('.pensador/feature-n1', 'pensador-output') === '.pensador/feature-n1/pensador-output'
+- buildFeaturePath('.pensador/feature-n2-login', 'shared-agents') === '.pensador/feature-n2-login/shared-agents'
+
+=== T23: Atualizar test/consolidate.test.js ===
+
+Leia o arquivo atual. Depois:
+1. No teste de todos os stages presentes: remover addQuestions para CLARITY/BACKEND/UIUX/FRONTEND; adicionar addQuestions para BRAINSTORM_GERAL com question {id:'brainstormq', text:'brainstorm', origin:'requirements-clarity', answer:null}; responder 'brainstormq'; IDs esperados: ['expandq','brainstormq','codexq','agyq'], comprimento 4
+
+2. No it.each de resolvesGap: remover ['CLARITY','requirements-clarity'], ['BACKEND','backend-development'], ['UIUX','ui-ux-pro-max'], ['FRONTEND','frontend-design']; adicionar ['BRAINSTORM_GERAL','requirements-clarity'], ['BRAINSTORM_GERAL','codex'], ['BRAINSTORM_GERAL','agy']; manter ['CODEX','codex'], ['AGY','agy']
+
+3. No cenario de consolidacao completa: substituir addQuestions de CLARITY por BRAINSTORM_GERAL; remover expectativas de stages antigos
+
+=== T25: Atualizar test/artifacts.test.js ===
+
+Leia o arquivo atual. Depois:
+1. Atualizar nonFinalStages (em todos os describes que a usam) para: ['INIT','PRD_BASE','ARCH','EXPAND','COMPLEXITY','BRAINSTORM_GERAL','CODEX','AGY']
+
+2. Adicionar describe com dois testes sobre basePath com featurePath:
+   - 'uses featurePath/pensador-output/ when featurePath is set': state = { ...stateAt('FINAL', []), featurePath: '.pensador/feature-n2-login' }; prd.path === '.pensador/feature-n2-login/pensador-output/prd.md'
+   - 'falls back to .pensador/feature-n1/pensador-output/ when featurePath is null': state = stateAt('FINAL', []); prd.path.includes('.pensador/feature-n1/pensador-output/')
+
+=== T27: Validacao final ===
+
+Rode: npm test
+
+Se smoke, engine-complexity, feature-isolation, consolidate, ou artifacts falharem: corrija os testes (nao o engine) ate passarem 100%.
+docs-consistency pode falhar por sequencia de stages nos docs - isso e esperado.
+Reporte os resultados de npm test.

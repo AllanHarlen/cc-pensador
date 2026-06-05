@@ -1,7 +1,7 @@
 {
     "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
     "name": "cc-pensador",
-    "description": "Pensador: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 8 sequential stages to produce high-quality Product Requirements Documents, with skill-driven brainstorm passes (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) and coordination with Codex and AGY/Gemini sub-agents.",
+    "description": "Pensador v2: PRD workflow skill and /pensador command for Claude Code. Guides LLMs through 10 stages — including ARCH (project scan), COMPLEXITY (Lite/Completo heuristic) and BRAINSTORM_GERAL (parallel domain orchestration with requirements-clarity, Codex and AGY as lenses) — producing per-feature isolated artifacts under .pensador/feature-nN/. All dialogue routes exclusively through AskUserQuestion.",
     "owner": {
         "name": "allanharlen",
         "email": "allanharlen@gmail.com"
@@ -13,8 +13,8 @@
     "plugins": [
         {
             "name": "cc-pensador",
-            "description": "Pensador skill + /pensador slash command that drive an 8-stage PRD workflow: PRD_BASE generates a PRD base from the Strict PRD Schema; EXPAND adds candidate requirements; CLARITY/BACKEND/UIUX/FRONTEND run skill-driven brainstorm passes (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) to harden PRD integrity; CODEX delegates to Codex (effort high); AGY delegates to AGY (gemini-3.1-pro-high) for product-gap analysis; FINAL delivers prd.md, userhistory.md, and comunication_json.md. All dialogue routes exclusively through AskUserQuestion.",
-            "version": "1.0.0",
+            "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation), PRD_BASE (Strict PRD Schema), ARCH (project scan via Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/feature-nN/pensador-output/). All dialogue routes exclusively through AskUserQuestion.",
+            "version": "2.0.0",
             "author": {
                 "name": "allanharlen"
             },

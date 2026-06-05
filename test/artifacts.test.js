@@ -127,7 +127,7 @@ describe('isFullstack(requirements)', () => {
 
 describe('planArtifacts(state)', () => {
   describe('gate: empty plan outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'PRD_BASE', 'EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
+    const nonFinalStages = ['INIT', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty plan for currentStage = ${stage}`, () => {
@@ -191,7 +191,7 @@ describe('planArtifacts(state)', () => {
 
 describe('buildArtifactList(state)', () => {
   describe('gate enforcement — no artifacts outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'PRD_BASE', 'EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
+    const nonFinalStages = ['INIT', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty list for currentStage = ${stage}`, () => {
@@ -288,6 +288,20 @@ describe('buildArtifactList(state)', () => {
         expect(typeof artifact.path).toBe('string');
         expect(artifact.path.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('basePath with featurePath', () => {
+    it('uses featurePath/pensador-output/ when featurePath is set', () => {
+      const state = { ...stateAt('FINAL', []), featurePath: '.pensador/feature-n2-login' };
+      const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
+      expect(prd.path).toBe('.pensador/feature-n2-login/pensador-output/prd.md');
+    });
+
+    it('falls back to .pensador/feature-n1/pensador-output/ when featurePath is null', () => {
+      const state = stateAt('FINAL', []);
+      const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
+      expect(prd.path).toContain('.pensador/feature-n1/pensador-output/');
     });
   });
 

@@ -1,87 +1,88 @@
-# Skill Stack do Pensador — Referência
+# Skill Stack do Pensador v2
 
-Este documento descreve as **quatro skills de brainstorm** que o Pensador consome nos Estágios 3–6 (CLARITY, BACKEND, UIUX, FRONTEND). Cada skill aplica uma lente de domínio sobre o que já foi consolidado, expondo lacunas que reforçam a integridade do PRD.
+No protocolo v2, as skills nao sao estagios autonomos. Elas funcionam como **lentes de dominio** dentro do estagio `BRAINSTORM_GERAL`.
 
-Para os subagentes Codex (CODEX) e AGY (AGY), veja `references/agent-stack.md`.
+Os antigos estagios `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` nao fazem parte de `STAGE_ORDER` v2. Suas responsabilidades foram consolidadas no roteamento por dominio do BRAINSTORM_GERAL.
 
 ---
 
-## Visão geral
+## Visao geral
 
-| Estágio | Skill (id) | Origin | Relevante quando | Lente |
+| Lente | Skill | Origin | Quando usar | Foco |
 |---|---|---|---|---|
-| CLARITY | `requirements-clarity` | `requirements-clarity` | **sempre** | Clareza e completude de requisitos |
-| BACKEND | `backend-development` | `backend-development` | `hasBackend` | Dados, APIs, integrações, segurança |
-| UIUX | `ui-ux-pro-max` | `ui-ux-pro-max` | `hasFrontend` | Experiência, fluxos, acessibilidade |
-| FRONTEND | `frontend-design` | `frontend-design` | `hasFrontend` | Componentização, design system, layout |
+| Clareza | `requirements-clarity` | `requirements-clarity` | Sempre | Ambiguidades, criterios de aceite, escopo, requisitos implicitos |
+| Backend | `backend-development` | `backend-development` | Como referencia/fallback quando `hasBackend` e Codex nao cobrir o dominio | Dados, APIs, integracoes, seguranca, contratos |
+| UI/UX | `ui-ux-pro-max` | `ui-ux-pro-max` | Como referencia/fallback quando `hasFrontend` e AGY nao cobrir UX suficiente | Fluxos, estados de tela, acessibilidade, microcopy |
+| Frontend | `frontend-design` | `frontend-design` | Como referencia/fallback quando `hasFrontend` e for necessario detalhar construcao de UI | Componentizacao, design system, responsividade, layout |
 
-Os identificadores `origin` são os mesmos definidos em `GAP_ORIGINS` no Engine — toda resposta vinda de uma dessas skills entra no consolidado com `resolvesGap = true`.
+`requirements-clarity` e a lente skill primaria do BRAINSTORM_GERAL. As demais skills continuam disponiveis como lentes especializadas de dominio, mas nao criam estagios independentes.
 
 ---
 
-## Origem e instalação
+## Protocolo de invocacao
 
-Estas skills são **empacotadas no plugin** sob `skills/<id>/` (versionadas junto com o `cc-pensador`). Foram obtidas de mcp.directory:
+1. Garanta que `<featurePath>/shared-agents/context-pack.md` exista.
+2. Invoque apenas a skill ou lente necessaria para o dominio.
+3. Forneca demanda, PRD Base, `architecture.md`, EXPAND, modo Lite/Completo, sinais `hasBackend`/`hasFrontend` e dominios detectados.
+4. Peca explicitamente lacunas, ambiguidades e decisoes em aberto em formato de perguntas candidatas.
+5. Grave ou incorpore a resposta em `shared-agents/<origin>.response.md`.
+6. Consolide em `shared-agents/agent.response.md`.
+7. Deduplicate antes de perguntar ao usuario.
 
-```bash
-# requirements-clarity (id 2157)
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/2157" && unzip -o skill.zip -d skills/requirements-clarity && rm skill.zip
-# backend-development (id 1186)
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/1186" && unzip -o skill.zip -d skills/backend-development && rm skill.zip
-# ui-ux-pro-max (id 191)
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/191"  && unzip -o skill.zip -d skills/ui-ux-pro-max && rm skill.zip
-# frontend-design (id 1)
-curl -L -o skill.zip "https://mcp.directory/api/skills/download/1"    && unzip -o skill.zip -d skills/frontend-design && rm skill.zip
+Exemplo:
+
+```text
+Skill(skill="cc-pensador:requirements-clarity")
+
+Contexto:
+- Leia/considere shared-agents/context-pack.md.
+- Retorne lacunas de clareza, criterios de aceite e escopo.
+- Use formato de perguntas candidatas com evidencia e severidade.
 ```
 
-> Cada diretório deve conter um `SKILL.md` com frontmatter (`name`, `description`) para ser descoberto pelo Claude Code. Se o zip extrair com um subdiretório, mova o `SKILL.md` para a raiz de `skills/<id>/`.
+---
+
+## Profundidade por modo
+
+| Modo | Como aplicar lentes |
+|---|---|
+| Lite | Priorizar perguntas essenciais; limitar volume; registrar lacunas menores como `"TBD"` |
+| Completo | Aprofundar dominios de risco, especialmente backend, frontend amplo, integracoes e greenfield |
 
 ---
 
-## Protocolo de invocação (comum aos 4 estágios)
+## Dedupe e autoria
 
-1. **Relevância** — para BACKEND/UIUX/FRONTEND, avalie `classifyProject(consolidado)`:
-   - `BACKEND` roda quando `hasBackend`; `UIUX`/`FRONTEND` quando `hasFrontend`.
-   - CLARITY roda sempre.
-   - Não-relevante → **zero perguntas + auto-avanço**. O estágio é visitado, nunca pulado.
-2. **Invocação:**
-   ```
-   Skill(skill="cc-pensador:<id>")
-   ```
-   Contexto fornecido à skill: a **demanda**, o **PRD_Base** e os **requisitos consolidados** até o estágio. Peça explicitamente: *"identifique lacunas, ambiguidades e decisões em aberto no seu domínio, em forma de perguntas para o usuário."*
-3. **Conversão:** cada item retornado vira uma `Question` (`origin = <id>`, `stage = <ID do estágio>`).
-4. **Apresentação:** via `AskUserQuestion`. Nunca agrupe perguntas de origens ou estágios diferentes.
-5. **Registro:** cada resposta entra no consolidado (`resolvesGap = true`).
+Toda pergunta candidata deve preservar:
 
-### Fallback (skill indisponível)
+- `origin`: skill ou agente que identificou o ponto.
+- `domain`: clareza, backend, uiux, frontend, produto ou tecnico.
+- `stage = 'BRAINSTORM_GERAL'`.
+- Evidencia ou trecho de contexto que motivou a pergunta.
 
-`AskUserQuestion` individual: *"A skill `<id>` está indisponível. Prosseguir sem este brainstorm, ou aguardar/retentar?"* (`origin = 'pensador'`, `stage = <ID>`). O gate não avança sem resposta.
+Antes de perguntar:
+
+- Remova duplicatas do PRD Base, EXPAND e respostas anteriores.
+- Una perguntas equivalentes de origens diferentes, preservando todos os selos de autoria.
+- Nao reapresente perguntas ja respondidas.
 
 ---
 
-## Detalhe por skill
+## Fallback de lentes
 
-### CLARITY — `requirements-clarity`
-**Sempre relevante.** Primeira lente após a ampliação do Pensador. Foca em transformar requisitos vagos em verificáveis: termos ambíguos ("rápido", "fácil"), requisitos implícitos, escopo dentro/fora, dependências, e critérios de aceite testáveis. As respostas alimentam principalmente **Requisitos Funcionais**, **Critérios de Aceite** e **Casos de Uso** do PRD.
+Se uma skill estiver indisponivel:
 
-> **Não repita o EXPAND.** EXPAND e CLARITY compartilham terreno (requisitos implícitos, RNFs, escopo). Antes de perguntar, descarte toda lacuna que EXPAND já resolveu e reaproveite a resposta existente — CLARITY só pergunta o que continua ambíguo *depois* da ampliação.
+1. Registre a indisponibilidade.
+2. Pergunte via `AskUserQuestion` se deve retentar, seguir sem a lente ou registrar as lacunas como `"TBD"`.
+3. O fallback e por dominio; dominios independentes continuam validos.
 
-### BACKEND — `backend-development`
-**Relevante se há backend.** Foca em: modelo de dados e persistência, endpoints e contratos de API, integrações externas, autenticação/autorização, consistência transacional, escalabilidade, idempotência, observabilidade e tratamento de erros. Alimenta **Arquitetura**, **Requisitos Não-Funcionais** e o **`comunication_json.md`**.
-
-### UIUX — `ui-ux-pro-max`
-**Relevante se há front-end.** Foca em: fluxos de UX ponta-a-ponta, estados de tela (vazio, carregando, erro, sucesso), acessibilidade (WCAG), hierarquia visual, navegação, microcopy e feedback. Alimenta **Casos de Uso**, **`userhistory.md`** e a parte de UI da **Arquitetura**.
-
-### FRONTEND — `frontend-design`
-**Relevante se há front-end.** Foca em: componentização, design system/tokens, responsividade e breakpoints, layout/grid, padrões de interação e estados de componente. Complementa a UIUX e alimenta **Arquitetura** (stack/estrutura de front) e **Requisitos Funcionais** de interface.
-
-> UIUX e FRONTEND são complementares: UIUX olha *o que/por que* da experiência; FRONTEND olha *como* estruturar e construir a interface. Em projetos de front-end simples, é aceitável que FRONTEND produza poucas ou nenhuma pergunta além das de UIUX.
+Quando Codex ou AGY nao cobrirem suficientemente um dominio durante BRAINSTORM_GERAL, o Pensador pode usar `backend-development`, `ui-ux-pro-max` ou `frontend-design` como lente complementar, respeitando o modo Lite/Completo e o gate do estagio.
 
 ---
 
 ## Leitura relacionada
 
-- `references/stages.md` — gates por estágio e protocolo de fallback.
-- `references/agent-stack.md` — Codex (effort) e AGY (modelo).
-- `references/askuserquestion-protocol.md` — canal único de diálogo.
-- `scripts/pensador-engine.mjs` — `STAGE_DELEGATION`, `GAP_ORIGINS`, `classifyProject`.
+- `references/stages.md`: definicao de `BRAINSTORM_GERAL`.
+- `references/agent-stack.md`: roteamento de Codex/AGY e contrato `shared-agents/`.
+- `references/feature-isolation.md`: layout isolado por feature.
+- `references/askuserquestion-protocol.md`: regras de pergunta, previews, autoria e handoff.

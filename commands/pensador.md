@@ -1,101 +1,113 @@
 ---
-description: Conduz um fluxo de oito estágios de questionamento e pensamento sobre uma demanda — incluindo brainstorms por skill (requirements-clarity, backend-development, ui-ux-pro-max, frontend-design) — produzindo um PRD de alta qualidade com artefatos de apoio (prd.md, userhistory.md e comunication_json.md quando há back-end).
-argument-hint: "<demanda em linguagem natural — ex.: 'Crie uma tela de login para os usuários'>"
+description: Conduz o Pensador v2 em dez estagios, com arquitetura, expansao, complexidade, brainstorm geral por dominio, Codex, AGY e artefatos isolados por feature.
+argument-hint: "<demanda em linguagem natural - ex.: 'Crie uma tela de login para os usuarios'>"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), AskUserQuestion, Agent, Skill
 ---
 
 # /pensador
 
-Inicia o **Pensador** para a demanda descrita em `$ARGUMENTS`. O fluxo cobre **oito estágios de trabalho** mais a entrega final:
+Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre dez estagios:
 
-1. **PRD_BASE** — Geração do PRD Base a partir da `Skill_PRD_Base`
-2. **EXPAND** — Ampliação da demanda com requisitos candidatos (via `AskUserQuestion`)
-3. **CLARITY** — Brainstorm de clareza de requisitos com a skill `requirements-clarity` *(sempre)*
-4. **BACKEND** — Brainstorm de back-end com a skill `backend-development` *(se há backend)*
-5. **UIUX** — Brainstorm de UX com a skill `ui-ux-pro-max` *(se há front-end)*
-6. **FRONTEND** — Brainstorm de design de front-end com a skill `frontend-design` *(se há front-end)*
-7. **CODEX** — Refinamento técnico com `codex:codex-rescue` (`--effort high`)
-8. **AGY** — Lacunas remanescentes com `cc-antigravity-plugin:antigravity-agent` (`--model gemini-3.1-pro-high`)
-9. **FINAL** — Geração dos artefatos: `prd.md`, `userhistory.md` e, se há back-end, `comunication_json.md`
+1. **INIT** - Demanda, checkpoint v2 e `allocateFeatureDir()`.
+2. **PRD_BASE** - Geracao do PRD Base pela `Skill_PRD_Base`.
+3. **ARCH** - Analise do projeto via `Read`/`Glob`/`Grep`; em greenfield, entrevista o usuario; grava `architecture.md`.
+4. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
+5. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
+6. **BRAINSTORM_GERAL** - Orquestracao por dominio: `requirements-clarity`, Codex `effort high` se `hasBackend`, AGY `gemini-3.1-pro-high` se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
+7. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`.
+8. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
+9. **FINAL** - Consolidacao, artefatos, recap final e handoff.
+10. **DONE** - Estado terminal.
 
-As etapas de brainstorm (3–6) usam skills especializadas para reforçar a integridade do PRD; uma etapa de domínio não-aplicável produz zero perguntas e auto-avança.
+`STAGE_ORDER` v2:
 
-**Regra central:** todo diálogo com o usuário — demanda ausente, requisitos candidatos, pontos das skills de brainstorm, do Codex, do AGY e decisões de fallback — usa **exclusivamente** a ferramenta `AskUserQuestion`.
+```text
+INIT -> PRD_BASE -> ARCH -> EXPAND -> COMPLEXITY -> BRAINSTORM_GERAL -> CODEX -> AGY -> FINAL -> DONE
+```
+
+Os antigos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` nao sao mais estagios autonomos; eles viraram lentes de dominio dentro de `BRAINSTORM_GERAL`.
+
+**Regra central:** todo dialogo com o usuario usa exclusivamente `AskUserQuestion`.
 
 ---
 
 ## Comportamento
 
-### Passo 1 — Preflight
+### Passo 1 - Preflight
 
-Execute o preflight para verificar a disponibilidade dos subagentes:
+Execute o preflight para verificar disponibilidade dos subagentes:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.mjs"
 ```
 
-Parse o JSON retornado e registre o status de cada subagente:
+Parse o JSON retornado e registre o status:
 
-- `status: "ok"` → ambos disponíveis; o fluxo completo de oito estágios pode prosseguir.
-- `status: "partial"` → um ou mais subagentes indisponíveis; prossiga e aplique o protocolo de fallback nos estágios afetados (ver `skills/pensador/references/stages.md`).
-- `status: "unavailable"` → nenhum subagente disponível; informe ao usuário e aplique fallback nos estágios **CODEX** e **AGY**.
+- `status: "ok"` - subagentes disponiveis.
+- `status: "partial"` - prossiga e aplique fallback nos dominios/estagios afetados.
+- `status: "unavailable"` - informe a indisponibilidade e use fallback em CODEX/AGY quando necessario.
 
-> **Degradação graciosa:** se o preflight **não puder ser executado** (ex.: `node` ausente do PATH, script não encontrado, saída não-JSON), **não aborte o fluxo**. Trate como `status: "partial"` — registre que a verificação falhou, informe ao usuário e aplique o protocolo de fallback nos estágios CODEX e AGY conforme a disponibilidade real for descoberta na invocação. O preflight é um sinal de conveniência, não um gate.
+Se o preflight falhar, nao aborte. Trate como `partial`.
 
-### Passo 2 — Verificar a demanda
+### Passo 2 - Carregar Pensador
 
-Leia `$ARGUMENTS`:
-
-- **`$ARGUMENTS` não vazio** → use o conteúdo como a demanda inicial e avance para o Passo 3.
-- **`$ARGUMENTS` vazio** → solicite a demanda via `AskUserQuestion` antes de qualquer outro passo:
-  > "Qual é a demanda? Descreva em linguagem natural o que você quer construir ou resolver."
-
-  Aguarde a resposta do usuário e use-a como demanda para o fluxo.
-
-### Passo 3 — Carregar a skill Pensador
-
-```
+```text
 Skill(skill="cc-pensador:pensador")
 ```
 
-A skill está em `${CLAUDE_PLUGIN_ROOT}/skills/pensador/SKILL.md`. Ela define o protocolo completo de cada estágio, os gates de avanço, a delegação ao Codex e ao AGY, as regras de fallback e a **retomada por checkpoint**.
+A skill define gates, checkpoint v2, isolamento por feature, delegacao e fallback.
 
-> **Retomada:** no `INIT`, a skill verifica `pensador-output/.pensador-progress.json`. Se houver um checkpoint válido, ela pergunta (via `AskUserQuestion`) se você quer **retomar** do estágio salvo ou **recomeçar** — antes de seguir para o PRD_BASE.
+### Passo 3 - INIT
 
-### Passo 4 — Iniciar (ou retomar) o fluxo
+- Verifique checkpoints v2 em `.pensador/feature-nN/.pensador-progress.json`.
+- Se houver checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova feature.
+- Se houver checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel e recomende iniciar v2 novo.
+- Para novo fluxo, use `allocateFeatureDir()` e registre `featurePath`.
+- Se `$ARGUMENTS` estiver vazio, solicite a demanda via `AskUserQuestion`.
 
-Com a demanda em mãos e o resultado do preflight registrado, inicie o estágio **PRD_BASE** (ou retome do estágio salvo, conforme a resposta de retomada) conforme definido em `skills/pensador/SKILL.md`:
+### Passo 4 - Executar os estagios
 
-- O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo (gates, mapeamentos, classificação, artefatos), validada pelos testes — **não** é importado em runtime pela skill. Aplique as regras descritas em prosa na SKILL diretamente. O único script executado por shell é o `preflight.mjs` (Passo 1).
-- Aplique o `Strict_PRD_Schema` da `Skill_PRD_Base` (`${CLAUDE_PLUGIN_ROOT}/skills/prd/SKILL.md`) para gerar o `PRD_Base`.
-- Prossiga pelos estágios EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX, AGY e FINAL conforme a skill e os gates de avanço determinarem.
+Siga a ordem v2 definida em `skills/pensador/SKILL.md` e `skills/pensador/references/stages.md`.
 
-### Passo 5 — Reportar ao usuário
+Artefatos e estado devem ficar sob:
 
-Ao concluir cada estágio, informe brevemente o progresso. Ao concluir o estágio FINAL, informe o caminho de cada artefato gerado:
+```text
+.pensador/feature-nN/
+  .pensador-progress.json
+  architecture.md
+  shared-agents/
+  pensador-output/
+```
 
-- `prd.md` — sempre gerado
-- `userhistory.md` — sempre gerado
-- `comunication_json.md` — gerado sempre que a demanda tiver back-end (`hasBackend`)
+### Passo 5 - Reportar ao usuario
+
+Ao concluir FINAL, informe:
+
+- Caminho de `prd.md`.
+- Caminho de `userhistory.md`.
+- Caminho de `comunication_json.md`, se houver back-end confirmado.
+- Caminho de `architecture.md`.
+- Caminho de `shared-agents/agent.response.md`.
+- Recap final e handoff.
 
 ---
 
-## Arquivos de referência
+## Arquivos de referencia
 
-| Arquivo | Propósito |
+| Arquivo | Proposito |
 |---|---|
-| `skills/pensador/SKILL.md` | Skill principal: orquestra os oito estágios + entrega final |
-| `skills/prd/SKILL.md` | Skill_PRD_Base: Strict_PRD_Schema, entrevista de descoberta, padrões de qualidade |
-| `skills/pensador/references/stages.md` | Definição detalhada de cada estágio e seus gates |
-| `skills/pensador/references/skill-stack.md` | Skills de brainstorm (CLARITY/BACKEND/UIUX/FRONTEND): lente, invocação, relevância |
-| `skills/pensador/references/agent-stack.md` | Subagentes Codex/AGY, mapeamento `extrahigh → high`, modelo AGY |
-| `skills/pensador/references/askuserquestion-protocol.md` | Canal único de diálogo com o usuário |
-| `skills/requirements-clarity/SKILL.md` · `skills/backend-development/SKILL.md` · `skills/ui-ux-pro-max/SKILL.md` · `skills/frontend-design/SKILL.md` | Skills de brainstorm empacotadas |
+| `skills/pensador/SKILL.md` | Skill principal do Pensador v2 |
+| `skills/prd/SKILL.md` | Skill_PRD_Base: schema e entrevista de descoberta |
+| `skills/pensador/references/stages.md` | Definicao detalhada dos dez estagios |
+| `skills/pensador/references/feature-isolation.md` | Isolamento `.pensador/feature-nN/`, `allocateFeatureDir()`, checkpoint e `shared-agents/` |
+| `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
+| `skills/pensador/references/agent-stack.md` | Codex/AGY, roteamento por dominio e contrato `shared-agents/` |
+| `skills/pensador/references/askuserquestion-protocol.md` | AskUserQuestion, opcoes recomendadas, previews, recap final e handoff |
 | `scripts/preflight.mjs` | Verifica disponibilidade de Codex e AGY |
-| `scripts/pensador-engine.mjs` | Especificação determinística de referência (máquina de estados, gates, mapeamentos, artefatos) — validada por testes, não importada em runtime |
+| `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia, nao importada em runtime pela skill |
 
 ---
 
-## Quando o usuário invocar sem argumento
+## Quando invocado sem argumento
 
-Se `$ARGUMENTS` estiver vazio, use `AskUserQuestion` para solicitar a demanda (ver Passo 2 acima). Nunca inicie o estágio PRD_BASE sem uma demanda presente e não vazia.
+Se `$ARGUMENTS` estiver vazio, solicite a demanda via `AskUserQuestion`. Nunca inicie `PRD_BASE` sem demanda presente e nao vazia.

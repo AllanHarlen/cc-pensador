@@ -34,15 +34,14 @@
  */
 export const STAGE_ORDER = [
   'INIT',
-  'PRD_BASE',   // Stage 1 — PRD base from Strict_PRD_Schema
-  'EXPAND',     // Stage 2 — Pensador's own requirement expansion
-  'CLARITY',    // Stage 3 — brainstorm: requirements-clarity skill
-  'BACKEND',    // Stage 4 — brainstorm: backend-development skill
-  'UIUX',       // Stage 5 — brainstorm: ui-ux-pro-max skill
-  'FRONTEND',   // Stage 6 — brainstorm: frontend-design skill
-  'CODEX',      // Stage 7 — technical refinement (codex:codex-rescue)
-  'AGY',        // Stage 8 — remaining product gaps (antigravity-agent)
-  'FINAL',      // Artifact generation
+  'PRD_BASE',
+  'ARCH',
+  'EXPAND',
+  'COMPLEXITY',
+  'BRAINSTORM_GERAL',
+  'CODEX',
+  'AGY',
+  'FINAL',
   'DONE',
 ];
 
@@ -50,7 +49,7 @@ export const STAGE_ORDER = [
  * Stages that produce consolidated requirements (every working stage after the
  * PRD base scaffold). Used by consolidate().
  */
-export const REQUIREMENT_STAGES = ['EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRONTEND', 'CODEX', 'AGY'];
+export const REQUIREMENT_STAGES = ['EXPAND', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
 
 /**
  * Stages that delegate to an external brainstorm skill or subagent, mapped to
@@ -63,10 +62,31 @@ export const REQUIREMENT_STAGES = ['EXPAND', 'CLARITY', 'BACKEND', 'UIUX', 'FRON
  * still *visited*, never skipped.
  */
 export const STAGE_DELEGATION = {
-  CLARITY:  { kind: 'skill',    ref: 'requirements-clarity', origin: 'requirements-clarity', relevantWhen: 'always' },
-  BACKEND:  { kind: 'skill',    ref: 'backend-development',  origin: 'backend-development',  relevantWhen: 'hasBackend' },
-  UIUX:     { kind: 'skill',    ref: 'ui-ux-pro-max',        origin: 'ui-ux-pro-max',        relevantWhen: 'hasFrontend' },
-  FRONTEND: { kind: 'skill',    ref: 'frontend-design',      origin: 'frontend-design',      relevantWhen: 'hasFrontend' },
+  BRAINSTORM_GERAL: {
+    kind: 'parallel',
+    domains: {
+      requirements: {
+        kind: 'skill',
+        ref: 'requirements-clarity',
+        origin: 'requirements-clarity',
+        relevantWhen: 'always',
+      },
+      backend: {
+        kind: 'subagent',
+        ref: 'codex:codex-rescue',
+        origin: 'codex',
+        param: '--effort high',
+        relevantWhen: 'hasBackend',
+      },
+      uiux: {
+        kind: 'subagent',
+        ref: 'cc-antigravity-plugin:antigravity-agent',
+        origin: 'agy',
+        param: '--model gemini-3.1-pro-high',
+        relevantWhen: 'hasFrontend',
+      },
+    },
+  },
   CODEX:    { kind: 'subagent', ref: 'codex:codex-rescue',                          origin: 'codex', param: '--effort high' },
   AGY:      { kind: 'subagent', ref: 'cc-antigravity-plugin:antigravity-agent',     origin: 'agy',   param: '--model gemini-3.1-pro-high' },
 };
@@ -84,6 +104,71 @@ export const AGY_STAGE_MODEL = 'gemini-3.1-pro-high';
 
 /** Channel constant for all user-facing questions. */
 export const ASK_USER_QUESTION = 'ASK_USER_QUESTION';
+
+/**
+ * Detects whether the Pensador flow should run in Lite or Completo mode.
+ *
+ * @param {ComplexitySignals} signals
+ * @returns {ComplexityResult}
+ */
+export function detectComplexity(signals = {}) {
+  const score = [
+    Number(signals?.domainCount) > 1,
+    signals?.hasBackend === true,
+    signals?.hasBroadScopeKeywords === true,
+    signals?.isGreenfield === true,
+  ].filter(Boolean).length;
+
+  return {
+    score,
+    mode: score >= 2 ? 'Completo' : 'Lite',
+  };
+}
+
+/**
+ * Allocates the next feature directory or resumes an incomplete checkpoint.
+ *
+ * @param {string[]} existingFeatureDirs
+ * @param {{ nameSuffix?: string, incompleteCheckpoint?: string }} options
+ * @returns {FeatureDirResult}
+ */
+export function allocateFeatureDir(existingFeatureDirs = [], options = {}) {
+  if (options?.incompleteCheckpoint) {
+    const checkpointName = String(options.incompleteCheckpoint);
+    const featureN = Number(checkpointName.match(/feature-n(\d+)/)?.[1] ?? 0);
+    return {
+      featureDir: `.pensador/${checkpointName}`,
+      isResume: true,
+      featureN,
+    };
+  }
+
+  const maxN = (Array.isArray(existingFeatureDirs) ? existingFeatureDirs : []).reduce((max, dirName) => {
+    const n = Number(String(dirName).match(/feature-n(\d+)/)?.[1] ?? 0);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  const featureN = maxN + 1;
+  const dirName = options?.nameSuffix
+    ? `feature-n${featureN}-${options.nameSuffix}`
+    : `feature-n${featureN}`;
+
+  return {
+    featureDir: `.pensador/${dirName}`,
+    isResume: false,
+    featureN,
+  };
+}
+
+/**
+ * Builds a path inside a feature directory.
+ *
+ * @param {string} featureDir
+ * @param {'shared-agents' | 'pensador-output'} subdir
+ * @returns {string}
+ */
+export function buildFeaturePath(featureDir, subdir) {
+  return `${featureDir}/${subdir}`;
+}
 
 // ---------------------------------------------------------------------------
 // State initialization
@@ -110,6 +195,7 @@ export function initState(demanda) {
     questions: [],
     prdBase: { sections: {} },
     consolidated: [],
+    featurePath: null,
   };
 }
 
@@ -211,8 +297,8 @@ export function advance(state) {
 
 /**
  * Consolidates all answered questions from the requirement-producing stages
- * (EXPAND, CLARITY, BACKEND, UIUX, FRONTEND, CODEX, AGY) into Requirement
- * objects. Unanswered questions are excluded.
+ * (EXPAND, BRAINSTORM_GERAL, CODEX, AGY) into Requirement objects.
+ * Unanswered questions are excluded.
  *
  * @param {StageState} state
  * @returns {Requirement[]}
@@ -374,7 +460,9 @@ export function buildArtifactList(state) {
   // Artifacts are written under a dedicated output directory so a /pensador run
   // never clobbers a pre-existing prd.md (or sibling) at the project root. The
   // LLM still confirms before overwriting a file that already exists in here.
-  const basePath = './pensador-output/';
+  const basePath = state.featurePath
+    ? `${state.featurePath}/pensador-output/`
+    : '.pensador/feature-n1/pensador-output/';
 
   /** @type {Artifact[]} */
   const artifacts = [];
@@ -487,7 +575,7 @@ export function dispatchQuestion(question) {
  * Schema version for the serialized checkpoint. Bump when the StageState shape
  * changes incompatibly so deserializeState can reject stale checkpoints.
  */
-export const CHECKPOINT_VERSION = 1;
+export const CHECKPOINT_VERSION = 2;
 
 /**
  * Serializes a StageState to a JSON string suitable for writing to a checkpoint
@@ -548,7 +636,7 @@ export function deserializeState(serialized) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'INIT'|'PRD_BASE'|'EXPAND'|'CLARITY'|'BACKEND'|'UIUX'|'FRONTEND'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
+ * @typedef {'INIT'|'PRD_BASE'|'ARCH'|'EXPAND'|'COMPLEXITY'|'BRAINSTORM_GERAL'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
  */
 
 /**
@@ -588,6 +676,7 @@ export function deserializeState(serialized) {
  * @property {Question[]} questions
  * @property {PrdDocument} prdBase
  * @property {Requirement[]} consolidated
+ * @property {string|null} [featurePath] // .pensador/feature-nN - set after feature allocation
  */
 
 /**
@@ -608,4 +697,26 @@ export function deserializeState(serialized) {
  * @typedef {Object} JourneyStep
  * @property {number} order
  * @property {string} interaction
+ */
+
+
+/**
+ * @typedef {Object} ComplexitySignals
+ * @property {number} [domainCount]
+ * @property {boolean} [hasBackend]
+ * @property {boolean} [hasBroadScopeKeywords]
+ * @property {boolean} [isGreenfield]
+ */
+
+/**
+ * @typedef {Object} ComplexityResult
+ * @property {number} score
+ * @property {'Lite'|'Completo'} mode
+ */
+
+/**
+ * @typedef {Object} FeatureDirResult
+ * @property {string} featureDir
+ * @property {boolean} isResume
+ * @property {number} featureN
  */

@@ -1,111 +1,142 @@
-# Agent Stack do Pensador — Referência
+# Agent Stack do Pensador v2
 
-Este documento descreve os **subagentes** usados pelo Pensador nos estágios CODEX e AGY, o mapeamento de effort do Codex e o modelo do AGY.
+Este documento descreve os subagentes usados pelo Pensador v2 e o contrato de arquivos compartilhados em `shared-agents/`.
 
-Para as quatro **skills de brainstorm** (CLARITY/BACKEND/UIUX/FRONTEND), veja `references/skill-stack.md`.
+As skills de dominio sao descritas em `references/skill-stack.md`.
 
 ---
 
-## Visão Geral dos Subagentes
+## Visao geral
 
-| Subagente | Identificador | Estágio | Parâmetro efetivo |
+| Subagente | Identificador | Onde participa | Parametro efetivo |
 |---|---|---|---|
-| Codex | `codex:codex-rescue` | CODEX (7) | `--effort high` |
-| AGY | `cc-antigravity-plugin:antigravity-agent` | AGY (8) | `--model gemini-3.1-pro-high` |
+| Codex | `codex:codex-rescue` | `BRAINSTORM_GERAL` quando `hasBackend`; `CODEX` sempre | `effort high` |
+| AGY | `cc-antigravity-plugin:antigravity-agent` | `BRAINSTORM_GERAL` quando `hasFrontend`; `AGY` sempre | `model gemini-3.1-pro-high` |
 
----
+O tool `Agent` recebe `subagent_type` e `prompt`; nao ha campo de flags. Sempre comunique o parametro no corpo do prompt e registre o valor para rastreabilidade.
 
-## Como invocar subagentes — passagem de parâmetros (importante)
-
-O tool `Agent` recebe `subagent_type` e `prompt`; **não há um campo para flags CLI** (`--effort`, `--model`). Portanto:
-
-> O parâmetro efetivo é **comunicado no corpo do prompt** ao subagente (e/ou conforme a interface própria do subagente), e o valor é **registrado para rastreabilidade**. Nunca dependa de um campo de flag inexistente.
-
-```
+```text
 Agent(subagent_type="codex:codex-rescue", prompt="... Use effort: high. ...")
 Agent(subagent_type="cc-antigravity-plugin:antigravity-agent", prompt="... Use model: gemini-3.1-pro-high. ...")
 ```
 
-Os valores vêm sempre do Engine: `mapEffort('extrahigh')` para o Codex e `agyStageModel()` para o AGY.
+---
+
+## BRAINSTORM_GERAL: roteamento por dominio
+
+`BRAINSTORM_GERAL` e o ponto de orquestracao paralela. Ele usa o contexto gravado em:
+
+```text
+<featurePath>/shared-agents/context-pack.md
+```
+
+Roteamento:
+
+| Dominio | Participante | Condicao | Saida esperada |
+|---|---|---|---|
+| Clareza de requisitos | `requirements-clarity` | sempre | `requirements-clarity.response.md` |
+| Backend/tecnico | Codex | `hasBackend = true` | `codex.response.md` |
+| Frontend/produto | AGY | `hasFrontend = true` | `agy.response.md` |
+
+O Pensador consolida as respostas em:
+
+```text
+<featurePath>/shared-agents/agent.response.md
+```
+
+Esse arquivo e a fonte de perguntas candidatas do BRAINSTORM_GERAL.
 
 ---
 
-## Codex — `codex:codex-rescue`
+## Contrato `shared-agents/`
 
-### Mapeamento de Effort: `extrahigh → high`
+| Arquivo | Escritor | Leitor | Conteudo |
+|---|---|---|---|
+| `context-pack.md` | Pensador | Skills e subagentes | Demanda, PRD Base, arquitetura, EXPAND, complexidade, dominios e instrucoes |
+| `requirements-clarity.response.md` | Skill `requirements-clarity` | Pensador | Ambiguidades, criterios de aceite, escopo e perguntas candidatas |
+| `codex.response.md` | Codex | Pensador | Lacunas tecnicas, riscos de backend, contratos, dados e seguranca |
+| `agy.response.md` | AGY | Pensador | Lacunas de produto/frontend, jornadas, telas, cenarios e riscos |
+| `agent.response.md` | Pensador | Pensador/FINAL | Consolidado com autoria, dominio, severidade, deduplicacao e perguntas aprovadas |
 
-O usuário solicita effort `extrahigh`, mas o `codex:codex-rescue` reconhece apenas:
+Formato recomendado para respostas:
 
-- `medium`
-- `high`
+```markdown
+# <participante>.response
 
-| Solicitado (`requested`) | Efetivo (comunicado ao Codex) |
+## Contexto usado
+- Feature: <featurePath>
+- Modo: Lite|Completo
+- Dominios: <lista>
+
+## Pontos em aberto
+| ID | Dominio | Severidade | Evidencia | Pergunta candidata | Autoria |
+|---|---|---|---|---|---|
+
+## Observacoes
+- <riscos ou premissas>
+```
+
+---
+
+## Codex
+
+### Effort
+
+O usuario pode pedir `extrahigh`, mas o valor efetivo aceito pelo fluxo e `high`.
+
+| Solicitado | Efetivo |
 |---|---|
 | `medium` | `medium` |
 | `high` | `high` |
 | `extrahigh` | `high` |
 
-`extrahigh` é mapeado para `high` (o nível máximo real do Codex). O termo `extrahigh` preserva a intenção do usuário no vocabulário do fluxo; o valor passado é **sempre** `high`.
+Regra: nunca comunique `extrahigh` ao Codex. Use `effort high`.
 
-**Regra:** nunca comunique `extrahigh` ao Codex. Use sempre o retorno de `mapEffort('extrahigh')` (que é `'high'`).
+### No BRAINSTORM_GERAL
 
-```js
-import { mapEffort } from '../../../scripts/pensador-engine.mjs';
-const effort = mapEffort('extrahigh'); // 'high'
-// → inclua "Use effort: high." no prompt do subagente
-```
+Codex roda quando `hasBackend = true`. O prompt deve pedir analise tecnica focada em dados, API, contratos, seguranca, consistencia, observabilidade, integracoes e riscos de implementacao. A resposta deve ser gravada em `shared-agents/codex.response.md`.
 
----
+### No CODEX
 
-## AGY — `cc-antigravity-plugin:antigravity-agent`
-
-### Modelo: `gemini-3.1-pro-high`
-
-- Retornado por `agyStageModel()`.
-- Verificado em tempo de chamada como membro do `AGY_MODEL_ALLOWLIST`.
-- Única fonte de verdade — nunca hardcode o valor.
-
-> ⚠️ **A confirmar:** o identificador `gemini-3.1-pro-high` precisa ser validado contra os modelos efetivamente aceitos pelo `cc-antigravity-plugin:antigravity-agent` na sua instalação. Se o plugin rejeitar o id, o estágio AGY cairá sempre em fallback. Ao confirmar o id correto, atualize **ao mesmo tempo** `AGY_STAGE_MODEL` e o `AGY_MODEL_ALLOWLIST` no engine (a allowlist existe justamente para tornar essa troca consciente).
-
-```js
-import { agyStageModel } from '../../../scripts/pensador-engine.mjs';
-const model = agyStageModel(); // 'gemini-3.1-pro-high'
-// → inclua "Use model: gemini-3.1-pro-high." no prompt do subagente
-```
-
-### `AGY_MODEL_ALLOWLIST` — por que existe
-
-```js
-export const AGY_MODEL_ALLOWLIST = ['gemini-3.1-pro-high'];
-```
-
-**Propósito:** guardar contra _model drift_ — o identificador do modelo mudar (atualização, renomeação, substituição) sem que o fluxo seja atualizado conscientemente. `agyStageModel()` lança erro explícito se `AGY_STAGE_MODEL` não estiver na allowlist. Adotar um novo modelo deve ser **intencional**: adicionar à allowlist e atualizar `AGY_STAGE_MODEL`.
+Codex roda sempre como varredura tecnica final, considerando tambem `agent.response.md` e respostas do usuario. Pontos relevantes viram perguntas `origin = 'codex'`, `stage = 'CODEX'`.
 
 ---
 
-## Disponibilidade e preflight
+## AGY
 
-O `scripts/preflight.mjs` verifica a presença do Codex e do AGY antes do fluxo. **Atenção:** a verificação por binário CLI (`codex --version` / `agy --version`) pode gerar falso-negativo quando o subagente é distribuído apenas como *plugin* (sem binário homônimo no PATH) — em especial o AGY. Trate "indisponível" do preflight como um **sinal**, não veredito: confirme aplicando o protocolo de fallback no estágio correspondente. Veja `references/stages.md`.
+### Modelo
+
+Modelo efetivo: `gemini-3.1-pro-high`.
+
+Regra: comunique o modelo no prompt e registre o valor. Se o plugin rejeitar o identificador, aplique fallback do estagio afetado.
+
+### No BRAINSTORM_GERAL
+
+AGY roda quando `hasFrontend = true`. O prompt deve pedir analise de experiencia, produto, jornadas, telas, estados, cenarios de uso e riscos de decisao. A resposta deve ser gravada em `shared-agents/agy.response.md`.
+
+### No AGY
+
+AGY roda sempre como varredura final de produto, considerando o consolidado ate CODEX. Pontos relevantes viram perguntas `origin = 'agy'`, `stage = 'AGY'`.
 
 ---
 
-## Resumo de Identificadores e Parâmetros
+## Fallback
 
-```
-# CODEX (Estágio 7)
-Subagente : codex:codex-rescue
-Parâmetro : effort high   (de mapEffort('extrahigh') === 'high'; comunicado no prompt)
+Fallback e sempre decidido via `AskUserQuestion`.
 
-# AGY (Estágio 8)
-Subagente : cc-antigravity-plugin:antigravity-agent
-Parâmetro : model gemini-3.1-pro-high   (de agyStageModel(); comunicado no prompt)
-```
+No `BRAINSTORM_GERAL`, o fallback e por dominio. Uma falha em Codex nao impede aproveitar a resposta de `requirements-clarity` ou AGY, por exemplo. As opcoes padrao sao:
+
+- Retentar o participante.
+- Seguir sem aquele dominio.
+- Registrar lacunas daquele dominio como `"TBD"`.
+
+Nos estagios `CODEX` e `AGY`, o fallback bloqueia o gate do proprio estagio ate haver resposta ou diferimento.
 
 ---
 
 ## Leitura relacionada
 
-- `references/skill-stack.md` — as 4 skills de brainstorm (CLARITY/BACKEND/UIUX/FRONTEND).
-- `references/stages.md` — gates por estágio e protocolo de fallback.
-- `references/askuserquestion-protocol.md` — canal único de diálogo.
-- `scripts/pensador-engine.mjs` — `mapEffort`, `agyStageModel`, `AGY_MODEL_ALLOWLIST`, `STAGE_DELEGATION`.
+- `references/stages.md`: gates e comportamento por estagio.
+- `references/feature-isolation.md`: layout de `shared-agents/` e retomada.
+- `references/skill-stack.md`: skills como lentes de dominio.
+- `references/askuserquestion-protocol.md`: canal unico, autoria, previews e handoff.
