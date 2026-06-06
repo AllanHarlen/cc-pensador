@@ -108,7 +108,7 @@ No FINAL, use `AskUserQuestion` para confirmar qualquer decisao pendente que afe
 
 O recap deve conter:
 
-- Caminhos dos artefatos em `<featurePath>/pensador-output/`.
+- Caminhos dos artefatos em `<featurePath>/` (ex.: `.pensador/<slug>/`).
 - Decisoes principais.
 - Perguntas diferidas e onde ficaram como `"TBD"`.
 - Dominios cobertos no BRAINSTORM_GERAL.
@@ -120,7 +120,7 @@ O recap deve conter:
 
 O handoff e a orientacao final para quem vai implementar ou revisar o PRD. Ele deve indicar:
 
-- Feature isolada: `<featurePath>`.
+- Atualizacao isolada: `<featurePath>`.
 - Artefatos finais.
 - `architecture.md`.
 - `shared-agents/agent.response.md`.
@@ -137,7 +137,7 @@ Perguntas de retomada tambem usam `AskUserQuestion`.
 Checkpoint v2 valido:
 
 - Opcao recomendada: retomar quando o checkpoint esta consistente.
-- Alternativa: iniciar nova feature com `allocateFeatureDir()`.
+- Alternativa: iniciar nova atualizacao com `allocateFeatureDir()`.
 
 Checkpoint v1 detectado:
 

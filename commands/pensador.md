@@ -55,12 +55,12 @@ Se o preflight falhar, nao aborte. Trate como `partial`.
 Skill(skill="cc-pensador:pensador")
 ```
 
-A skill define gates, checkpoint v2, isolamento por feature, delegacao e fallback.
+A skill define gates, checkpoint v2, isolamento por atualizacao, delegacao e fallback.
 
 ### Passo 3 - INIT
 
-- Verifique checkpoints v2 em `.pensador/feature-nN/.pensador-progress.json`.
-- Se houver checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova feature.
+- Verifique checkpoints v2 em `.pensador/<slug>/.pensador-progress.json`.
+- Se houver checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova atualizacao.
 - Se houver checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel e recomende iniciar v2 novo.
 - Para novo fluxo, use `allocateFeatureDir()` e registre `featurePath`.
 - Se `$ARGUMENTS` estiver vazio, solicite a demanda via `AskUserQuestion`.
@@ -72,11 +72,13 @@ Siga a ordem v2 definida em `skills/pensador/SKILL.md` e `skills/pensador/refere
 Artefatos e estado devem ficar sob:
 
 ```text
-.pensador/feature-nN/
+.pensador/<slug>/
   .pensador-progress.json
   architecture.md
   shared-agents/
-  pensador-output/
+  prd.md
+  userhistory.md
+  comunication_json.md
 ```
 
 ### Passo 5 - Reportar ao usuario
@@ -99,7 +101,7 @@ Ao concluir FINAL, informe:
 | `skills/pensador/SKILL.md` | Skill principal do Pensador v2 |
 | `skills/prd/SKILL.md` | Skill_PRD_Base: schema e entrevista de descoberta |
 | `skills/pensador/references/stages.md` | Definicao detalhada dos dez estagios |
-| `skills/pensador/references/feature-isolation.md` | Isolamento `.pensador/feature-nN/`, `allocateFeatureDir()`, checkpoint e `shared-agents/` |
+| `skills/pensador/references/feature-isolation.md` | Isolamento `.pensador/<slug>/`, `allocateFeatureDir()`, checkpoint e `shared-agents/` |
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Codex/AGY, roteamento por dominio e contrato `shared-agents/` |
 | `skills/pensador/references/askuserquestion-protocol.md` | AskUserQuestion, opcoes recomendadas, previews, recap final e handoff |

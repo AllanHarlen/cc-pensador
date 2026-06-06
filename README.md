@@ -21,7 +21,7 @@
 
 ## Visão geral
 
-O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por feature em `.pensador/feature-nN/`.
+O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por atualização em `.pensador/<slug>/`.
 
 **Invariante central:** todo diálogo entre os agentes e o usuário passa **exclusivamente** pela ferramenta `AskUserQuestion`. Nenhum estágio conversa por outro canal.
 
@@ -50,20 +50,20 @@ O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → ca
 
 ## Artefatos gerados
 
-Todos gravados sob `.pensador/feature-nN/pensador-output/`. Confirma sobrescrita via `AskUserQuestion` se o arquivo já existir.
+Todos gravados diretamente sob `.pensador/<slug>/`. Confirma sobrescrita via `AskUserQuestion` se o arquivo já existir.
 
 - `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(sempre)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
 - `comunication_json.md` — Contrato de comunicação/API em JSON. *(sempre que houver back-end)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
 
-## Isolamento por feature
+## Isolamento por atualização
 
-Cada execução do Pensador cria (ou retoma) um diretório isolado:
+Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo slug do nome da atualização:
 
 ```
 .pensador/
-└── feature-nN[-sufixo]/
+└── <slug>/                        ← ex.: login-social
     ├── .pensador-progress.json    ← checkpoint v2
     ├── architecture.md
     ├── shared-agents/             ← troca entre subagentes
@@ -71,13 +71,12 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado:
     │   ├── requirements-clarity.response.md
     │   ├── codex.response.md
     │   └── agy.response.md
-    └── pensador-output/           ← artefatos finais
-        ├── prd.md
-        ├── userhistory.md
-        └── comunication_json.md
+    ├── prd.md                     ← artefatos finais
+    ├── userhistory.md
+    └── comunication_json.md
 ```
 
-`N` é um inteiro auto-incremental. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
+`<slug>` é o nome da atualização normalizado (minúsculas, sem acentos, hifenizado); fallback `atualizacao`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
 
 ## Instalação
 
@@ -178,7 +177,7 @@ cc-pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature
 │  │  ├─ references/
 │  │  │  ├─ stages.md                    # comportamento detalhado de cada estágio
-│  │  │  ├─ feature-isolation.md         # .pensador/feature-nN/, allocateFeatureDir(), shared-agents/
+│  │  │  ├─ feature-isolation.md         # .pensador/<slug>/, allocateFeatureDir(), shared-agents/
 │  │  │  ├─ agent-stack.md               # Codex/AGY, roteamento BRAINSTORM_GERAL, contrato de arquivos
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
@@ -210,7 +209,7 @@ cc-pensador/
 |---|---|---|
 | `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 10 estágios (com ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
-| Pasta de artefatos | `pensador-output/` | `.pensador/feature-nN/pensador-output/` |
+| Pasta de artefatos | `pensador-output/` | `.pensador/<slug>/` |
 | Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |
 | Brainstorm | 4 estágios sequenciais | 1 estágio paralelo por domínio |
 

@@ -132,44 +132,67 @@ export function detectComplexity(signals = {}) {
 }
 
 /**
- * Allocates the next feature directory or resumes an incomplete checkpoint.
+ * Normalizes an update name ("nome da atualização") into a filesystem-safe slug
+ * used directly as the update's folder name under `.pensador/`.
  *
- * @param {string[]} existingFeatureDirs
- * @param {{ nameSuffix?: string, incompleteCheckpoint?: string }} options
+ * Strips accents, lowercases, and collapses any run of non-alphanumeric
+ * characters into a single hyphen. Pure and total: same input → same output,
+ * never throws. Empty/whitespace-only input yields '' so the caller can apply a
+ * fallback.
+ *
+ * @param {string | null | undefined} name
+ * @returns {string}
+ */
+export function slugify(name) {
+  return String(name ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip diacritics
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Allocates the update directory or resumes an incomplete checkpoint.
+ *
+ * The folder name is the slug of the update name ("nome da atualização"), used
+ * directly under `.pensador/` (e.g. `.pensador/login-social`). There is no
+ * numeric `feature-nN` prefix — the slug is the identity. An empty/blank name
+ * falls back to `atualizacao`.
+ *
+ * @param {string[]} existingFeatureDirs - present for resume/context; not used
+ *   for naming since the slug is the identity.
+ * @param {{ name?: string, slug?: string, incompleteCheckpoint?: string }} options
  * @returns {FeatureDirResult}
  */
 export function allocateFeatureDir(existingFeatureDirs = [], options = {}) {
   if (options?.incompleteCheckpoint) {
     const checkpointName = String(options.incompleteCheckpoint);
-    const featureN = Number(checkpointName.match(/feature-n(\d+)/)?.[1] ?? 0);
     return {
       featureDir: `.pensador/${checkpointName}`,
       isResume: true,
-      featureN,
+      slug: checkpointName,
     };
   }
 
-  const maxN = (Array.isArray(existingFeatureDirs) ? existingFeatureDirs : []).reduce((max, dirName) => {
-    const n = Number(String(dirName).match(/feature-n(\d+)/)?.[1] ?? 0);
-    return Number.isFinite(n) && n > max ? n : max;
-  }, 0);
-  const featureN = maxN + 1;
-  const dirName = options?.nameSuffix
-    ? `feature-n${featureN}-${options.nameSuffix}`
-    : `feature-n${featureN}`;
+  const slug = slugify(options?.name ?? options?.slug ?? '') || 'atualizacao';
 
   return {
-    featureDir: `.pensador/${dirName}`,
+    featureDir: `.pensador/${slug}`,
     isResume: false,
-    featureN,
+    slug,
   };
 }
 
 /**
- * Builds a path inside a feature directory.
+ * Builds a path inside an update directory.
+ *
+ * Final artifacts (prd.md, userhistory.md, comunication_json.md) live directly
+ * in the update directory — only sibling working dirs like `shared-agents` go
+ * through here.
  *
  * @param {string} featureDir
- * @param {'shared-agents' | 'pensador-output'} subdir
+ * @param {'shared-agents'} subdir
  * @returns {string}
  */
 export function buildFeaturePath(featureDir, subdir) {
@@ -493,12 +516,13 @@ export function planArtifacts(state) {
  */
 export function buildArtifactList(state) {
   const plan = planArtifacts(state);
-  // Artifacts are written under a dedicated output directory so a /pensador run
-  // never clobbers a pre-existing prd.md (or sibling) at the project root. The
-  // LLM still confirms before overwriting a file that already exists in here.
+  // Artifacts are written directly inside the update directory
+  // (.pensador/<slug>/) so a /pensador run never clobbers a pre-existing prd.md
+  // (or sibling) at the project root. The LLM still confirms before overwriting
+  // a file that already exists in here.
   const basePath = state.featurePath
-    ? `${state.featurePath}/pensador-output/`
-    : '.pensador/feature-n1/pensador-output/';
+    ? `${state.featurePath}/`
+    : '.pensador/atualizacao/';
 
   /** @type {Artifact[]} */
   const artifacts = [];
@@ -615,7 +639,7 @@ export const CHECKPOINT_VERSION = 2;
 
 /**
  * Serializes a StageState to a JSON string suitable for writing to a checkpoint
- * file (e.g. pensador-output/.pensador-progress.json), enabling a /pensador run
+ * file (e.g. .pensador/<slug>/.pensador-progress.json), enabling a /pensador run
  * to be resumed after an interruption.
  *
  * StageState is already plain/JSON-able; this wraps it with a version tag and a
@@ -712,7 +736,7 @@ export function deserializeState(serialized) {
  * @property {Question[]} questions
  * @property {PrdDocument} prdBase
  * @property {Requirement[]} consolidated
- * @property {string|null} [featurePath] // .pensador/feature-nN - set after feature allocation
+ * @property {string|null} [featurePath] // .pensador/<slug> - set after update-dir allocation
  */
 
 /**
@@ -754,5 +778,5 @@ export function deserializeState(serialized) {
  * @typedef {Object} FeatureDirResult
  * @property {string} featureDir
  * @property {boolean} isResume
- * @property {number} featureN
+ * @property {string} slug
  */

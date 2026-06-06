@@ -57,12 +57,12 @@ INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CO
 
 ---
 
-## Isolamento por feature
+## Isolamento por atualizacao
 
 Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `allocateFeatureDir()`:
 
 ```text
-.pensador/feature-nN/
+.pensador/<slug>/
   .pensador-progress.json
   architecture.md
   shared-agents/
@@ -71,17 +71,16 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
     agy.response.md
     requirements-clarity.response.md
     agent.response.md
-  pensador-output/
-    prd.md
-    userhistory.md
-    comunication_json.md
+  prd.md
+  userhistory.md
+  comunication_json.md
 ```
 
 Regras:
 
-- O proximo `feature-nN` e escolhido pelo menor numero positivo ainda nao usado em `.pensador/`.
+- `<slug>` e o slug do nome da atualizacao (minusculas, sem acentos, nao alfanumericos colapsados em hifen); fallback `atualizacao` quando o nome ficar vazio.
 - `featurePath` e gravado no `StageState` e usado por todos os estagios seguintes.
-- Checkpoints v2 ficam em `<featurePath>/.pensador-progress.json`; artefatos finais ficam em `<featurePath>/pensador-output/`.
+- Checkpoints v2 ficam em `<featurePath>/.pensador-progress.json`; artefatos finais ficam diretamente em `<featurePath>/` (sem subpasta `pensador-output/`).
 - Checkpoints v1 em `pensador-output/.pensador-progress.json` sao incompativeis com v2; ofereca recomecar em v2 via `AskUserQuestion`, sem tentar desserializar como estado v2.
 - Consulte `references/feature-isolation.md` para retomada, contrato `shared-agents/` e nota de `.gitignore`.
 
@@ -151,10 +150,10 @@ DONE
 
 ## INIT
 
-1. Verifique se ha checkpoints v2 em `.pensador/feature-nN/.pensador-progress.json`.
-2. Se houver checkpoint v2 valido, pergunte via `AskUserQuestion` se o usuario quer retomar do estagio salvo ou iniciar nova feature. A opcao recomendada deve ser retomar quando o checkpoint estiver consistente.
+1. Verifique se ha checkpoints v2 em `.pensador/<slug>/.pensador-progress.json`.
+2. Se houver checkpoint v2 valido, pergunte via `AskUserQuestion` se o usuario quer retomar do estagio salvo ou iniciar nova atualizacao. A opcao recomendada deve ser retomar quando o checkpoint estiver consistente.
 3. Se houver apenas checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel. Pergunte se deve iniciar um fluxo v2 novo, deixando claro que o checkpoint antigo nao sera reutilizado.
-4. Se iniciar novo fluxo, execute `allocateFeatureDir()` e grave `featurePath` no estado.
+4. Se iniciar novo fluxo, derive um nome curto da atualizacao a partir da demanda, gere o slug (`slugify()`) e execute `allocateFeatureDir()` com esse nome; grave `featurePath = ".pensador/<slug>"` no estado. Use o fallback `atualizacao` quando o nome ficar vazio.
 5. Se a demanda estiver ausente ou vazia, solicite-a via `AskUserQuestion`.
 6. Com demanda presente e `featurePath` definido, avance para `PRD_BASE`.
 
@@ -323,7 +322,7 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 
 1. Aplique `withConsolidated(state)`.
 2. Confirme com o usuario via `AskUserQuestion` se ha back-end/API/contrato de comunicacao. Mostre a heuristica como sugestao e deixe a resposta do usuario prevalecer.
-3. Planeje artefatos em `<featurePath>/pensador-output/`: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end.
+3. Planeje artefatos em `<featurePath>/` (ex.: `.pensador/<slug>/`): `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end.
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
 5. Gere os artefatos usando os templates.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff.

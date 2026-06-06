@@ -24,7 +24,7 @@ import { STAGE_ORDER } from '../scripts/pensador-engine.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../', import.meta.url));
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '.kiro', '.claude', 'pensador-output', 'test']);
+const SKIP_DIRS = new Set(['node_modules', '.git', '.kiro', '.claude', '.pensador', 'pensador-output', 'test']);
 const SCAN_EXT = new Set(['.md', '.mjs', '.js']);
 
 /** Recursively collect scannable files (docs + scripts), skipping SKIP_DIRS and test/. */

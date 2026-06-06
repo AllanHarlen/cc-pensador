@@ -18,10 +18,10 @@ Funil v2: **iniciar/retomar** -> **PRD base** -> **arquitetura** -> **expandir**
 
 ## INIT
 
-**Proposito:** obter demanda, resolver retomada e definir isolamento por feature.
+**Proposito:** obter demanda, resolver retomada e definir isolamento por atualizacao.
 
-- Checkpoints v2 ficam em `.pensador/feature-nN/.pensador-progress.json`.
-- Checkpoint valido: perguntar via `AskUserQuestion` se o usuario quer retomar ou criar nova feature.
+- Checkpoints v2 ficam em `.pensador/<slug>/.pensador-progress.json`.
+- Checkpoint valido: perguntar via `AskUserQuestion` se o usuario quer retomar ou criar nova atualizacao.
 - Checkpoint v1 em `pensador-output/.pensador-progress.json`: incompativel. Perguntar se deve iniciar fluxo v2 novo.
 - Novo fluxo: executar `allocateFeatureDir()` e gravar `featurePath`.
 - Demanda ausente: solicitar via `AskUserQuestion`.
@@ -211,7 +211,7 @@ Se um participante falhar:
 
 1. Aplicar `withConsolidated(state)`.
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao.
-3. Gerar artefatos em `<featurePath>/pensador-output/`.
+3. Gerar artefatos em `<featurePath>/` (ex.: `.pensador/<slug>/`).
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
 5. Apresentar recap final e handoff.
 

@@ -1,58 +1,59 @@
 import { describe, it, expect } from 'vitest';
-import { allocateFeatureDir, buildFeaturePath } from '../scripts/pensador-engine.mjs';
+import { allocateFeatureDir, buildFeaturePath, slugify } from '../scripts/pensador-engine.mjs';
+
+describe('slugify(name)', () => {
+  it('lowercases and hyphenates a multi-word name', () => {
+    expect(slugify('Login Social')).toBe('login-social');
+  });
+
+  it('strips accents/diacritics', () => {
+    expect(slugify('Autenticação de Usuário')).toBe('autenticacao-de-usuario');
+  });
+
+  it('collapses runs of non-alphanumeric characters into a single hyphen', () => {
+    expect(slugify('  carrinho / checkout!! ')).toBe('carrinho-checkout');
+  });
+
+  it('returns an empty string for blank input', () => {
+    expect(slugify('   ')).toBe('');
+    expect(slugify(null)).toBe('');
+    expect(slugify(undefined)).toBe('');
+  });
+});
 
 describe('allocateFeatureDir(existingFeatureDirs, options)', () => {
-  it('allocates feature-n1 when no existing feature directories are present', () => {
-    expect(allocateFeatureDir([])).toEqual({
-      featureDir: '.pensador/feature-n1',
-      featureN: 1,
+  it('uses the slug of the update name as the directory', () => {
+    expect(allocateFeatureDir([], { name: 'Login Social' })).toEqual({
+      featureDir: '.pensador/login-social',
+      slug: 'login-social',
       isResume: false,
     });
   });
 
-  it('allocates feature-n2 when feature-n1 exists', () => {
-    expect(allocateFeatureDir(['feature-n1'])).toMatchObject({
-      featureDir: '.pensador/feature-n2',
-      featureN: 2,
-    });
-  });
-
-  it('allocates feature-n4 when feature-n1 through feature-n3 exist', () => {
-    expect(allocateFeatureDir(['feature-n1', 'feature-n2', 'feature-n3'])).toMatchObject({
-      featureDir: '.pensador/feature-n4',
-      featureN: 4,
-    });
-  });
-
-  it('ignores non-feature directory names', () => {
-    expect(allocateFeatureDir(['other-dir', 'not-a-feature'])).toMatchObject({
-      featureDir: '.pensador/feature-n1',
-      featureN: 1,
-    });
-  });
-
-  it('appends nameSuffix to the allocated feature directory', () => {
-    expect(allocateFeatureDir(['feature-n1'], { nameSuffix: 'login' }).featureDir).toBe(
-      '.pensador/feature-n2-login'
+  it('accepts a pre-computed slug', () => {
+    expect(allocateFeatureDir([], { slug: 'checkout' }).featureDir).toBe(
+      '.pensador/checkout'
     );
   });
 
-  it('handles an empty options object', () => {
-    expect(allocateFeatureDir([], {}).featureDir).toBe('.pensador/feature-n1');
+  it('falls back to "atualizacao" when no name is provided', () => {
+    expect(allocateFeatureDir([], {}).featureDir).toBe('.pensador/atualizacao');
+    expect(allocateFeatureDir([]).featureDir).toBe('.pensador/atualizacao');
   });
 
-  it('resumes feature-n2 when incompleteCheckpoint is feature-n2', () => {
-    expect(allocateFeatureDir(['feature-n1', 'feature-n2'], { incompleteCheckpoint: 'feature-n2' })).toEqual({
-      featureDir: '.pensador/feature-n2',
-      isResume: true,
-      featureN: 2,
-    });
+  it('falls back to "atualizacao" when the name slugifies to empty', () => {
+    expect(allocateFeatureDir([], { name: '   !!!  ' }).featureDir).toBe(
+      '.pensador/atualizacao'
+    );
   });
 
-  it('resumes feature-n1 when incompleteCheckpoint is feature-n1', () => {
-    expect(allocateFeatureDir(['feature-n1', 'feature-n2'], { incompleteCheckpoint: 'feature-n1' })).toMatchObject({
-      featureDir: '.pensador/feature-n1',
+  it('resumes the directory named by an incomplete checkpoint', () => {
+    expect(
+      allocateFeatureDir(['login-social'], { incompleteCheckpoint: 'login-social' })
+    ).toEqual({
+      featureDir: '.pensador/login-social',
       isResume: true,
+      slug: 'login-social',
     });
   });
 
@@ -63,21 +64,9 @@ describe('allocateFeatureDir(existingFeatureDirs, options)', () => {
 });
 
 describe('buildFeaturePath(featureDir, subdir)', () => {
-  it('builds shared-agents under feature-n1', () => {
-    expect(buildFeaturePath('.pensador/feature-n1', 'shared-agents')).toBe(
-      '.pensador/feature-n1/shared-agents'
-    );
-  });
-
-  it('builds pensador-output under feature-n1', () => {
-    expect(buildFeaturePath('.pensador/feature-n1', 'pensador-output')).toBe(
-      '.pensador/feature-n1/pensador-output'
-    );
-  });
-
-  it('builds shared-agents under a suffixed feature directory', () => {
-    expect(buildFeaturePath('.pensador/feature-n2-login', 'shared-agents')).toBe(
-      '.pensador/feature-n2-login/shared-agents'
+  it('builds shared-agents under the update directory', () => {
+    expect(buildFeaturePath('.pensador/login-social', 'shared-agents')).toBe(
+      '.pensador/login-social/shared-agents'
     );
   });
 });

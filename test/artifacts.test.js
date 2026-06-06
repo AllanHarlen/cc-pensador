@@ -292,16 +292,16 @@ describe('buildArtifactList(state)', () => {
   });
 
   describe('basePath with featurePath', () => {
-    it('uses featurePath/pensador-output/ when featurePath is set', () => {
-      const state = { ...stateAt('FINAL', []), featurePath: '.pensador/feature-n2-login' };
+    it('writes artifacts directly inside the update directory when featurePath is set', () => {
+      const state = { ...stateAt('FINAL', []), featurePath: '.pensador/login-social' };
       const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
-      expect(prd.path).toBe('.pensador/feature-n2-login/pensador-output/prd.md');
+      expect(prd.path).toBe('.pensador/login-social/prd.md');
     });
 
-    it('falls back to .pensador/feature-n1/pensador-output/ when featurePath is null', () => {
+    it('falls back to .pensador/atualizacao/ when featurePath is null', () => {
       const state = stateAt('FINAL', []);
       const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
-      expect(prd.path).toContain('.pensador/feature-n1/pensador-output/');
+      expect(prd.path).toContain('.pensador/atualizacao/');
     });
   });
 

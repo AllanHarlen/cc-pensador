@@ -1,6 +1,6 @@
-# Isolamento por Feature
+# Isolamento por Atualizacao
 
-O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`. Isso evita sobrescrever artefatos de outras features e permite retomada por checkpoint.
+O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nomeado pelo slug do nome da atualizacao. Isso evita sobrescrever artefatos de outras atualizacoes e permite retomada por checkpoint.
 
 ---
 
@@ -8,7 +8,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`. Isso
 
 ```text
 .pensador/
-  feature-n1/
+  login-social/
     .pensador-progress.json
     architecture.md
     shared-agents/
@@ -17,35 +17,33 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`. Isso
       codex.response.md
       agy.response.md
       agent.response.md
-    pensador-output/
-      prd.md
-      userhistory.md
-      comunication_json.md
-  feature-n2/
+    prd.md
+    userhistory.md
+    comunication_json.md
+  carrinho-checkout/
     ...
 ```
 
-`feature-nN` usa numeracao crescente, com `N` inteiro positivo.
+O nome do diretorio e o slug do nome da atualizacao ("nome da atualizacao"): minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social`). Os artefatos finais ficam diretamente na raiz dessa pasta — nao ha mais subpasta `pensador-output/`.
 
 ---
 
 ## `allocateFeatureDir()`
 
-Responsabilidade: criar o proximo diretorio isolado para uma nova feature.
+Responsabilidade: criar o diretorio isolado para a nova atualizacao.
 
 Regras:
 
-1. Leia `.pensador/`.
-2. Identifique diretorios no formato `feature-nN`.
-3. Escolha o menor `N` positivo ainda nao usado.
-4. Crie:
-   - `.pensador/feature-nN/`
-   - `.pensador/feature-nN/shared-agents/`
-   - `.pensador/feature-nN/pensador-output/`
-5. Grave `featurePath = ".pensador/feature-nN"` no `StageState`.
-6. Todo caminho posterior deve derivar de `featurePath`.
+1. Derive um slug do nome da atualizacao (veja `slugify()`). Se o nome ficar vazio apos a normalizacao, use o fallback `atualizacao`.
+2. Crie:
+   - `.pensador/<slug>/`
+   - `.pensador/<slug>/shared-agents/`
+3. Grave `featurePath = ".pensador/<slug>"` no `StageState`.
+4. Todo caminho posterior deve derivar de `featurePath`.
 
-Nunca grave artefatos finais em `pensador-output/` na raiz no protocolo v2.
+O slug e a identidade da atualizacao; nao ha prefixo numerico `feature-nN`. Caso ja exista uma pasta com o mesmo slug, confirme com o usuario via `AskUserQuestion` antes de reutiliza-la ou sobrescrever artefatos.
+
+Nunca grave artefatos finais na raiz do projeto no protocolo v2.
 
 ---
 
@@ -65,7 +63,7 @@ O `StageState` deve incluir:
 |---|---|---|
 | `checkpointVersion` | Sim | Deve ser `2` |
 | `currentStage` | Sim | Um dos estagios de `STAGE_ORDER` v2 |
-| `featurePath` | Sim | Ex.: `.pensador/feature-n3` |
+| `featurePath` | Sim | Ex.: `.pensador/login-social` |
 | `demanda` | Sim | Demanda original ou retomada |
 | `prdBase` | Apos PRD_BASE | Estrutura do PRD Base |
 | `architecturePath` | Apos ARCH | Normalmente `<featurePath>/architecture.md` |
@@ -81,11 +79,11 @@ Grave o checkpoint ao fechar o gate de cada estagio.
 
 No INIT:
 
-1. Procure checkpoints v2 em `.pensador/feature-nN/.pensador-progress.json`.
+1. Procure checkpoints v2 em `.pensador/<slug>/.pensador-progress.json`.
 2. Ignore arquivos malformados ou com `checkpointVersion !== 2`.
-3. Se houver um checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova feature.
+3. Se houver um checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova atualizacao.
 4. Ao retomar, restaure `featurePath` e continue do `currentStage`.
-5. Ao iniciar nova feature, chame `allocateFeatureDir()`.
+5. Ao iniciar nova atualizacao, chame `allocateFeatureDir()`.
 
 Se houver multiplos checkpoints validos, apresente os mais recentes com preview de `featurePath`, `currentStage` e data de modificacao, e recomende retomar o mais recente.
 
@@ -112,7 +110,7 @@ Regras:
 
 ## Contrato `shared-agents/`
 
-`shared-agents/` e o diretorio de intercambio entre Pensador, skills e subagentes durante `BRAINSTORM_GERAL`.
+`shared-agents/` e o diretorio de intercambio entre Pensador, skills e subagentes durante `BRAINSTORM_GERAL`. Fica ao lado dos artefatos finais, dentro de `<featurePath>/`.
 
 | Arquivo | Obrigatorio | Escritor | Conteudo |
 |---|---|---|---|
@@ -126,12 +124,12 @@ Regras:
 
 ---
 
-## `pensador-output/`
+## Artefatos finais
 
-Artefatos finais ficam em:
+Artefatos finais ficam diretamente em:
 
 ```text
-<featurePath>/pensador-output/
+<featurePath>/
 ```
 
 Arquivos:
@@ -153,4 +151,4 @@ Recomenda-se ignorar saidas locais do Pensador:
 pensador-output/
 ```
 
-`pensador-output/` na raiz permanece na recomendacao para cobrir saidas antigas v1. A regra v2, porem, e sempre gravar sob `<featurePath>/pensador-output/`.
+`pensador-output/` na raiz permanece na recomendacao apenas para cobrir saidas antigas v1. A regra v2 e sempre gravar sob `<featurePath>/` (ex.: `.pensador/<slug>/`).
