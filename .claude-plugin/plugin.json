@@ -1,6 +1,6 @@
 {
   "name": "cc-pensador",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Pensador v2: 10-stage PRD workflow skill and /pensador command for Claude Code. Adds ARCH (project scan + architecture.md), COMPLEXITY (Lite/Completo heuristic), BRAINSTORM_GERAL (parallel domain orchestration with requirements-clarity, Codex and AGY as domain lenses), and per-feature isolation under .pensador/feature-nN/. All dialogue routes through AskUserQuestion.",
   "author": {
     "name": "allanharlen"
