@@ -35,15 +35,16 @@ O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → ca
 
 | Estágio | O que faz | Delegação | Relevância |
 |---|---|---|---|
-| **INIT** | Verifica retomada, aloca feature dir, obtém demanda. | — | sempre |
-| **PRD_BASE** | Gera PRD base pelo `Strict_PRD_Schema`. | skill `prd` | sempre |
+| **INIT** | Verifica retomada de checkpoint v2, aloca feature dir, obtém demanda. | — | sempre |
+| **PRD_BASE** | Gera PRD base pelo `Strict_PRD_Schema`. Sem perguntas ao usuário; avanço automático. | skill `prd` | sempre |
 | **ARCH** | Analisa arquitetura via Read/Glob/Grep; grava `architecture.md`. Entrevista greenfield se necessário. | — | sempre |
 | **EXPAND** | Amplia demanda com requisitos candidatos (perguntas do Pensador). | — | sempre |
 | **COMPLEXITY** | Calcula score por `detectComplexity()`; propõe Lite ou Completo; usuário confirma. | — | sempre |
-| **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo (requirements-clarity + Codex se backend + AGY se frontend). | skills + `codex:codex-rescue` + AGY | sempre |
-| **CODEX** | Refinamento técnico dedicado. | `codex:codex-rescue` (`--effort high`) | sempre |
-| **AGY** | Lacunas de produto remanescentes. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | sempre |
-| **FINAL** | Consolida e gera os artefatos finais. | — | sempre |
+| **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY | sempre |
+| **CODEX** | Refinamento técnico dedicado com `effort high`. Não participa em atividade específica de front-end (`hasFrontend` sem `hasBackend`). | `codex:codex-rescue` | exceto front-end específico |
+| **AGY** | Varredura final de lacunas de produto. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | sempre |
+| **FINAL** | Aplica `withConsolidated`, confirma back-end, gera artefatos, apresenta recap e handoff. | — | sempre |
+| **DONE** | Estado terminal. | — | — |
 
 > O BRAINSTORM_GERAL substitui os antigos estágios autônomos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND`. Eles agora são lentes de domínio orquestradas em paralelo dentro de um único estágio.
 
@@ -175,8 +176,13 @@ cc-pensador/
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature
-│  │  ├─ references/         # stages.md · skill-stack.md · agent-stack.md · askuserquestion-protocol.md · feature-isolation.md
-│  │  └─ assets/             # templates: prd · userhistory · comunication_json
+│  │  ├─ references/
+│  │  │  ├─ stages.md                    # comportamento detalhado de cada estágio
+│  │  │  ├─ feature-isolation.md         # .pensador/feature-nN/, allocateFeatureDir(), shared-agents/
+│  │  │  ├─ agent-stack.md               # Codex/AGY, roteamento BRAINSTORM_GERAL, contrato de arquivos
+│  │  │  ├─ skill-stack.md               # skills como lentes de domínio
+│  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
+│  │  └─ assets/                         # templates: prd · userhistory · comunication_json
 │  ├─ prd/SKILL.md           # Skill_PRD_Base: Strict PRD Schema + entrevista de descoberta
 │  ├─ requirements-clarity/SKILL.md
 │  ├─ backend-development/SKILL.md
@@ -185,9 +191,18 @@ cc-pensador/
 ├─ scripts/
 │  ├─ preflight.mjs          # verifica disponibilidade de Codex e AGY
 │  └─ pensador-engine.mjs    # especificação determinística de referência (validada por testes)
-├─ test/                     # smoke · engine-complexity · feature-isolation · consolidate · artifacts · docs-consistency (Vitest)
+├─ test/
+│  ├─ smoke.test.js                # API pública do engine, STAGE_ORDER, checkpoint v2
+│  ├─ engine-complexity.test.js    # detectComplexity — unitários + fast-check
+│  ├─ feature-isolation.test.js    # allocateFeatureDir, buildFeaturePath
+│  ├─ consolidate.test.js          # consolidate, withConsolidated
+│  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
+│  └─ docs-consistency.test.js     # STAGE_ORDER verbatim nos docs
+├─ CHANGELOG.md              # histórico de versões e breaking changes
 └─ LICENSE                   # MIT
 ```
+
+> **`.gitignore`:** adicione `.pensador/` e `pensador-output/` para não versionar artefatos locais e checkpoints gerados pelo Pensador.
 
 ## Migração da v1
 

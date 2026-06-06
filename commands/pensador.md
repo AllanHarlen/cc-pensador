@@ -14,7 +14,7 @@ Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre dez estag
 4. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
 5. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
 6. **BRAINSTORM_GERAL** - Orquestracao por dominio: `requirements-clarity`, Codex `effort high` se `hasBackend`, AGY `gemini-3.1-pro-high` se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
-7. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`.
+7. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`; nao participa em atividade especifica de front-end (`hasFrontend` sem `hasBackend`).
 8. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
 9. **FINAL** - Consolidacao, artefatos, recap final e handoff.
 10. **DONE** - Estado terminal.

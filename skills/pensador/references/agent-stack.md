@@ -10,7 +10,7 @@ As skills de dominio sao descritas em `references/skill-stack.md`.
 
 | Subagente | Identificador | Onde participa | Parametro efetivo |
 |---|---|---|---|
-| Codex | `codex:codex-rescue` | `BRAINSTORM_GERAL` quando `hasBackend`; `CODEX` sempre | `effort high` |
+| Codex | `codex:codex-rescue` | `BRAINSTORM_GERAL` quando `hasBackend`; `CODEX` quando nao for atividade especifica de front-end | `effort high` |
 | AGY | `cc-antigravity-plugin:antigravity-agent` | `BRAINSTORM_GERAL` quando `hasFrontend`; `AGY` sempre | `model gemini-3.1-pro-high` |
 
 O tool `Agent` recebe `subagent_type` e `prompt`; nao ha campo de flags. Sempre comunique o parametro no corpo do prompt e registre o valor para rastreabilidade.
@@ -98,7 +98,9 @@ Codex roda quando `hasBackend = true`. O prompt deve pedir analise tecnica focad
 
 ### No CODEX
 
-Codex roda sempre como varredura tecnica final, considerando tambem `agent.response.md` e respostas do usuario. Pontos relevantes viram perguntas `origin = 'codex'`, `stage = 'CODEX'`.
+Codex roda como varredura tecnica final, considerando tambem `agent.response.md` e respostas do usuario. Pontos relevantes viram perguntas `origin = 'codex'`, `stage = 'CODEX'`.
+
+**Excecao — atividade especifica de front-end:** quando `hasFrontend = true` e `hasBackend = false` (`codexParticipates = false`), o Codex nao participa. O estagio e visitado, mas nao ha delegacao nem fallback: registra zero perguntas e avanca. Isso e coerente com o BRAINSTORM_GERAL, onde o dominio de backend so aciona o Codex quando `hasBackend = true`.
 
 ---
 

@@ -23,6 +23,8 @@ import {
   agyStageModel,
   classifyProject,
   isFullstack,
+  isFrontendOnly,
+  codexParticipates,
   planArtifacts,
   buildArtifactList,
   buildPrdBase,
@@ -68,6 +70,11 @@ describe('Pensador Engine — smoke', () => {
     expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.uiux.ref).toBe('cc-antigravity-plugin:antigravity-agent');
     expect(STAGE_DELEGATION.CODEX.ref).toBe('codex:codex-rescue');
     expect(STAGE_DELEGATION.AGY.ref).toBe('cc-antigravity-plugin:antigravity-agent');
+  });
+
+  it('gates the CODEX stage off for a front-end-specific activity', () => {
+    // Advisory marker on the delegation entry.
+    expect(STAGE_DELEGATION.CODEX.relevantWhen).toBe('not(frontendOnly)');
   });
 
   it('GAP_ORIGINS lists every non-pensador origin', () => {
@@ -118,6 +125,46 @@ describe('Pensador Engine — smoke', () => {
     for (const fn of fns) {
       expect(typeof fn).toBe('function');
     }
+  });
+
+  describe('Codex participation', () => {
+    it('isFrontendOnly is true only when there is a front-end and no back-end', () => {
+      expect(isFrontendOnly({ hasFrontend: true, hasBackend: false })).toBe(true);
+      expect(isFrontendOnly({ hasFrontend: true, hasBackend: true })).toBe(false);
+      expect(isFrontendOnly({ hasFrontend: false, hasBackend: true })).toBe(false);
+      expect(isFrontendOnly({ hasFrontend: false, hasBackend: false })).toBe(false);
+    });
+
+    it('isFrontendOnly is total — no args / partial signals never throw', () => {
+      expect(() => isFrontendOnly()).not.toThrow();
+      expect(isFrontendOnly()).toBe(false);
+      expect(isFrontendOnly({ hasFrontend: true })).toBe(true);
+    });
+
+    it('codexParticipates is the negation of isFrontendOnly', () => {
+      for (const s of [
+        { hasFrontend: true, hasBackend: false },
+        { hasFrontend: true, hasBackend: true },
+        { hasFrontend: false, hasBackend: true },
+        { hasFrontend: false, hasBackend: false },
+        {},
+      ]) {
+        expect(codexParticipates(s)).toBe(!isFrontendOnly(s));
+      }
+    });
+
+    it('excludes Codex from a front-end-specific activity but keeps it for back-end/fullstack', () => {
+      expect(codexParticipates({ hasFrontend: true, hasBackend: false })).toBe(false);
+      expect(codexParticipates({ hasFrontend: true, hasBackend: true })).toBe(true);
+      expect(codexParticipates({ hasFrontend: false, hasBackend: true })).toBe(true);
+    });
+
+    it('accepts a classifyProject result directly', () => {
+      const frontOnly = classifyProject([{ text: 'Criar uma tela de login responsiva' }]);
+      expect(frontOnly.hasFrontend).toBe(true);
+      expect(frontOnly.hasBackend).toBe(false);
+      expect(codexParticipates(frontOnly)).toBe(false);
+    });
   });
 
   it('initState returns a valid StageState for a non-empty demanda', () => {

@@ -182,9 +182,11 @@ Se um participante falhar:
 - Entrada: demanda, PRD Base, `architecture.md`, EXPAND, `agent.response.md` e respostas consolidadas.
 - Saida: pontos tecnicos em aberto, convertidos em perguntas `origin = 'codex'`.
 
-**Fallback:** pergunta individual via `AskUserQuestion` para retentar, seguir sem Codex ou registrar lacunas como `"TBD"`.
+**Participacao do Codex:** quando a atividade e especifica de front-end (`hasFrontend = true` e `hasBackend = false`, ou seja `codexParticipates = false`), o Codex nao participa. O estagio e visitado, mas nao delega: registra zero perguntas, sem fallback, e avanca automaticamente. Com `hasBackend = true` (back-end ou fullstack) o Codex roda normalmente.
 
-**Gate:** todas as perguntas/fallbacks de CODEX respondidos ou diferidos.
+**Fallback:** quando o Codex participa, pergunta individual via `AskUserQuestion` para retentar, seguir sem Codex ou registrar lacunas como `"TBD"`.
+
+**Gate:** atividade especifica de front-end avanca com zero perguntas; caso contrario, todas as perguntas/fallbacks de CODEX respondidos ou diferidos.
 
 ---
 
@@ -239,7 +241,7 @@ Estado terminal. Sem perguntas ou acoes pendentes.
 | `EXPAND` | Perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |
 | `BRAINSTORM_GERAL` | `agent.response.md` ou fallback por dominio; perguntas fechadas |
-| `CODEX` | Perguntas/fallbacks fechados |
+| `CODEX` | Front-end especifico: zero perguntas e avanco; caso contrario, perguntas/fallbacks fechados |
 | `AGY` | Perguntas/fallbacks fechados |
 | `FINAL` | Artefatos, recap e handoff entregues |
 | `DONE` | Terminal |

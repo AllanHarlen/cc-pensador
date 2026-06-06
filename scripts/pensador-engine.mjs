@@ -87,7 +87,13 @@ export const STAGE_DELEGATION = {
       },
     },
   },
-  CODEX:    { kind: 'subagent', ref: 'codex:codex-rescue',                          origin: 'codex', param: '--effort high' },
+  // CODEX runs the final technical sweep — but a *front-end-specific* activity
+  // (front-end present, no back-end) has nothing for Codex to refine, so Codex
+  // does not participate. The stage is still visited (it yields zero questions
+  // and auto-advances); see codexParticipates(). `relevantWhen` is advisory,
+  // mirroring the BRAINSTORM_GERAL backend domain which is already gated off for
+  // front-end-only work via hasBackend.
+  CODEX:    { kind: 'subagent', ref: 'codex:codex-rescue',                          origin: 'codex', param: '--effort high', relevantWhen: 'not(frontendOnly)' },
   AGY:      { kind: 'subagent', ref: 'cc-antigravity-plugin:antigravity-agent',     origin: 'agy',   param: '--model gemini-3.1-pro-high' },
 };
 
@@ -414,6 +420,36 @@ export function classifyProject(requirements) {
  */
 export function isFullstack(requirements) {
   return classifyProject(requirements).isFullstack;
+}
+
+/**
+ * An activity is *front-end-specific* when it has a front-end and no back-end.
+ * Codex (the technical sweep) does not participate in such activities.
+ *
+ * Accepts either raw signals ({ hasBackend, hasFrontend }) or the result of
+ * classifyProject — both expose the same boolean fields.
+ *
+ * @param {{ hasBackend?: boolean, hasFrontend?: boolean }} signals
+ * @returns {boolean}
+ */
+export function isFrontendOnly(signals = {}) {
+  return signals?.hasFrontend === true && signals?.hasBackend !== true;
+}
+
+/**
+ * Decides whether Codex participates in the flow for a given classification.
+ *
+ * Codex is excluded from a front-end-specific activity (front-end, no back-end):
+ *   - In BRAINSTORM_GERAL the backend domain is already gated on hasBackend, so a
+ *     front-end-only run never reaches Codex there.
+ *   - In the CODEX stage this is the gate: when false, the stage is still visited
+ *     but yields zero questions and auto-advances.
+ *
+ * @param {{ hasBackend?: boolean, hasFrontend?: boolean }} signals
+ * @returns {boolean}
+ */
+export function codexParticipates(signals = {}) {
+  return !isFrontendOnly(signals);
 }
 
 // ---------------------------------------------------------------------------

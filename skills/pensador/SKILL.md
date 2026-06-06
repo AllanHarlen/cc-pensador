@@ -135,6 +135,7 @@ BRAINSTORM_GERAL
 
 CODEX
   Refinamento tecnico final com Codex usando effort high.
+  Nao participa quando a atividade e especifica de front-end (hasFrontend e nao hasBackend).
 
 AGY
   Lacunas remanescentes de produto com AGY usando gemini-3.1-pro-high.
@@ -270,6 +271,8 @@ Subagente: `codex:codex-rescue`.
 
 Parametro efetivo: `effort high`, comunicado no corpo do prompt.
 
+**Participacao do Codex:** o Codex nao participa quando a atividade e especifica de front-end, ou seja, `hasFrontend = true` e `hasBackend = false` (`codexParticipates(state) = false`). Nesse caso o estagio ainda e visitado, mas nao delega ao Codex: registra zero perguntas, sem fallback, e avanca automaticamente. O mesmo criterio ja vale no BRAINSTORM_GERAL, onde o dominio de backend so aciona o Codex quando `hasBackend = true`. Quando `hasBackend = true` (back-end ou fullstack), o Codex roda normalmente.
+
 Entrada minima:
 
 ```text
@@ -284,7 +287,7 @@ Requisitos consolidados: <EXPAND + BRAINSTORM_GERAL>
 
 Para cada ponto relevante, crie pergunta com `origin = 'codex'`, `stage = 'CODEX'` e apresente via `AskUserQuestion`.
 
-**Gate:** todas as perguntas de CODEX, incluindo fallback, respondidas ou diferidas.
+**Gate:** atividade especifica de front-end registra zero perguntas e avanca; caso contrario, todas as perguntas de CODEX, incluindo fallback, respondidas ou diferidas.
 
 ---
 
@@ -345,7 +348,7 @@ Estado terminal. O fluxo esta encerrado.
 | `EXPAND` | Todas as perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |
 | `BRAINSTORM_GERAL` | `agent.response.md` ou fallback por dominio; perguntas fechadas |
-| `CODEX` | Todas as perguntas respondidas ou diferidas |
+| `CODEX` | Front-end especifico: zero perguntas e avanco; caso contrario, todas respondidas ou diferidas |
 | `AGY` | Todas as perguntas respondidas ou diferidas |
 | `FINAL` | Artefatos gerados, caminhos reportados e recap/handoff entregues |
 | `DONE` | Terminal |
@@ -357,5 +360,5 @@ Estado terminal. O fluxo esta encerrado.
 | `BRAINSTORM_GERAL` | skill | `requirements-clarity` | sempre | `shared-agents/requirements-clarity.response.md` |
 | `BRAINSTORM_GERAL` | subagente | `codex:codex-rescue` | `hasBackend` | `shared-agents/codex.response.md` |
 | `BRAINSTORM_GERAL` | subagente | `cc-antigravity-plugin:antigravity-agent` | `hasFrontend` | `shared-agents/agy.response.md` |
-| `CODEX` | subagente | `codex:codex-rescue` | sempre | perguntas tecnicas finais |
+| `CODEX` | subagente | `codex:codex-rescue` | nao especifico de front-end (`hasBackend` ou nao `hasFrontend`) | perguntas tecnicas finais |
 | `AGY` | subagente | `cc-antigravity-plugin:antigravity-agent` | sempre | perguntas de produto finais |
