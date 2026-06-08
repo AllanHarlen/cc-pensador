@@ -21,7 +21,7 @@
 
 ## Visão geral
 
-O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por atualização em `.pensador/<slug>/`.
+O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por atualização em `.pensador/<slug-da-demanda>-vN/`.
 
 **Invariante central:** todo diálogo entre os agentes e o usuário passa **exclusivamente** pela ferramenta `AskUserQuestion`. Nenhum estágio conversa por outro canal.
 
@@ -50,7 +50,7 @@ O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → ca
 
 ## Artefatos gerados
 
-Todos gravados diretamente sob `.pensador/<slug>/`. Confirma sobrescrita via `AskUserQuestion` se o arquivo já existir.
+Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobrescrita via `AskUserQuestion` se o arquivo já existir.
 
 - `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(sempre)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
@@ -59,11 +59,11 @@ Todos gravados diretamente sob `.pensador/<slug>/`. Confirma sobrescrita via `As
 
 ## Isolamento por atualização
 
-Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo slug do nome da atualização:
+Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo slug curto da demanda recebida com sufixo de versão:
 
 ```
 .pensador/
-└── <slug>/                        ← ex.: login-social
+└── <slug-da-demanda>-vN/          ← ex.: login-social-v1
     ├── .pensador-progress.json    ← checkpoint v2
     ├── architecture.md
     ├── shared-agents/             ← troca entre subagentes
@@ -76,7 +76,7 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo
     └── comunication_json.md
 ```
 
-`<slug>` é o nome da atualização normalizado (minúsculas, sem acentos, hifenizado); fallback `atualizacao`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
+`<slug>` é o nome curto da demanda recebida normalizado (minúsculas, sem acentos, hifenizado); `-vN` é a versão local da mesma demanda (`v1` na primeira execução, depois `v2`, `v3`, ...). Fallback `atualizacao-v1`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
 
 ## Instalação
 
@@ -177,7 +177,7 @@ cc-pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature
 │  │  ├─ references/
 │  │  │  ├─ stages.md                    # comportamento detalhado de cada estágio
-│  │  │  ├─ feature-isolation.md         # .pensador/<slug>/, allocateFeatureDir(), shared-agents/
+│  │  │  ├─ feature-isolation.md         # .pensador/<slug-da-demanda>-vN/, allocateFeatureDir(), shared-agents/
 │  │  │  ├─ agent-stack.md               # Codex/AGY, roteamento BRAINSTORM_GERAL, contrato de arquivos
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
@@ -201,7 +201,7 @@ cc-pensador/
 └─ LICENSE                   # MIT
 ```
 
-> **`.gitignore`:** adicione `.pensador/` e `pensador-output/` para não versionar artefatos locais e checkpoints gerados pelo Pensador.
+> **`.gitignore`:** adicione `.pensador/` para não versionar artefatos locais e checkpoints gerados pelo Pensador.
 
 ## Migração da v1
 
@@ -209,7 +209,7 @@ cc-pensador/
 |---|---|---|
 | `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 10 estágios (com ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
-| Pasta de artefatos | `pensador-output/` | `.pensador/<slug>/` |
+| Pasta de artefatos | pasta raiz legada da v1 | `.pensador/<slug-da-demanda>-vN/` |
 | Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |
 | Brainstorm | 4 estágios sequenciais | 1 estágio paralelo por domínio |
 

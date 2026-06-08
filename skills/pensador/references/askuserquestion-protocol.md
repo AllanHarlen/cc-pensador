@@ -108,7 +108,7 @@ No FINAL, use `AskUserQuestion` para confirmar qualquer decisao pendente que afe
 
 O recap deve conter:
 
-- Caminhos dos artefatos em `<featurePath>/` (ex.: `.pensador/<slug>/`).
+- Caminhos dos artefatos em `<featurePath>/` (ex.: `.pensador/<slug-da-demanda>-vN/`).
 - Decisoes principais.
 - Perguntas diferidas e onde ficaram como `"TBD"`.
 - Dominios cobertos no BRAINSTORM_GERAL.

@@ -152,16 +152,42 @@ export function slugify(name) {
     .replace(/^-+|-+$/g, '');
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function dirNameFromFeatureDir(featureDir) {
+  return String(featureDir ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\.pensador\//, '')
+    .replace(/\/+$/, '')
+    .split('/')
+    .filter(Boolean)
+    .pop() ?? '';
+}
+
+function nextFeatureVersion(existingFeatureDirs = [], baseSlug) {
+  const re = new RegExp(`^${escapeRegex(baseSlug)}-v(\\d+)$`);
+  const versions = (Array.isArray(existingFeatureDirs) ? existingFeatureDirs : [])
+    .map(dirNameFromFeatureDir)
+    .map((name) => name.match(re))
+    .filter(Boolean)
+    .map((match) => Number(match[1]))
+    .filter((version) => Number.isSafeInteger(version) && version > 0);
+
+  return versions.length === 0 ? 1 : Math.max(...versions) + 1;
+}
+
 /**
  * Allocates the update directory or resumes an incomplete checkpoint.
  *
  * The folder name is the slug of the update name ("nome da atualização"), used
- * directly under `.pensador/` (e.g. `.pensador/login-social`). There is no
- * numeric `feature-nN` prefix — the slug is the identity. An empty/blank name
- * falls back to `atualizacao`.
+ * with a local version suffix under `.pensador/` (e.g. `.pensador/login-social-v1`).
+ * Reusing the same slug allocates the next version (`-v2`, `-v3`, ...). There is
+ * no numeric `feature-nN` prefix. An empty/blank name falls back to `atualizacao-v1`.
  *
- * @param {string[]} existingFeatureDirs - present for resume/context; not used
- *   for naming since the slug is the identity.
+ * @param {string[]} existingFeatureDirs - existing `.pensador/` children used
+ *   to choose the next version for the same base slug.
  * @param {{ name?: string, slug?: string, incompleteCheckpoint?: string }} options
  * @returns {FeatureDirResult}
  */
@@ -175,7 +201,9 @@ export function allocateFeatureDir(existingFeatureDirs = [], options = {}) {
     };
   }
 
-  const slug = slugify(options?.name ?? options?.slug ?? '') || 'atualizacao';
+  const baseSlug = slugify(options?.name ?? options?.slug ?? '') || 'atualizacao';
+  const version = nextFeatureVersion(existingFeatureDirs, baseSlug);
+  const slug = `${baseSlug}-v${version}`;
 
   return {
     featureDir: `.pensador/${slug}`,
@@ -517,12 +545,12 @@ export function planArtifacts(state) {
 export function buildArtifactList(state) {
   const plan = planArtifacts(state);
   // Artifacts are written directly inside the update directory
-  // (.pensador/<slug>/) so a /pensador run never clobbers a pre-existing prd.md
+  // (.pensador/<slug-da-demanda>-vN/) so a /pensador run never clobbers a pre-existing prd.md
   // (or sibling) at the project root. The LLM still confirms before overwriting
   // a file that already exists in here.
   const basePath = state.featurePath
     ? `${state.featurePath}/`
-    : '.pensador/atualizacao/';
+    : '.pensador/atualizacao-v1/';
 
   /** @type {Artifact[]} */
   const artifacts = [];
@@ -639,7 +667,7 @@ export const CHECKPOINT_VERSION = 2;
 
 /**
  * Serializes a StageState to a JSON string suitable for writing to a checkpoint
- * file (e.g. .pensador/<slug>/.pensador-progress.json), enabling a /pensador run
+ * file (e.g. .pensador/<slug-da-demanda>-vN/.pensador-progress.json), enabling a /pensador run
  * to be resumed after an interruption.
  *
  * StageState is already plain/JSON-able; this wraps it with a version tag and a
@@ -736,7 +764,7 @@ export function deserializeState(serialized) {
  * @property {Question[]} questions
  * @property {PrdDocument} prdBase
  * @property {Requirement[]} consolidated
- * @property {string|null} [featurePath] // .pensador/<slug> - set after update-dir allocation
+ * @property {string|null} [featurePath] // .pensador/<slug-da-demanda>-vN - set after update-dir allocation
  */
 
 /**

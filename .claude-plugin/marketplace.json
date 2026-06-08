@@ -14,7 +14,7 @@
         {
             "name": "cc-pensador",
             "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation), PRD_BASE (Strict PRD Schema), ARCH (project scan via Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>/). All dialogue routes exclusively through AskUserQuestion.",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "author": {
                 "name": "allanharlen"
             },

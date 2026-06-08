@@ -293,15 +293,15 @@ describe('buildArtifactList(state)', () => {
 
   describe('basePath with featurePath', () => {
     it('writes artifacts directly inside the update directory when featurePath is set', () => {
-      const state = { ...stateAt('FINAL', []), featurePath: '.pensador/login-social' };
+      const state = { ...stateAt('FINAL', []), featurePath: '.pensador/login-social-v1' };
       const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
-      expect(prd.path).toBe('.pensador/login-social/prd.md');
+      expect(prd.path).toBe('.pensador/login-social-v1/prd.md');
     });
 
-    it('falls back to .pensador/atualizacao/ when featurePath is null', () => {
+    it('falls back to .pensador/atualizacao-v1/ when featurePath is null', () => {
       const state = stateAt('FINAL', []);
       const prd = buildArtifactList(state).find((a) => a.kind === 'prd');
-      expect(prd.path).toContain('.pensador/atualizacao/');
+      expect(prd.path).toContain('.pensador/atualizacao-v1/');
     });
   });
 

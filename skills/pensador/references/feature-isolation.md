@@ -1,6 +1,6 @@
 # Isolamento por Atualizacao
 
-O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nomeado pelo slug do nome da atualizacao. Isso evita sobrescrever artefatos de outras atualizacoes e permite retomada por checkpoint.
+O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nomeado pelo slug curto da demanda recebida mais uma versao local (`-vN`). Isso evita sobrescrever artefatos de outras execucoes da mesma demanda e permite retomada por checkpoint.
 
 ---
 
@@ -8,7 +8,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
 
 ```text
 .pensador/
-  login-social/
+  login-social-v1/
     .pensador-progress.json
     architecture.md
     shared-agents/
@@ -20,11 +20,11 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     prd.md
     userhistory.md
     comunication_json.md
-  carrinho-checkout/
+  carrinho-checkout-v1/
     ...
 ```
 
-O nome do diretorio e o slug do nome da atualizacao ("nome da atualizacao"): minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social`). Os artefatos finais ficam diretamente na raiz dessa pasta — nao ha mais subpasta `pensador-output/`.
+O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta.
 
 ---
 
@@ -34,14 +34,15 @@ Responsabilidade: criar o diretorio isolado para a nova atualizacao.
 
 Regras:
 
-1. Derive um slug do nome da atualizacao (veja `slugify()`). Se o nome ficar vazio apos a normalizacao, use o fallback `atualizacao`.
-2. Crie:
-   - `.pensador/<slug>/`
-   - `.pensador/<slug>/shared-agents/`
-3. Grave `featurePath = ".pensador/<slug>"` no `StageState`.
-4. Todo caminho posterior deve derivar de `featurePath`.
+1. Derive um slug base do nome da atualizacao/demanda recebida (veja `slugify()`). Se o nome ficar vazio apos a normalizacao, use o fallback `atualizacao`.
+2. Escolha a proxima versao local para o mesmo slug base: use `-v1` quando nao houver pasta anterior, ou `-v{max+1}` quando ja existirem pastas como `<slug>-v1`, `<slug>-v2`.
+3. Crie:
+   - `.pensador/<slug-da-demanda>-vN/`
+   - `.pensador/<slug-da-demanda>-vN/shared-agents/`
+4. Grave `featurePath = ".pensador/<slug-da-demanda>-vN"` no `StageState`.
+5. Todo caminho posterior deve derivar de `featurePath`.
 
-O slug e a identidade da atualizacao; nao ha prefixo numerico `feature-nN`. Caso ja exista uma pasta com o mesmo slug, confirme com o usuario via `AskUserQuestion` antes de reutiliza-la ou sobrescrever artefatos.
+O par `slug + versao` e a identidade da atualizacao; nao ha prefixo numerico `feature-nN`. Caso ja exista uma pasta da mesma versao, confirme com o usuario via `AskUserQuestion` antes de reutiliza-la ou sobrescrever artefatos.
 
 Nunca grave artefatos finais na raiz do projeto no protocolo v2.
 
@@ -63,7 +64,7 @@ O `StageState` deve incluir:
 |---|---|---|
 | `checkpointVersion` | Sim | Deve ser `2` |
 | `currentStage` | Sim | Um dos estagios de `STAGE_ORDER` v2 |
-| `featurePath` | Sim | Ex.: `.pensador/login-social` |
+| `featurePath` | Sim | Ex.: `.pensador/login-social-v1` |
 | `demanda` | Sim | Demanda original ou retomada |
 | `prdBase` | Apos PRD_BASE | Estrutura do PRD Base |
 | `architecturePath` | Apos ARCH | Normalmente `<featurePath>/architecture.md` |
@@ -79,7 +80,7 @@ Grave o checkpoint ao fechar o gate de cada estagio.
 
 No INIT:
 
-1. Procure checkpoints v2 em `.pensador/<slug>/.pensador-progress.json`.
+1. Procure checkpoints v2 em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
 2. Ignore arquivos malformados ou com `checkpointVersion !== 2`.
 3. Se houver um checkpoint valido, pergunte via `AskUserQuestion` se deve retomar ou iniciar nova atualizacao.
 4. Ao retomar, restaure `featurePath` e continue do `currentStage`.
@@ -148,7 +149,6 @@ Recomenda-se ignorar saidas locais do Pensador:
 
 ```gitignore
 .pensador/
-pensador-output/
 ```
 
-`pensador-output/` na raiz permanece na recomendacao apenas para cobrir saidas antigas v1. A regra v2 e sempre gravar sob `<featurePath>/` (ex.: `.pensador/<slug>/`).
+A regra v2 e sempre gravar sob `<featurePath>/` (ex.: `.pensador/<slug-da-demanda>-vN/`), nunca em uma pasta de artefatos na raiz do projeto.
