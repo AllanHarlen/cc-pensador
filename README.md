@@ -1,216 +1,162 @@
 # cc-pensador
 
-> Plugin de Claude Code que conduz uma demanda em linguagem natural por **dez estágios de trabalho** até um PRD de alta qualidade — com análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini).
+> Claude Code plugin that conducts a natural language request through **ten stages of work** to a high-quality PRD — with architecture analysis, complexity heuristics, and domain lenses.
 
-`versão 2.0.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
+`version 2.0.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
-## Sumário
+**📖 [Leia em Português](./README.pt-BR.md) | Read in Portuguese**
 
-- [Visão geral](#visão-geral)
-- [Fluxo de estágios](#fluxo-de-estágios)
-- [Artefatos gerados](#artefatos-gerados)
-- [Isolamento por feature](#isolamento-por-feature)
-- [Instalação](#instalação)
-- [Uso](#uso)
-- [Modos Lite e Completo](#modos-lite-e-completo)
-- [Preflight](#preflight)
-- [Gates de avanço](#gates-de-avanço)
-- [Engine de referência e testes](#engine-de-referência-e-testes)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Migração da v1](#migração-da-v1)
+## Overview
 
-## Visão geral
+The `cc-pensador` distributes **Pensador v2**: the `pensador` skill and the `/pensador` command for Claude Code. Starting from a natural language request, Pensador analyzes the project architecture, calculates complexity, and orchestrates six domain-specific lenses in parallel (requirements clarity, backend, UI/UX, frontend, technical refinement, and product sweep) to produce a consolidated, high-fidelity PRD with supporting artifacts.
 
-O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por atualização em `.pensador/<slug-da-demanda>-vN/`.
+**Central invariant:** all dialogue between agents and user passes **exclusively** through the `AskUserQuestion` tool. No stage communicates through any other channel.
 
-**Invariante central:** todo diálogo entre os agentes e o usuário passa **exclusivamente** pela ferramenta `AskUserQuestion`. Nenhum estágio conversa por outro canal.
+## Quick Start
 
-## Fluxo de estágios
+### Installation
 
-```
-INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
-```
-
-O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → calibrar complexidade → brainstorm por domínio → varredura técnica → varredura de produto → consolidar → entregar.**
-
-| Estágio | O que faz | Delegação | Relevância |
-|---|---|---|---|
-| **INIT** | Verifica retomada de checkpoint v2, aloca feature dir, obtém demanda. | — | sempre |
-| **PRD_BASE** | Gera PRD base pelo `Strict_PRD_Schema`. Sem perguntas ao usuário; avanço automático. | skill `prd` | sempre |
-| **ARCH** | Analisa arquitetura via Read/Glob/Grep; grava `architecture.md`. Entrevista greenfield se necessário. | — | sempre |
-| **EXPAND** | Amplia demanda com requisitos candidatos (perguntas do Pensador). | — | sempre |
-| **COMPLEXITY** | Calcula score por `detectComplexity()`; propõe Lite ou Completo; usuário confirma. | — | sempre |
-| **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY | sempre |
-| **CODEX** | Refinamento técnico dedicado com `effort high`. Não participa em atividade específica de front-end (`hasFrontend` sem `hasBackend`). | `codex:codex-rescue` | exceto front-end específico |
-| **AGY** | Varredura final de lacunas de produto. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | sempre |
-| **FINAL** | Aplica `withConsolidated`, confirma back-end, gera artefatos, apresenta recap e handoff. | — | sempre |
-| **DONE** | Estado terminal. | — | — |
-
-> O BRAINSTORM_GERAL substitui os antigos estágios autônomos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND`. Eles agora são lentes de domínio orquestradas em paralelo dentro de um único estágio.
-
-## Artefatos gerados
-
-Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobrescrita via `AskUserQuestion` se o arquivo já existir.
-
-- `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(sempre)*
-- `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
-- `comunication_json.md` — Contrato de comunicação/API em JSON. *(sempre que houver back-end)*
-- `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
-
-## Isolamento por atualização
-
-Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo slug curto da demanda recebida com sufixo de versão:
-
-```
-.pensador/
-└── <slug-da-demanda>-vN/          ← ex.: login-social-v1
-    ├── .pensador-progress.json    ← checkpoint v2
-    ├── architecture.md
-    ├── shared-agents/             ← troca entre subagentes
-    │   ├── context-pack.md
-    │   ├── requirements-clarity.response.md
-    │   ├── codex.response.md
-    │   └── agy.response.md
-    ├── prd.md                     ← artefatos finais
-    ├── userhistory.md
-    └── comunication_json.md
-```
-
-`<slug>` é o nome curto da demanda recebida normalizado (minúsculas, sem acentos, hifenizado); `-vN` é a versão local da mesma demanda (`v1` na primeira execução, depois `v2`, `v3`, ...). Fallback `atualizacao-v1`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
-
-## Instalação
-
-### 1 · Instalar o cc-pensador
-
-```text
+```bash
 /plugin marketplace add AllanHarlen/cc-pensador
 /plugin install cc-pensador@cc-pensador
 /reload-plugins
 ```
 
-### 2 · Dependências: Codex e AGY
+### Dependencies: Codex and AGY
 
-O Pensador delega aos subagentes **Codex** (estágios BRAINSTORM_GERAL e CODEX) e **AGY** (estágios BRAINSTORM_GERAL e AGY) — ambos declarados como dependências do plugin.
+Pensador delegates to subagents **Codex** and **AGY**.
 
-**Codex** — plugin oficial:
-
-```text
+**Codex** (official plugin):
+```bash
 /plugin marketplace add openai/codex-plugin-cc
 /plugin install codex@openai-codex
 /reload-plugins
 /codex:setup
 ```
 
-**AGY** — o Pensador espera o `cc-antigravity-plugin` instalado, com estes arquivos presentes:
+**AGY** (Pensador expects `cc-antigravity-plugin` with agents/antigravity-agent.md, commands/antigravity.md, scripts/antigravity-bridge.js)
 
-- `agents/antigravity-agent.md`
-- `commands/antigravity.md`
-- `scripts/antigravity-bridge.js`
+> If a subagent is missing, Pensador detects it during preflight and asks via `AskUserQuestion` whether to proceed without it.
 
-> Se um subagente estiver ausente, o Pensador detecta no [preflight](#preflight) e pergunta (via `AskUserQuestion`) se deve prosseguir sem ele.
-
-## Uso
-
-```text
-/pensador <demanda>
-```
-
-Exemplo:
-
-```text
-/pensador Crie uma tela de login para os usuários
-```
-
-Se `<demanda>` for omitida, o Pensador a solicita via `AskUserQuestion` antes de iniciar o estágio **PRD_BASE**.
-
-## Modos Lite e Completo
-
-No estágio **COMPLEXITY**, o Pensador calcula um score (0–4) com base em quatro sinais:
-
-| Sinal | +1 quando |
-|---|---|
-| `domainCount > 1` | há mais de um domínio funcional/técnico |
-| `hasBackend` | há API, dados, auth, jobs ou servidor |
-| `hasBroadScopeKeywords` | termos amplos: plataforma, multiusuário, compliance, pagamentos |
-| `isGreenfield` | ARCH não encontrou base existente |
-
-- **Score 0–1 → sugestão Lite:** fluxo enxuto, menos perguntas por domínio.
-- **Score ≥ 2 → sugestão Completo:** fluxo integral, todos os domínios.
-- O usuário sempre confirma ou altera o modo via `AskUserQuestion`.
-
-## Preflight
-
-O comando `/pensador` executa um preflight antes de iniciar o fluxo:
+### Usage
 
 ```bash
-node scripts/preflight.mjs
+/pensador <natural language request>
 ```
 
-Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade do Codex e do AGY, e emite um JSON com o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
+Example:
+```bash
+/pensador Create a login screen for users
+```
 
-## Gates de avanço
+If `<request>` is omitted, Pensador prompts for it via `AskUserQuestion` before starting the **PRD_BASE** stage.
 
-O Pensador não avança para o próximo estágio enquanto houver perguntas sem resposta registrada no estágio atual. Um estágio sem perguntas satisfaz o gate e avança imediatamente. Os artefatos finais são gerados somente no estágio **FINAL**.
+## Ten Stages
 
-## Engine de referência e testes
+```
+INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+```
 
-O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates, mapeamentos de effort/modelo, `detectComplexity`, `allocateFeatureDir`, `buildFeaturePath`, `classifyProject`, `consolidate`/`withConsolidated`, planejamento de artefatos e serialização de checkpoint v2. É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
+| Stage | Purpose | Delegates | Always runs |
+|---|---|---|---|
+| **INIT** | Check v2 checkpoint resumption, allocate feature dir, obtain request | — | ✓ |
+| **PRD_BASE** | Generate base PRD via `Strict_PRD_Schema`. No user questions; auto-advance. | skill `prd` | ✓ |
+| **ARCH** | Analyze architecture via Read/Glob/Grep; write `architecture.md`. | — | ✓ |
+| **EXPAND** | Amplify request with candidate requirements (Pensador questions). | — | ✓ |
+| **COMPLEXITY** | Calculate complexity score (0–4); propose Lite or Full mode; user confirms. | — | ✓ |
+| **BRAINSTORM_GERAL** | Orchestrate domain lenses in parallel: requirements-clarity + Codex (if backend) + AGY (if frontend). | `requirements-clarity` · `codex:codex-rescue` · `cc-antigravity-plugin:antigravity-agent` | ✓ |
+| **CODEX** | Dedicated technical refinement with `effort high`. Does not run for frontend-only. | `codex:codex-rescue` | except frontend-only |
+| **AGY** | Final product gaps sweep. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | ✓ |
+| **FINAL** | Apply `withConsolidated`, confirm backend, generate artifacts, present recap and handoff. | — | ✓ |
+| **DONE** | Terminal state. | — | — |
 
-> **Importante:** o engine **não é importado em runtime**. A skill é Markdown interpretado pelo LLM. O único script executado por shell é o `preflight.mjs`.
+## Generated Artifacts
+
+All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUserQuestion` if file exists.
+
+- `prd.md` — Final consolidated PRD, structured per Strict PRD Schema. *(always)*
+- `userhistory.md` — User journey in sequential steps. *(always)*
+- `comunication_json.md` — Communication/API contract in JSON. *(when backend exists)*
+- `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*
+
+## Lite vs. Full Mode
+
+In the **COMPLEXITY** stage, Pensador calculates a score (0–4) based on four signals:
+
+| Signal | +1 when |
+|---|---|
+| `domainCount > 1` | More than one functional/technical domain |
+| `hasBackend` | API, data, auth, jobs, or server present |
+| `hasBroadScopeKeywords` | Broad terms: platform, multi-user, compliance, payments |
+| `isGreenfield` | ARCH found no existing base |
+
+- **Score 0–1 → Lite suggestion:** streamlined flow, fewer domain questions.
+- **Score ≥ 2 → Full suggestion:** integral flow, all domains.
+- User always confirms or changes mode via `AskUserQuestion`.
+
+## Project Structure
+
+```
+cc-pensador/
+├─ .claude-plugin/
+│  ├─ plugin.json            # plugin manifest
+│  └─ marketplace.json       # marketplace entry
+├─ commands/
+│  └─ pensador.md            # /pensador command
+├─ skills/
+│  ├─ pensador/
+│  │  ├─ SKILL.md
+│  │  ├─ references/
+│  │  │  ├─ stages.md
+│  │  │  ├─ feature-isolation.md
+│  │  │  ├─ agent-stack.md
+│  │  │  ├─ skill-stack.md
+│  │  │  └─ askuserquestion-protocol.md
+│  │  └─ assets/             # templates
+│  ├─ prd/SKILL.md
+│  ├─ requirements-clarity/SKILL.md
+│  ├─ backend-development/SKILL.md
+│  ├─ ui-ux-pro-max/SKILL.md
+│  └─ frontend-design/SKILL.md
+├─ scripts/
+│  ├─ preflight.mjs          # verifies Codex and AGY availability
+│  └─ pensador-engine.mjs    # deterministic reference engine (validated by tests)
+├─ test/
+│  ├─ smoke.test.js
+│  ├─ engine-complexity.test.js
+│  ├─ feature-isolation.test.js
+│  ├─ consolidate.test.js
+│  ├─ artifacts.test.js
+│  └─ docs-consistency.test.js
+├─ CHANGELOG.md
+└─ LICENSE                   # MIT
+```
+
+Add `.pensador/` to `.gitignore` to avoid versioning local artifacts and checkpoints.
+
+## Testing
 
 ```bash
 npm install
 npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · docs-consistency
 ```
 
-## Estrutura do projeto
+## Migration from v1
 
-```
-cc-pensador/
-├─ .claude-plugin/
-│  ├─ plugin.json            # manifesto do plugin (nome, versão, dependências)
-│  └─ marketplace.json       # entrada de marketplace
-├─ commands/
-│  └─ pensador.md            # comando /pensador (orquestra os 10 estágios)
-├─ skills/
-│  ├─ pensador/
-│  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature
-│  │  ├─ references/
-│  │  │  ├─ stages.md                    # comportamento detalhado de cada estágio
-│  │  │  ├─ feature-isolation.md         # .pensador/<slug-da-demanda>-vN/, allocateFeatureDir(), shared-agents/
-│  │  │  ├─ agent-stack.md               # Codex/AGY, roteamento BRAINSTORM_GERAL, contrato de arquivos
-│  │  │  ├─ skill-stack.md               # skills como lentes de domínio
-│  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
-│  │  └─ assets/                         # templates: prd · userhistory · comunication_json
-│  ├─ prd/SKILL.md           # Skill_PRD_Base: Strict PRD Schema + entrevista de descoberta
-│  ├─ requirements-clarity/SKILL.md
-│  ├─ backend-development/SKILL.md
-│  ├─ ui-ux-pro-max/SKILL.md
-│  └─ frontend-design/SKILL.md
-├─ scripts/
-│  ├─ preflight.mjs          # verifica disponibilidade de Codex e AGY
-│  └─ pensador-engine.mjs    # especificação determinística de referência (validada por testes)
-├─ test/
-│  ├─ smoke.test.js                # API pública do engine, STAGE_ORDER, checkpoint v2
-│  ├─ engine-complexity.test.js    # detectComplexity — unitários + fast-check
-│  ├─ feature-isolation.test.js    # allocateFeatureDir, buildFeaturePath
-│  ├─ consolidate.test.js          # consolidate, withConsolidated
-│  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
-│  └─ docs-consistency.test.js     # STAGE_ORDER verbatim nos docs
-├─ CHANGELOG.md              # histórico de versões e breaking changes
-└─ LICENSE                   # MIT
-```
-
-> **`.gitignore`:** adicione `.pensador/` para não versionar artefatos locais e checkpoints gerados pelo Pensador.
-
-## Migração da v1
-
-| Aspecto | v1 | v2 |
+| Aspect | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 10 estágios (com ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 10 stages (ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
-| Pasta de artefatos | pasta raiz legada da v1 | `.pensador/<slug-da-demanda>-vN/` |
-| Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |
-| Brainstorm | 4 estágios sequenciais | 1 estágio paralelo por domínio |
+| Artifacts folder | legacy v1 root | `.pensador/<slug-vN>/` |
+| v1 checkpoints | `pensador-output/.pensador-progress.json` | Incompatible — Pensador offers fresh start |
+| Brainstorm | 4 sequential stages | 1 stage with parallel domain lenses |
 
-> Checkpoints v1 não são convertidos automaticamente. O Pensador detecta a incompatibilidade e oferece iniciar um novo fluxo v2 via `AskUserQuestion`.
+v1 checkpoints are not auto-converted. Pensador detects incompatibility and offers to start fresh via `AskUserQuestion`.
+
+## License
+
+MIT
+
+---
+
+**Para mais detalhes em português, veja [README.pt-BR.md](./README.pt-BR.md)**
