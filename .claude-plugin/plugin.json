@@ -1,7 +1,7 @@
 {
   "name": "cc-pensador",
-  "version": "2.4.0",
-  "description": "Pensador v2: 10-stage PRD workflow skill and /pensador command for Claude Code. Adds ARCH (project scan + architecture.md), COMPLEXITY (Lite/Completo heuristic), BRAINSTORM_GERAL (parallel domain orchestration with requirements-clarity, Codex and AGY as domain lenses), and per-feature isolation under .pensador/feature-nN/. All dialogue routes through AskUserQuestion.",
+  "version": "2.5.1",
+  "description": "Pensador v2: 10-stage PRD workflow skill and /pensador command for Claude Code. Adds ARCH (project scan + architecture.md), COMPLEXITY (Lite/Completo heuristic), BRAINSTORM_GERAL (parallel domain orchestration with requirements-clarity, Codex and AGY as domain lenses), and per-feature isolation under .pensador/feature-nN/. Supports --modo claude|agy|kiro|codex to delegate the workflow's heavy work to an external CLI (Antigravity, Kiro or Codex) while Claude orchestrates via AskUserQuestion. All dialogue routes through AskUserQuestion.",
   "author": {
     "name": "allanharlen"
   },
@@ -14,6 +14,10 @@
     {
       "name": "codex",
       "marketplace": "openai-codex"
+    },
+    {
+      "name": "cc-kiro-plugin",
+      "marketplace": "cc-kiro-plugin"
     }
   ],
   "keywords": [
@@ -31,6 +35,8 @@
     "codex",
     "antigravity",
     "agy",
+    "kiro",
+    "execution-modes",
     "claude-code"
   ]
 }

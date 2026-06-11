@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.5.0] — 2026-06-11
+
+### Novas Funcionalidades
+
+#### Modos de execução (`--modo`)
+- Novo eixo de execução **ortogonal** às lentes de domínio: define qual motor realiza o trabalho pesado do fluxo (PRD base, expansão, síntese de análises, geração de artefatos).
+  - `--modo claude` (padrão): o Claude Code executa o fluxo com os próprios tokens.
+  - `--modo agy`: delega via `/cc-antigravity-plugin:antigravity` (padrão `--model claude-4.6-opus-thinking`).
+  - `--modo kiro`: delega via `/cc-kiro-plugin:kiro` (padrão `--model claude-opus-4.8 --effort high`).
+  - `--modo codex`: delega via `/codex:rescue` (padrão `--effort high`).
+- **Invariante preservada:** em qualquer modo, todo diálogo com o usuário continua passando exclusivamente por `AskUserQuestion`. O motor externo nunca conversa com o usuário; só produz rascunhos/análises que o Pensador relê e consolida.
+- Objetivo: baratear a geração de artefatos transferindo o custo para a quota da CLI externa, mantendo o Claude apenas como orquestrador.
+- Sobrescritas `--model` (agy/kiro) e `--effort` (codex; `xhigh`/`extrahigh` → `high`); `--modo` desconhecido cai para `claude` com aviso.
+
+#### Engine (`pensador-engine.mjs`)
+- Novos exports puros e testados:
+  - `EXECUTION_MODES` / `DEFAULT_EXECUTION_MODE` — registro dos modos.
+  - `parseExecutionMode(rawArgs)` — extrai `--modo`/`--model`/`--effort` e devolve a `demanda`.
+  - `resolveExecutionMode(mode, overrides)` — resolve o motor + parâmetro efetivo.
+  - `buildDelegationInvocation(mode, payload)` — constrói o slash command de delegação com prompt JSON-quoted.
+
+#### Preflight (`preflight.mjs`)
+- Aceita `--modo <modo>` e adiciona o bloco `executionMode` ao relatório (disponibilidade do motor + fallback).
+- Passa a checar o plugin do Kiro (`cc-kiro-plugin`) além de Codex e AGY. Continua saindo sempre com código 0.
+
+#### Plugin
+- `cc-kiro-plugin` adicionado como dependência cross-marketplace (junto a `cc-antigravity-plugin` e `openai-codex`).
+- Versão do plugin elevada para `2.5.0`.
+
+### Documentação
+- Nova referência `skills/pensador/references/execution-modes.md`.
+- `SKILL.md`, `stages.md`, `agent-stack.md`, `commands/pensador.md` e `README.md` atualizados para os modos de execução (parsing no INIT, delegação por estágio via `SlashCommand`).
+
+### Testes
+- Novo `test/execution-modes.test.js` (parse/resolve/buildDelegationInvocation). Suíte total: 161 testes verdes.
+
 ## [Unreleased]
 
 - **Pasta de artefatos versionada por demanda** - os artefatos agora ficam em `.pensador/<slug-da-demanda>-vN/`, diretamente nessa pasta. Ex.: `/pensador desenvolva uma pagina de clientes` -> `.pensador/pagina-clientes-v1/`.

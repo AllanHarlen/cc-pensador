@@ -434,6 +434,200 @@ export function agyStageModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Execution modes (--modo)
+// ---------------------------------------------------------------------------
+
+/**
+ * Execution mode selects WHICH engine performs the heavy generative work of the
+ * Pensador workflow (drafting the PRD base, expanding requirements, synthesizing
+ * brainstorm/Codex/AGY analyses, writing artifacts). It is orthogonal to the
+ * stage delegation in STAGE_DELEGATION (Codex/AGY/skills as *domain lenses*).
+ *
+ *   - `claude` (default): Claude Code itself does the work, spending its tokens.
+ *   - `agy` | `kiro` | `codex`: Claude Code becomes a thin orchestrator that
+ *     delegates each unit of work to the external CLI plugin via a slash command,
+ *     so the work is billed against that engine's quota instead of Claude's.
+ *
+ * INVARIANT: regardless of mode, ALL user dialogue still routes exclusively
+ * through AskUserQuestion. A delegating mode never lets the external engine talk
+ * to the user — it only produces drafts/analysis the Pensador relays.
+ */
+export const DEFAULT_EXECUTION_MODE = 'claude';
+
+/**
+ * Registry of execution modes. `delegates: false` means Claude does the work
+ * inline. For delegating modes, `command` + `paramFlag`/`defaultParam` describe
+ * the slash-command invocation, and `plugin` is what preflight.mjs probes in the
+ * Claude Code plugin cache.
+ */
+export const EXECUTION_MODES = {
+  claude: {
+    mode: 'claude',
+    label: 'Claude Code (padrão)',
+    delegates: false,
+    command: null,
+    defaultModel: null,
+    defaultEffort: null,
+    plugin: null,
+  },
+  agy: {
+    mode: 'agy',
+    label: 'Antigravity (AGY)',
+    delegates: true,
+    command: '/cc-antigravity-plugin:antigravity',
+    defaultModel: 'claude-4.6-opus-thinking',
+    defaultEffort: null,
+    plugin: { marketplace: 'cc-antigravity-plugin', name: 'cc-antigravity-plugin' },
+  },
+  kiro: {
+    mode: 'kiro',
+    label: 'Kiro CLI',
+    delegates: true,
+    command: '/cc-kiro-plugin:kiro',
+    // Default: Claude Opus 4.8 at high effort. The Kiro bridge normalizes model
+    // aliases / natural forms into the canonical Kiro id.
+    defaultModel: 'claude-opus-4.8',
+    defaultEffort: 'high',
+    plugin: { marketplace: 'cc-kiro-plugin', name: 'cc-kiro-plugin' },
+  },
+  codex: {
+    mode: 'codex',
+    label: 'Codex CLI',
+    delegates: true,
+    command: '/codex:rescue',
+    defaultModel: null,
+    defaultEffort: 'high',
+    plugin: { marketplace: 'openai-codex', name: 'codex' },
+  },
+};
+
+/**
+ * Parses the raw `$ARGUMENTS` string of `/pensador`, extracting the execution
+ * mode flag and optional `--model` / `--effort` overrides, and returns the
+ * leftover text as the demanda. Pure and total: same input → same output, never
+ * throws. Unknown `--modo <x>` falls back to the default mode with
+ * `modeValid: false` so the caller can warn the user.
+ *
+ * Accepts `--modo agy` and `--modo=agy` (case-insensitive value).
+ *
+ * @param {string | null | undefined} rawArgs
+ * @returns {{ mode: string, requestedMode: string|null, modeValid: boolean,
+ *   modelOverride: string|null, effortOverride: string|null, demanda: string }}
+ */
+export function parseExecutionMode(rawArgs) {
+  let text = typeof rawArgs === 'string' ? rawArgs : '';
+
+  const extract = (re) => {
+    const m = text.match(re);
+    if (!m) return null;
+    text = text.replace(m[0], ' ');
+    return m[2];
+  };
+
+  const requestedRaw = extract(/(^|\s)--modo(?:=|\s+)([a-zA-Z]+)/);
+  const modelOverride = extract(/(^|\s)--model(?:=|\s+)(\S+)/);
+  const effortOverride = extract(/(^|\s)--effort(?:=|\s+)(\S+)/);
+
+  const requestedMode = requestedRaw ? requestedRaw.toLowerCase() : null;
+  const known =
+    requestedMode !== null &&
+    Object.prototype.hasOwnProperty.call(EXECUTION_MODES, requestedMode);
+
+  return {
+    mode: known ? requestedMode : DEFAULT_EXECUTION_MODE,
+    requestedMode,
+    modeValid: requestedMode === null || known,
+    modelOverride: modelOverride ?? null,
+    effortOverride: effortOverride ?? null,
+    demanda: text.replace(/\s+/g, ' ').trim(),
+  };
+}
+
+/**
+ * Normalizes a requested Codex/Kiro effort to a value the flow communicates.
+ * Mirrors mapEffort but also accepts `xhigh` (Codex/Kiro spelling) → high.
+ *
+ * @param {string} requested
+ * @returns {'medium'|'high'}
+ */
+function normalizeEffort(requested) {
+  return mapEffort(requested === 'xhigh' ? 'extrahigh' : requested);
+}
+
+/**
+ * Resolves an execution mode key (plus optional overrides) into a concrete
+ * descriptor with the effective `model` and `effort` the slash command should
+ * carry. Pure and total: unknown mode → default (claude). For a non-delegating
+ * mode, both are null.
+ *
+ * Override precedence (per field): explicit override > mode default > none.
+ *
+ * @param {string} mode
+ * @param {{ model?: string, modelOverride?: string, effort?: string, effortOverride?: string }} [overrides]
+ * @returns {{ mode: string, label: string, delegates: boolean, command: string|null,
+ *   model: string|null, effort: string|null,
+ *   modelSource: 'override'|'default'|'none', effortSource: 'override'|'default'|'none',
+ *   plugin: { marketplace: string, name: string }|null }}
+ */
+export function resolveExecutionMode(mode, overrides = {}) {
+  const key = Object.prototype.hasOwnProperty.call(EXECUTION_MODES, mode)
+    ? mode
+    : DEFAULT_EXECUTION_MODE;
+  const base = EXECUTION_MODES[key];
+
+  if (!base.delegates) {
+    return { ...base, model: null, effort: null, modelSource: 'none', effortSource: 'none' };
+  }
+
+  const modelOverride = overrides.model ?? overrides.modelOverride ?? null;
+  const effortOverride = overrides.effort ?? overrides.effortOverride ?? null;
+
+  const model = modelOverride ?? base.defaultModel ?? null;
+  const modelSource = modelOverride ? 'override' : base.defaultModel ? 'default' : 'none';
+
+  let effort = effortOverride ?? base.defaultEffort ?? null;
+  const effortSource = effortOverride ? 'override' : base.defaultEffort ? 'default' : 'none';
+  if (effort) effort = normalizeEffort(effort);
+
+  return { ...base, model, effort, modelSource, effortSource };
+}
+
+/**
+ * Builds the slash-command invocation string a delegating execution mode uses to
+ * hand one unit of work to its external engine. Returns null for a
+ * non-delegating mode (claude does the work inline). Appends `--model` and/or
+ * `--effort` when resolved, then the JSON-quoted prompt.
+ *
+ * Examples:
+ *   buildDelegationInvocation('agy',  { prompt: 'PromptSystem' })
+ *     → '/cc-antigravity-plugin:antigravity --model claude-4.6-opus-thinking "PromptSystem"'
+ *   buildDelegationInvocation('kiro', { prompt: 'PromptSystem' })
+ *     → '/cc-kiro-plugin:kiro --model claude-opus-4.8 --effort high "PromptSystem"'
+ *   buildDelegationInvocation('codex', { prompt: 'PromptSystem' })
+ *     → '/codex:rescue --effort high "PromptSystem"'
+ *
+ * @param {string | ReturnType<typeof resolveExecutionMode>} modeOrConfig
+ * @param {{ prompt?: string, model?: string, effort?: string }} [payload]
+ * @returns {string | null}
+ */
+export function buildDelegationInvocation(modeOrConfig, payload = {}) {
+  const config =
+    typeof modeOrConfig === 'string'
+      ? resolveExecutionMode(modeOrConfig, payload)
+      : modeOrConfig;
+
+  if (!config || !config.delegates || !config.command) {
+    return null;
+  }
+
+  const parts = [config.command];
+  if (config.model) parts.push('--model', config.model);
+  if (config.effort) parts.push('--effort', config.effort);
+  parts.push(JSON.stringify(typeof payload.prompt === 'string' ? payload.prompt : ''));
+  return parts.join(' ');
+}
+
+// ---------------------------------------------------------------------------
 // Project classification & fullstack detection
 // ---------------------------------------------------------------------------
 

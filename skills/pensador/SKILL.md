@@ -20,7 +20,8 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/stages.md` | Comportamento detalhado de cada estagio e gates de avanco |
 | `skills/pensador/references/feature-isolation.md` | Isolamento por feature, `allocateFeatureDir()`, checkpoints e contrato `shared-agents/` |
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
-| `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY e contrato `shared-agents/` |
+| `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY/Kiro e contrato `shared-agents/` |
+| `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |
 | `skills/pensador/assets/prd-template.md` | Template do artefato `prd.md` |
 | `skills/pensador/assets/userhistory-template.md` | Template do artefato `userhistory.md` |
@@ -98,6 +99,32 @@ O idioma padrao e PT-BR. Cada pergunta deve oferecer uma opcao recomendada quand
 
 ---
 
+## Modos de execucao (`--modo`)
+
+O modo de execucao define **qual motor executa o trabalho pesado** do fluxo (redigir o PRD base, expandir requisitos, sintetizar analises e gerar artefatos). E ortogonal a delegacao por estagio (Codex/AGY/skills como lentes de dominio).
+
+- `--modo claude` (padrao, ou ausente): o Claude Code faz o trabalho e gasta os proprios tokens.
+- `--modo agy` | `--modo kiro` | `--modo codex`: o Claude Code vira um orquestrador fino e **delega** cada unidade de trabalho para a CLI externa via slash command, fazendo o custo recair sobre a quota daquele motor. Barateia a geracao dos artefatos.
+
+| Modo | Slash command | Parametro padrao |
+|---|---|---|
+| `claude` | — | — |
+| `agy` | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
+| `kiro` | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
+| `codex` | `/codex:rescue` | `--effort high` |
+
+Regras centrais:
+
+- **Invariante preservada:** em qualquer modo, todo dialogo com o usuario continua passando exclusivamente por `AskUserQuestion`. O motor externo nunca conversa com o usuario; ele so produz rascunhos/analises que o Pensador relê e consolida.
+- Parsing: `parseExecutionMode($ARGUMENTS)` extrai `--modo`, `--model` e `--effort` e devolve o restante como `demanda`. `--modo` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
+- Preflight: rode `preflight.mjs --modo <modo>`; se o motor escolhido estiver indisponivel, pergunte via `AskUserQuestion` se deve cair para `--modo claude` ou abortar.
+- Decisoes que exigem o usuario nunca sao delegadas: viram perguntas `AskUserQuestion` feitas pelo proprio Pensador.
+- O modo de execucao e independente das lentes de dominio: mesmo em `--modo kiro`, os estagios `CODEX` e `AGY` continuam usando `codex:codex-rescue` e `cc-antigravity-plugin:antigravity-agent` como lentes (salvo fallback).
+
+Detalhes completos, parsing, fallback e contrato de delegacao em `references/execution-modes.md`. Mapeamento deterministico em `pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
+
+---
+
 ## Gate de avanco
 
 O Pensador nunca avanca para o proximo estagio enquanto existir pergunta sem desfecho registrado no estagio atual.
@@ -113,7 +140,7 @@ O Pensador nunca avanca para o proximo estagio enquanto existir pergunta sem des
 
 ```text
 INIT
-  Verifica demanda, checkpoint v2 e aloca featurePath.
+  Resolve modo de execucao (--modo), verifica demanda, checkpoint v2 e aloca featurePath.
 
 PRD_BASE
   Gera PRD Base pelo Strict_PRD_Schema. Sem perguntas; avanco automatico.
@@ -152,14 +179,15 @@ DONE
 
 ## INIT
 
-1. Verifique se ha checkpoints v2 em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
-2. Se houver checkpoint v2 valido, pergunte via `AskUserQuestion` se o usuario quer retomar do estagio salvo ou iniciar nova atualizacao. A opcao recomendada deve ser retomar quando o checkpoint estiver consistente.
-3. Se houver apenas checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel. Pergunte se deve iniciar um fluxo v2 novo, deixando claro que o checkpoint antigo nao sera reutilizado.
-4. Se iniciar novo fluxo, derive um nome curto da atualizacao a partir da demanda, gere o slug base (`slugify()`) e execute `allocateFeatureDir()` com esse nome; grave `featurePath = ".pensador/<slug-da-demanda>-vN"` no estado. Use o fallback `atualizacao-v1` quando o nome ficar vazio e incremente `N` se ja houver pasta para o mesmo slug.
-5. Se a demanda estiver ausente ou vazia, solicite-a via `AskUserQuestion`.
-6. Com demanda presente e `featurePath` definido, avance para `PRD_BASE`.
+1. Execute `parseExecutionMode($ARGUMENTS)` para separar `--modo` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Registre o modo de execucao no estado. Se `--modo` for desconhecido, avise via `AskUserQuestion` e use `claude`.
+2. Verifique se ha checkpoints v2 em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
+3. Se houver checkpoint v2 valido, pergunte via `AskUserQuestion` se o usuario quer retomar do estagio salvo ou iniciar nova atualizacao. A opcao recomendada deve ser retomar quando o checkpoint estiver consistente.
+4. Se houver apenas checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel. Pergunte se deve iniciar um fluxo v2 novo, deixando claro que o checkpoint antigo nao sera reutilizado.
+5. Se iniciar novo fluxo, derive um nome curto da atualizacao a partir da demanda, gere o slug base (`slugify()`) e execute `allocateFeatureDir()` com esse nome; grave `featurePath = ".pensador/<slug-da-demanda>-vN"` no estado. Use o fallback `atualizacao-v1` quando o nome ficar vazio e incremente `N` se ja houver pasta para o mesmo slug.
+6. Se a demanda estiver ausente ou vazia, solicite-a via `AskUserQuestion`.
+7. Com demanda presente, modo de execucao resolvido e `featurePath` definido, avance para `PRD_BASE`.
 
-**Gate:** demanda presente e nao vazia, `featurePath` definido, checkpoint v2 retomado ou decisao de novo fluxo registrada.
+**Gate:** demanda presente e nao vazia, modo de execucao resolvido (e motor confirmado disponivel ou fallback para `claude` registrado), `featurePath` definido, checkpoint v2 retomado ou decisao de novo fluxo registrada.
 
 ---
 
@@ -343,7 +371,7 @@ Estado terminal. O fluxo esta encerrado.
 
 | Estagio | Gate de avanco |
 |---|---|
-| `INIT` | Demanda presente, `featurePath` definido e retomada/novo fluxo decididos |
+| `INIT` | Demanda presente, modo de execucao resolvido, `featurePath` definido e retomada/novo fluxo decididos |
 | `PRD_BASE` | PRD Base completo com secoes preenchidas ou `"TBD"` |
 | `ARCH` | `architecture.md` gravado e perguntas greenfield fechadas |
 | `EXPAND` | Todas as perguntas respondidas ou diferidas |

@@ -8,13 +8,14 @@
     },
     "allowCrossMarketplaceDependenciesOn": [
         "cc-antigravity-plugin",
-        "openai-codex"
+        "openai-codex",
+        "cc-kiro-plugin"
     ],
     "plugins": [
         {
             "name": "cc-pensador",
-            "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation), PRD_BASE (Strict PRD Schema), ARCH (project scan via Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>/). All dialogue routes exclusively through AskUserQuestion.",
-            "version": "2.4.0",
+            "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation + --modo parsing), PRD_BASE (Strict PRD Schema), ARCH (project scan via Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>/). Execution modes (--modo agy|kiro|codex) delegate the heavy work to an external CLI while Claude orchestrates. All dialogue routes exclusively through AskUserQuestion.",
+            "version": "2.5.1",
             "author": {
                 "name": "allanharlen"
             },
@@ -35,6 +36,8 @@
                 "codex",
                 "antigravity",
                 "agy",
+                "kiro",
+                "execution-modes",
                 "claude-code"
             ],
             "homepage": "https://github.com/AllanHarlen/cc-pensador",

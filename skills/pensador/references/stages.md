@@ -14,19 +14,22 @@ A sequencia e fixa e nunca reordenada. O avanco e controlado por gate: o Pensado
 
 Funil v2: **iniciar/retomar** -> **PRD base** -> **arquitetura** -> **expandir** -> **calibrar complexidade** -> **brainstorm geral por dominio** -> **varredura tecnica** -> **varredura de produto** -> **consolidar** -> **entregar**.
 
+> **Modo de execucao.** O trabalho pesado de cada estagio (redigir PRD base, expandir, sintetizar analises, gerar artefatos) e executado pelo motor escolhido em `--modo`. Em `--modo claude` (padrao) o Claude Code redige inline; em `--modo agy|kiro|codex` o Pensador delega cada unidade de trabalho via slash command e so orquestra. Em qualquer modo, os gates e o canal `AskUserQuestion` permanecem identicos. Veja `references/execution-modes.md`.
+
 ---
 
 ## INIT
 
-**Proposito:** obter demanda, resolver retomada e definir isolamento por atualizacao.
+**Proposito:** obter demanda, resolver modo de execucao, resolver retomada e definir isolamento por atualizacao.
 
+- `parseExecutionMode($ARGUMENTS)` separa `--modo` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Modo desconhecido cai para `claude` com aviso via `AskUserQuestion`. Veja `references/execution-modes.md`.
 - Checkpoints v2 ficam em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
 - Checkpoint valido: perguntar via `AskUserQuestion` se o usuario quer retomar ou criar nova atualizacao.
 - Checkpoint v1 em `pensador-output/.pensador-progress.json`: incompativel. Perguntar se deve iniciar fluxo v2 novo.
 - Novo fluxo: executar `allocateFeatureDir()` e gravar `featurePath`.
 - Demanda ausente: solicitar via `AskUserQuestion`.
 
-**Gate:** demanda presente, `featurePath` definido e decisao de retomada/novo fluxo registrada.
+**Gate:** demanda presente, modo de execucao resolvido (motor disponivel ou fallback para `claude` registrado), `featurePath` definido e decisao de retomada/novo fluxo registrada.
 
 ---
 

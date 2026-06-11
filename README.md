@@ -1,8 +1,8 @@
 # cc-pensador
 
-> Plugin de Claude Code que conduz uma demanda em linguagem natural por **dez estágios de trabalho** até um PRD de alta qualidade — com análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini).
+> Plugin de Claude Code que conduz uma demanda em linguagem natural por **dez estágios de trabalho** até um PRD de alta qualidade — com análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
 
-`versão 2.0.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
+`versão 2.5.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
 ## Sumário
 
@@ -12,6 +12,7 @@
 - [Isolamento por feature](#isolamento-por-feature)
 - [Instalação](#instalação)
 - [Uso](#uso)
+- [Modos de execução (`--modo`)](#modos-de-execução---modo)
 - [Modos Lite e Completo](#modos-lite-e-completo)
 - [Preflight](#preflight)
 - [Gates de avanço](#gates-de-avanço)
@@ -24,6 +25,8 @@
 O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pensador` para o Claude Code. A partir de uma demanda em linguagem natural, o Pensador analisa a arquitetura do projeto, estima a complexidade, coordena um brainstorm geral por domínio em paralelo, refina com Codex e AGY e produz artefatos de PRD isolados por atualização em `.pensador/<slug-da-demanda>-vN/`.
 
 **Invariante central:** todo diálogo entre os agentes e o usuário passa **exclusivamente** pela ferramenta `AskUserQuestion`. Nenhum estágio conversa por outro canal.
+
+Por padrão (`--modo claude`), o Claude Code executa o fluxo com os próprios tokens. Com `--modo agy`, `--modo kiro` ou `--modo codex`, o Claude vira um orquestrador fino e delega o trabalho pesado a uma CLI externa — veja [Modos de execução](#modos-de-execução---modo).
 
 ## Fluxo de estágios
 
@@ -109,19 +112,53 @@ O Pensador delega aos subagentes **Codex** (estágios BRAINSTORM_GERAL e CODEX) 
 
 > Se um subagente estiver ausente, o Pensador detecta no [preflight](#preflight) e pergunta (via `AskUserQuestion`) se deve prosseguir sem ele.
 
+### 3 · Opcional: Kiro (para `--modo kiro`)
+
+O modo de execução `--modo kiro` delega o trabalho pesado ao **Kiro CLI** via o plugin `cc-kiro-plugin`:
+
+```text
+/plugin marketplace add AllanHarlen/cc-kiro-plugin
+/plugin install cc-kiro-plugin
+/reload-plugins
+```
+
+Instale e autentique a Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash` ou, no Windows, `irm 'https://cli.kiro.dev/install.ps1' | iex`; depois `kiro-cli login`). Os modos `--modo agy` e `--modo codex` reaproveitam os plugins `cc-antigravity-plugin` e `openai-codex` já instalados acima.
+
+> Os três plugins (`cc-antigravity-plugin`, `openai-codex`, `cc-kiro-plugin`) são declarados como dependências cross-marketplace. Se o motor do `--modo` escolhido estiver ausente, o Pensador oferece cair para `--modo claude` via `AskUserQuestion`.
+
 ## Uso
 
 ```text
-/pensador <demanda>
+/pensador [--modo claude|agy|kiro|codex] [--model <id>] [--effort <nível>] <demanda>
 ```
 
 Exemplo:
 
 ```text
 /pensador Crie uma tela de login para os usuários
+/pensador --modo kiro Crie uma tela de login para os usuários
+/pensador --modo agy --model claude-4.6-opus-thinking Construir API de pagamentos
 ```
 
 Se `<demanda>` for omitida, o Pensador a solicita via `AskUserQuestion` antes de iniciar o estágio **PRD_BASE**.
+
+## Modos de execução (`--modo`)
+
+O **modo de execução** define **qual motor executa o trabalho pesado** do fluxo (redigir o PRD base, expandir requisitos, sintetizar análises e gerar artefatos). É **ortogonal** às lentes de domínio (Codex/AGY/skills dentro dos estágios). Por padrão, o Claude Code faz tudo e gasta os próprios tokens; um modo delegado transfere esse custo para a quota da CLI externa, mantendo o Claude apenas como orquestrador.
+
+| Modo | Quem trabalha | Slash command de delegação | Parâmetro padrão |
+|---|---|---|---|
+| `--modo claude` (padrão) | Claude Code | — | — |
+| `--modo agy` | Antigravity CLI | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
+| `--modo kiro` | Kiro CLI | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
+| `--modo codex` | Codex CLI | `/codex:rescue` | `--effort high` |
+
+- **Invariante preservada:** em qualquer modo, todo diálogo com o usuário continua passando **exclusivamente** por `AskUserQuestion`. O motor externo só produz rascunhos/análises; o Pensador relê, consolida e transforma decisões em perguntas.
+- Sobrescritas: `--model <id>` (agy/kiro) e `--effort <nível>` (kiro/codex; `xhigh`/`extrahigh` → `high`).
+- `--modo` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
+- O preflight é executado com `--modo <modo>`; se o motor estiver indisponível, o Pensador oferece cair para `--modo claude`.
+
+Detalhes completos em `skills/pensador/references/execution-modes.md`. Mapeamento determinístico em `scripts/pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
 
 ## Modos Lite e Completo
 
@@ -140,13 +177,13 @@ No estágio **COMPLEXITY**, o Pensador calcula um score (0–4) com base em quat
 
 ## Preflight
 
-O comando `/pensador` executa um preflight antes de iniciar o fluxo:
+O comando `/pensador` executa um preflight antes de iniciar o fluxo, informando o modo de execução escolhido:
 
 ```bash
-node scripts/preflight.mjs
+node scripts/preflight.mjs --modo <claude|agy|kiro|codex>
 ```
 
-Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade do Codex e do AGY, e emite um JSON com o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
+Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade dos subagentes de domínio (Codex e AGY) e do **motor de execução** do `--modo` (Antigravity, Kiro ou Codex), e emite um JSON com o bloco `executionMode` e o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
 
 ## Gates de avanço
 
@@ -154,13 +191,13 @@ O Pensador não avança para o próximo estágio enquanto houver perguntas sem r
 
 ## Engine de referência e testes
 
-O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates, mapeamentos de effort/modelo, `detectComplexity`, `allocateFeatureDir`, `buildFeaturePath`, `classifyProject`, `consolidate`/`withConsolidated`, planejamento de artefatos e serialização de checkpoint v2. É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
+O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates, mapeamentos de effort/modelo, modos de execução (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`), `detectComplexity`, `allocateFeatureDir`, `buildFeaturePath`, `classifyProject`, `consolidate`/`withConsolidated`, planejamento de artefatos e serialização de checkpoint v2. É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
 
 > **Importante:** o engine **não é importado em runtime**. A skill é Markdown interpretado pelo LLM. O único script executado por shell é o `preflight.mjs`.
 
 ```bash
 npm install
-npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · docs-consistency
+npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · docs-consistency
 ```
 
 ## Estrutura do projeto
@@ -171,15 +208,16 @@ cc-pensador/
 │  ├─ plugin.json            # manifesto do plugin (nome, versão, dependências)
 │  └─ marketplace.json       # entrada de marketplace
 ├─ commands/
-│  └─ pensador.md            # comando /pensador (orquestra os 10 estágios)
+│  └─ pensador.md            # comando /pensador (orquestra os 10 estágios + --modo)
 ├─ skills/
 │  ├─ pensador/
-│  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature
+│  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature + modos de execução
 │  │  ├─ references/
 │  │  │  ├─ stages.md                    # comportamento detalhado de cada estágio
 │  │  │  ├─ feature-isolation.md         # .pensador/<slug-da-demanda>-vN/, allocateFeatureDir(), shared-agents/
-│  │  │  ├─ agent-stack.md               # Codex/AGY, roteamento BRAINSTORM_GERAL, contrato de arquivos
+│  │  │  ├─ agent-stack.md               # Codex/AGY/Kiro, roteamento BRAINSTORM_GERAL, motores de execução
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
+│  │  │  ├─ execution-modes.md           # modos --modo (claude/agy/kiro/codex), parsing, preflight, delegação
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
 │  │  └─ assets/                         # templates: prd · userhistory · comunication_json
 │  ├─ prd/SKILL.md           # Skill_PRD_Base: Strict PRD Schema + entrevista de descoberta
@@ -188,7 +226,7 @@ cc-pensador/
 │  ├─ ui-ux-pro-max/SKILL.md
 │  └─ frontend-design/SKILL.md
 ├─ scripts/
-│  ├─ preflight.mjs          # verifica disponibilidade de Codex e AGY
+│  ├─ preflight.mjs          # verifica disponibilidade de Codex, AGY, Kiro e do motor de execução
 │  └─ pensador-engine.mjs    # especificação determinística de referência (validada por testes)
 ├─ test/
 │  ├─ smoke.test.js                # API pública do engine, STAGE_ORDER, checkpoint v2
@@ -196,21 +234,10 @@ cc-pensador/
 │  ├─ feature-isolation.test.js    # allocateFeatureDir, buildFeaturePath
 │  ├─ consolidate.test.js          # consolidate, withConsolidated
 │  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
+│  ├─ execution-modes.test.js      # --modo: parse/resolve/buildDelegationInvocation
 │  └─ docs-consistency.test.js     # STAGE_ORDER verbatim nos docs
 ├─ CHANGELOG.md              # histórico de versões e breaking changes
 └─ LICENSE                   # MIT
 ```
 
 > **`.gitignore`:** adicione `.pensador/` para não versionar artefatos locais e checkpoints gerados pelo Pensador.
-
-## Migração da v1
-
-| Aspecto | v1 | v2 |
-|---|---|---|
-| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 10 estágios (com ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
-| `CHECKPOINT_VERSION` | 1 | 2 |
-| Pasta de artefatos | pasta raiz legada da v1 | `.pensador/<slug-da-demanda>-vN/` |
-| Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |
-| Brainstorm | 4 estágios sequenciais | 1 estágio paralelo por domínio |
-
-> Checkpoints v1 não são convertidos automaticamente. O Pensador detecta a incompatibilidade e oferece iniciar um novo fluxo v2 via `AskUserQuestion`.
