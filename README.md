@@ -1,8 +1,8 @@
 # cc-pensador
 
-> Claude Code plugin that conducts a natural language request through **ten stages of work** to a high-quality PRD — with architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--modo`, saving Claude tokens.
+> Claude Code plugin that conducts a natural language request through **eleven stages of work** to a high-quality PRD — with Code Base Memory exploration, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--modo`, saving Claude tokens.
 
-`version 2.5.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
+`version 2.6.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
 **📖 [Leia em Português](./README.pt-BR.md) | Read in Portuguese**
 
@@ -87,17 +87,40 @@ The **execution mode** defines **which engine performs the heavy work** of the f
 
 Full details in `skills/pensador/references/execution-modes.md`. Deterministic mapping in `scripts/pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
 
-## Ten Stages
+## Code Base Memory (mandatory exploration)
+
+Before drafting the PRD/Spec base, Pensador explores the existing project with **[Code Base Memory](https://github.com/DeusData/codebase-memory-mcp)** (`codebase-memory-mcp`, an MCP server) so the deliverable reflects the real structure the feature/fix will act upon.
+
+- Runs at the end of **INIT** (after the feature dir is allocated), with `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (plus `detect_changes` for fixes). The summary is written to `<featurePath>/codebase-memory.md`.
+- **ARCH** reuses the same index and complements it with Read/Glob/Grep.
+- Detected by preflight (CLI on PATH or an MCP config entry). If unavailable, Pensador asks via `AskUserQuestion` whether to install it or fall back to plain Read/Glob/Grep — it never blocks.
+
+Install: `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash` (or `install.ps1` on Windows), then restart your agent. See `skills/pensador/references/codebase-memory.md`.
+
+## OpenSpec (optional spec mode)
+
+Pensador optionally integrates **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. When preflight detects OpenSpec (the `openspec` CLI on PATH or an `openspec/` directory), **INIT** asks via `AskUserQuestion` whether to generate a **PRD** (default) or a structured **Spec**.
+
+- Choosing **Spec** repurposes the `PRD_BASE` stage to drive the **`openspec-*` commands** (`/openspec-new-change`, `/openspec-ff-change`, …), which scaffold the change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) under `openspec/changes/<name>/`. Pensador never hand-writes these files. Every later stage then reasons over the spec.
+- Spec mode delivers **only** the OpenSpec change set — `userhistory.md` and `comunication_json.md` do not apply.
+- `STAGE_ORDER` is unchanged — `PRD_BASE` keeps its id and only its behavior/artifacts differ (orthogonal `artifactMode`).
+- FINAL runs `/openspec-verify-change` and points the handoff at `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
+- If the `openspec-*` commands are unavailable when Spec is chosen, Pensador asks (via `AskUserQuestion`) whether to fall back to PRD mode or abort — it does not build the structure manually. The legacy `/opsx:*` prefix is deprecated.
+
+Install: `npm install -g @fission-ai/openspec@latest` then `openspec init`. See `skills/pensador/references/openspec.md`.
+
+## Eleven Stages
 
 ```
-INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
 
 | Stage | Purpose | Delegates | Always runs |
 |---|---|---|---|
-| **INIT** | Resolve execution mode (`--modo`), check v2 checkpoint resumption, allocate feature dir, obtain request | — | ✓ |
-| **PRD_BASE** | Generate base PRD via `Strict_PRD_Schema`. No user questions; auto-advance. | skill `prd` | ✓ |
-| **ARCH** | Analyze architecture via Read/Glob/Grep; write `architecture.md`. | — | ✓ |
+| **INIT** | Resolve execution mode (`--modo`), check v2 checkpoint resumption, allocate feature dir, obtain request, ask PRD-vs-Spec when OpenSpec is detected | — | ✓ |
+| **EXPLORE** | Explore the project with Code Base Memory (`index_repository → get_architecture → search_graph → trace_path`); write `codebase-memory.md`. Falls back to Read/Glob/Grep if unavailable. | MCP `codebase-memory-mcp` | ✓ |
+| **PRD_BASE** | Generate base PRD via `Strict_PRD_Schema` (or scaffold the OpenSpec change set via `openspec-*` commands in spec mode). No user questions; auto-advance. | skill `prd` / `openspec-*` | ✓ |
+| **ARCH** | Analyze architecture (reuse the Code Base Memory index + Read/Glob/Grep); write `architecture.md`. | — | ✓ |
 | **EXPAND** | Amplify request with candidate requirements (Pensador questions). | — | ✓ |
 | **COMPLEXITY** | Calculate complexity score (0–4); propose Lite or Full mode; user confirms. | — | ✓ |
 | **BRAINSTORM_GERAL** | Orchestrate domain lenses in parallel: requirements-clarity + Codex (if backend) + AGY (if frontend). | `requirements-clarity` · `codex:codex-rescue` · `cc-antigravity-plugin:antigravity-agent` | ✓ |
@@ -110,9 +133,11 @@ INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CO
 
 All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUserQuestion` if file exists.
 
-- `prd.md` — Final consolidated PRD, structured per Strict PRD Schema. *(always)*
-- `userhistory.md` — User journey in sequential steps. *(always)*
-- `comunication_json.md` — Communication/API contract in JSON. *(when backend exists)*
+- `prd.md` — Final consolidated PRD, structured per Strict PRD Schema. *(PRD mode)*
+- `openspec/changes/<name>/` — OpenSpec change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`), scaffolded by the `openspec-*` commands. *(spec mode)*
+- `userhistory.md` — User journey in sequential steps. *(PRD mode only)*
+- `comunication_json.md` — Communication/API contract in JSON. *(PRD mode, when backend exists)*
+- `codebase-memory.md` — Code Base Memory exploration snapshot. *(always, in `<featurePath>/`)*
 - `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*
 
 ## Lite vs. Full Mode
@@ -138,7 +163,7 @@ The `/pensador` command runs a preflight before starting the flow, passing the c
 node scripts/preflight.mjs --modo <claude|agy|kiro|codex>
 ```
 
-It inspects the Claude Code plugin cache to verify the availability of the domain subagents (Codex and AGY) and the `--modo` **execution engine** (Antigravity, Kiro, or Codex), and emits JSON with an `executionMode` block and a `status` field (`ok` | `partial` | `unavailable`). The script **always exits with code 0**.
+It inspects the Claude Code plugin cache to verify the availability of the domain subagents (Codex and AGY) and the `--modo` **execution engine** (Antigravity, Kiro, or Codex), and emits JSON with an `executionMode` block, an `integrations` block (mandatory `codebaseMemory` + optional `openspec`), and a `status` field (`ok` | `partial` | `unavailable`). The script **always exits with code 0**.
 
 ## Project Structure
 
@@ -148,7 +173,7 @@ cc-pensador/
 │  ├─ plugin.json            # plugin manifest
 │  └─ marketplace.json       # marketplace entry
 ├─ commands/
-│  └─ pensador.md            # /pensador command (orchestrates the 10 stages + --modo)
+│  └─ pensador.md            # /pensador command (orchestrates the 11 stages + --modo)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md
@@ -158,6 +183,8 @@ cc-pensador/
 │  │  │  ├─ agent-stack.md
 │  │  │  ├─ skill-stack.md
 │  │  │  ├─ execution-modes.md           # --modo (claude/agy/kiro/codex): parsing, preflight, delegation
+│  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) mandatory exploration before PRD/Spec
+│  │  │  ├─ openspec.md                  # OpenSpec optional spec mode (PRD vs Spec in INIT)
 │  │  │  └─ askuserquestion-protocol.md
 │  │  └─ assets/             # templates
 │  ├─ prd/SKILL.md
@@ -175,6 +202,7 @@ cc-pensador/
 │  ├─ consolidate.test.js
 │  ├─ artifacts.test.js
 │  ├─ execution-modes.test.js            # --modo: parse/resolve/buildDelegationInvocation
+│  ├─ integrations.test.js               # Code Base Memory + OpenSpec spec mode
 │  └─ docs-consistency.test.js
 ├─ CHANGELOG.md
 └─ LICENSE                   # MIT
@@ -186,14 +214,14 @@ Add `.pensador/` to `.gitignore` to avoid versioning local artifacts and checkpo
 
 ```bash
 npm install
-npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · docs-consistency
+npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · integrations · docs-consistency
 ```
 
 ## Migration from v1
 
 | Aspect | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 10 stages (ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 11 stages (EXPLORE/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
 | Artifacts folder | legacy v1 root | `.pensador/<slug-vN>/` |
 | v1 checkpoints | `pensador-output/.pensador-progress.json` | Incompatible — Pensador offers fresh start |

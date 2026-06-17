@@ -1,5 +1,48 @@
 # Changelog
 
+## [2.6.0] — 2026-06-17
+
+### Mudança de Estágios (STAGE_ORDER)
+
+- **Novo estágio `EXPLORE`** inserido logo após `INIT`. `STAGE_ORDER` passou de 10 para **11 estágios**:
+  `INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE`.
+- `CHECKPOINT_VERSION` permanece `2` (o campo `artifactMode` ausente em checkpoints antigos resolve para `prd`).
+
+### Novas Funcionalidades
+
+#### Code Base Memory (obrigatório) — estágio EXPLORE
+- Suporte ao **Code Base Memory** ([codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)) como exploração **obrigatória** do projeto, agora em um estágio dedicado `EXPLORE` (entre `INIT` e `PRD_BASE`).
+  - Sequência `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (e `detect_changes` em fixes); grava o snapshot `<featurePath>/codebase-memory.md`.
+  - O `ARCH` reaproveita o índice criado no `EXPLORE`, complementando com `Read`/`Glob`/`Grep`.
+  - Indisponível: o Pensador pergunta via `AskUserQuestion` se deve instalar o servidor ou cair para `Read`/`Glob`/`Grep`. Não bloqueia o fluxo.
+
+#### OpenSpec (opcional) — via comandos `openspec-*`
+- Suporte opcional ao **OpenSpec** ([OpenSpec](https://github.com/Fission-AI/OpenSpec)).
+  - Quando o preflight detecta o OpenSpec (CLI `openspec` no PATH ou diretório `openspec/`), o `INIT` pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
+  - No modo Spec, a fase `PRD_BASE` passa a **acionar os comandos `openspec-*`** (`/openspec-new-change`, `/openspec-ff-change`, …) — o Pensador nunca escreve os arquivos manualmente. O change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) vive em `openspec/changes/<nome>/`.
+  - O modo Spec entrega **apenas** o change set OpenSpec: `userhistory.md` e `comunication_json.md` não se aplicam.
+  - Se os comandos `openspec-*` estiverem indisponíveis, o Pensador pergunta via `AskUserQuestion` se deve cair para PRD ou abortar — sem montar a estrutura manualmente. O prefixo legado `/opsx:*` está descontinuado.
+  - O `FINAL` roda `/openspec-verify-change` e orienta o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.
+
+#### Engine (`pensador-engine.mjs`)
+- `STAGE_ORDER` inclui `EXPLORE`; `Stage` typedef atualizado.
+- Novos exports puros e testados:
+  - `CODEBASE_MEMORY`, `codebaseMemorySnapshotPath()`, `codebaseMemoryExplorationPlan()`.
+  - `ARTIFACT_MODES` / `DEFAULT_ARTIFACT_MODE`, `resolveArtifactMode()`, `withArtifactMode()`.
+  - `OPENSPEC` (comandos `openspec-*`), `openspecChangeName()`, `openspecChangeDir()`.
+  - `initState()` passa a incluir `artifactMode: 'prd'`.
+  - `planArtifacts()` / `buildArtifactList()`: no modo Spec retornam apenas o change set OpenSpec (`proposal`/`design`/`tasks`/`specs`) sob `openspec/changes/<nome>/` (`managedBy: 'openspec'`); o modo PRD permanece idêntico.
+
+#### Preflight (`preflight.mjs`)
+- Novo bloco `integrations` no relatório: `codebaseMemory` (obrigatório) e `openspec` (opcional), com disponibilidade, origem da detecção e comportamento de fallback. A ausência do Code Base Memory degrada o status para `partial`; OpenSpec é puramente opcional. Continua saindo sempre com código 0.
+
+### Documentação
+- Novas referências `skills/pensador/references/codebase-memory.md` e `skills/pensador/references/openspec.md`.
+- `SKILL.md`, `stages.md`, `feature-isolation.md`, `askuserquestion-protocol.md`, `commands/pensador.md`, `README.md` e `README.pt-BR.md` atualizados para o estágio `EXPLORE`, os 11 estágios e o modo Spec via comandos `openspec-*`.
+
+### Testes
+- Novo `test/integrations.test.js` (Code Base Memory, artifact mode, OpenSpec via `openspec-*`, spec-mode artifacts em `openspec/changes/`). Suíte total: 184 testes verdes.
+
 ## [2.5.0] — 2026-06-11
 
 ### Novas Funcionalidades

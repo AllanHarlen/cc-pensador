@@ -1,6 +1,6 @@
 ---
 name: pensador
-description: Orquestra o protocolo v2 do Pensador em dez estagios, transformando uma demanda em linguagem natural em PRD e artefatos isolados por feature. Inclui analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
+description: Orquestra o protocolo v2 do Pensador em onze estagios, transformando uma demanda em linguagem natural em PRD (ou specs OpenSpec) e artefatos isolados por feature. Inclui exploracao via Code Base Memory, analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
 ---
 
 # Skill: Pensador
@@ -22,6 +22,8 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY/Kiro e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
+| `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
+| `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |
 | `skills/pensador/assets/prd-template.md` | Template do artefato `prd.md` |
 | `skills/pensador/assets/userhistory-template.md` | Template do artefato `userhistory.md` |
@@ -34,7 +36,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 A sequencia e fixa e nunca reordenada:
 
 ```text
-INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
 
 `STAGE_ORDER` v2:
@@ -42,6 +44,7 @@ INIT → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CO
 ```js
 [
   'INIT',
+  'EXPLORE',
   'PRD_BASE',
   'ARCH',
   'EXPAND',
@@ -65,6 +68,7 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
 ```text
 .pensador/<slug-da-demanda>-vN/
   .pensador-progress.json
+  codebase-memory.md
   architecture.md
   shared-agents/
     context-pack.md
@@ -76,6 +80,8 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   userhistory.md
   comunication_json.md
 ```
+
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT.
 
 Regras:
 
@@ -141,13 +147,20 @@ O Pensador nunca avanca para o proximo estagio enquanto existir pergunta sem des
 ```text
 INIT
   Resolve modo de execucao (--modo), verifica demanda, checkpoint v2 e aloca featurePath.
+  Se OpenSpec for detectado, pergunta PRD vs Spec (artifactMode).
+
+EXPLORE
+  Explora o projeto com Code Base Memory (index_repository, get_architecture,
+  search_graph, trace_path) e grava <featurePath>/codebase-memory.md.
+  Fallback para Read/Glob/Grep se indisponivel.
 
 PRD_BASE
-  Gera PRD Base pelo Strict_PRD_Schema. Sem perguntas; avanco automatico.
+  Modo PRD: gera PRD Base pelo Strict_PRD_Schema. Modo Spec: escala os comandos
+  openspec-* para montar o change set. Sem perguntas; avanco automatico.
 
 ARCH
-  Analisa projeto existente via Read/Glob/Grep. Em greenfield, entrevista o usuario.
-  Grava <featurePath>/architecture.md.
+  Analisa projeto existente via Code Base Memory (indice criado no EXPLORE) e Read/Glob/Grep.
+  Em greenfield, entrevista o usuario. Grava <featurePath>/architecture.md.
 
 EXPAND
   Amplia requisitos candidatos do proprio Pensador.
@@ -185,21 +198,53 @@ DONE
 4. Se houver apenas checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel. Pergunte se deve iniciar um fluxo v2 novo, deixando claro que o checkpoint antigo nao sera reutilizado.
 5. Se iniciar novo fluxo, derive um nome curto da atualizacao a partir da demanda, gere o slug base (`slugify()`) e execute `allocateFeatureDir()` com esse nome; grave `featurePath = ".pensador/<slug-da-demanda>-vN"` no estado. Use o fallback `atualizacao-v1` quando o nome ficar vazio e incremente `N` se ja houver pasta para o mesmo slug.
 6. Se a demanda estiver ausente ou vazia, solicite-a via `AskUserQuestion`.
-7. Com demanda presente, modo de execucao resolvido e `featurePath` definido, avance para `PRD_BASE`.
+7. **OpenSpec (opcional).** Se o preflight reportar `integrations.openspec.available = true`, pergunte via `AskUserQuestion` se o usuario quer gerar um **PRD** (padrao) ou uma **Spec** estruturada (OpenSpec). Registre a escolha em `artifactMode` (`prd` ou `spec`) com `withArtifactMode(state, escolha)`. Se o OpenSpec nao for detectado, mantenha `artifactMode = 'prd'` sem perguntar. Detalhes em `references/openspec.md`.
+8. Com demanda presente, modo de execucao resolvido, `artifactMode` definido e `featurePath` definido, avance para `EXPLORE`.
 
-**Gate:** demanda presente e nao vazia, modo de execucao resolvido (e motor confirmado disponivel ou fallback para `claude` registrado), `featurePath` definido, checkpoint v2 retomado ou decisao de novo fluxo registrada.
+**Gate:** demanda presente e nao vazia, modo de execucao resolvido (e motor confirmado disponivel ou fallback para `claude` registrado), `artifactMode` definido (`prd` por padrao; `spec` so quando OpenSpec foi escolhido), `featurePath` definido, checkpoint v2 retomado ou decisao de novo fluxo registrada.
+
+---
+
+## EXPLORE
+
+**Objetivo:** explorar o projeto existente com o **Code Base Memory** (obrigatorio) antes de gerar o PRD/Spec, para entender com precisao a estrutura sobre a qual a feature/fix vai atuar.
+
+1. Confira `integrations.codebaseMemory.available` do preflight.
+2. Disponivel: rode a sequencia de ferramentas do MCP `codebase-memory-mcp` na ordem `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (acrescente `detect_changes` quando for um fix sobre codigo existente).
+3. Grave o resumo em `<featurePath>/codebase-memory.md`: panorama de arquitetura, simbolos e arquivos afetados, cadeias de chamada relevantes, raio de impacto (em fixes) e lacunas/incertezas.
+4. Indisponivel (`available = false`): pergunte via `AskUserQuestion` se o usuario deseja **instalar o servidor agora** (opcao recomendada) ou seguir sem ele:
+   - **Opcao A — Instalar:** execute o instalador da plataforma (`install.sh` no Linux/macOS; `install.ps1` no Windows via PowerShell) usando `Bash`, aguarde conclusao, oriente o usuario a reconectar o MCP (ou reiniciar o agente) e retome o EXPLORE com o servidor disponivel. Veja os comandos exatos em `references/codebase-memory.md`.
+   - **Opcao B — Seguir sem:** explore com `Read`/`Glob`/`Grep` e registre a decisao no `codebase-memory.md`.
+5. Greenfield (sem base relevante): registre que nao ha codigo a indexar e avance.
+
+Este e um estagio sem perguntas de produto: ele e visitado, produz o snapshot (ou registra fallback) e avanca. Detalhes em `references/codebase-memory.md`.
+
+**Gate:** `<featurePath>/codebase-memory.md` gravado (com a exploracao do Code Base Memory ou o fallback registrado).
 
 ---
 
 ## PRD_BASE
 
-**Objetivo:** produzir o `PRD_Base` estruturado a partir da demanda, aplicando o `Strict_PRD_Schema` da `Skill_PRD_Base`.
+**Objetivo:** produzir o artefato base a partir da demanda — `PRD_Base` no modo PRD ou a **montagem de specs estruturadas** no modo Spec (OpenSpec). A escolha vem de `artifactMode`, definido no INIT.
+
+### Modo PRD (`artifactMode = 'prd'`, padrao)
 
 1. Carregue `skills/prd/SKILL.md`.
-2. Aplique a entrevista de descoberta sobre a demanda.
+2. Aplique a entrevista de descoberta sobre a demanda, usando o `<featurePath>/codebase-memory.md` como contexto.
 3. Preencha cada secao inferivel; se nao inferivel, marque exatamente `"TBD"`.
 
-**Gate:** todas as secoes do PRD Base preenchidas ou `"TBD"`. Sem perguntas ao usuario.
+### Modo Spec (`artifactMode = 'spec'`, OpenSpec)
+
+Quando o usuario escolheu Spec no INIT, este estagio **substitui o PRD base** acionando os comandos `openspec-*` (nunca escrevendo os arquivos manualmente):
+
+1. Confirme que os comandos `openspec-*` estao disponiveis. Se nao estiverem, pergunte via `AskUserQuestion` se deve cair para o modo PRD ou abortar — nao monte a estrutura manualmente nem siga como Claude direto.
+2. Crie e monte o change set: `/openspec-new-change <nome>` seguido de `/openspec-ff-change <nome>` (gera `proposal.md`, `design.md`, `tasks.md` e `specs/` de uma vez) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
+3. Alimente os comandos com a demanda e o `<featurePath>/codebase-memory.md`; o que nao for inferivel fica como `"TBD"`.
+4. Todas as etapas seguintes (`ARCH`, `EXPAND`, `COMPLEXITY`, `BRAINSTORM_GERAL`, `CODEX`, `AGY`, `FINAL`) passam a raciocinar sobre a **spec** em vez do PRD, refinando os artefatos do change set.
+
+O prefixo legado `/opsx:*` esta descontinuado. Detalhes do fluxo e do handoff em `references/openspec.md`.
+
+**Gate:** no modo PRD, todas as secoes do PRD Base preenchidas ou `"TBD"`; no modo Spec, change set OpenSpec criado pelos comandos `openspec-*` (ou fallback para PRD/abortar registrado). Sem perguntas ao usuario alem do fallback.
 
 ---
 
@@ -209,7 +254,8 @@ DONE
 
 Projeto existente:
 
-- Use `Read`, `Glob` e `Grep` para mapear estrutura, stack, entrypoints, padroes, integracoes, persistencia, UI e backend.
+- Reaproveite o indice do Code Base Memory criado no EXPLORE: `get_architecture` para o panorama, `search_graph`/`trace_path` para mapear os simbolos e fluxos afetados pela demanda, e `detect_changes` quando for um fix.
+- Complemente com `Read`, `Glob` e `Grep` para detalhes que o grafo nao cobrir (config, padroes locais, persistencia, UI).
 - Nao execute alteracoes no codigo.
 - Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`.
 
@@ -352,10 +398,12 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 
 1. Aplique `withConsolidated(state)`.
 2. Confirme com o usuario via `AskUserQuestion` se ha back-end/API/contrato de comunicacao. Mostre a heuristica como sugestao e deixe a resposta do usuario prevalecer.
-3. Planeje artefatos em `<featurePath>/` (ex.: `.pensador/<slug-da-demanda>-vN/`): `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end.
+3. Planeje artefatos conforme `artifactMode`:
+   - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end, todos em `<featurePath>/`.
+   - Modo Spec (OpenSpec): apenas o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md` e `comunication_json.md` nao se aplicam.
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
-5. Gere os artefatos usando os templates.
-6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff.
+5. Gere os artefatos: no modo PRD use os templates; no modo Spec, finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, caminhos reportados e recap/handoff apresentados.
 
@@ -371,8 +419,9 @@ Estado terminal. O fluxo esta encerrado.
 
 | Estagio | Gate de avanco |
 |---|---|
-| `INIT` | Demanda presente, modo de execucao resolvido, `featurePath` definido e retomada/novo fluxo decididos |
-| `PRD_BASE` | PRD Base completo com secoes preenchidas ou `"TBD"` |
+| `INIT` | Demanda presente, modo de execucao resolvido, `artifactMode` definido, `featurePath` definido e retomada/novo fluxo decididos |
+| `EXPLORE` | `codebase-memory.md` gravado (exploracao do Code Base Memory ou fallback registrado) |
+| `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado pelos comandos `openspec-*` (ou fallback registrado) |
 | `ARCH` | `architecture.md` gravado e perguntas greenfield fechadas |
 | `EXPAND` | Todas as perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |

@@ -29,11 +29,13 @@
  * Semantic identifiers (not numeric) so each stage is self-describing and
  * insertion of new brainstorm stages does not silently shift a numbered label.
  *
- * Funnel: generate → expand → clarify → domain deep-dives → technical sweep
- * (Codex) → product sweep (AGY) → consolidate.
+ * Funnel: generate → explore (Code Base Memory) → base (PRD/Spec) → architecture →
+ * expand → clarify → domain deep-dives → technical sweep (Codex) → product sweep
+ * (AGY) → consolidate.
  */
 export const STAGE_ORDER = [
   'INIT',
+  'EXPLORE',
   'PRD_BASE',
   'ARCH',
   'EXPAND',
@@ -239,7 +241,7 @@ export function buildFeaturePath(featureDir, subdir) {
  *
  * Behaviour:
  *   - demanda empty / whitespace-only / absent → needsDemanda=true, currentStage='INIT'
- *   - demanda non-empty → needsDemanda=false, currentStage='INIT' (first advance targets PRD_BASE)
+ *   - demanda non-empty → needsDemanda=false, currentStage='INIT' (first advance targets EXPLORE)
  */
 export function initState(demanda) {
   const trimmed = typeof demanda === 'string' ? demanda.trim() : '';
@@ -253,6 +255,9 @@ export function initState(demanda) {
     prdBase: { sections: {} },
     consolidated: [],
     featurePath: null,
+    // Output mode: 'prd' (default) or 'spec' (OpenSpec). When OpenSpec is
+    // detected at preflight, INIT asks the user and may switch this to 'spec'.
+    artifactMode: DEFAULT_ARTIFACT_MODE,
   };
 }
 
@@ -628,6 +633,221 @@ export function buildDelegationInvocation(modeOrConfig, payload = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Code Base Memory (MCP) — project exploration before PRD/Spec generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Code Base Memory MCP (https://github.com/DeusData/codebase-memory-mcp).
+ *
+ * A structural code-intelligence engine exposed as an MCP server. Before the
+ * Pensador drafts the PRD_BASE (or the OpenSpec base, when in spec mode), it
+ * uses this server to *explore the existing project* and build an accurate,
+ * token-cheap understanding of the structure the feature/fix will act upon.
+ *
+ * This is the MANDATORY exploration support: it runs in the dedicated EXPLORE
+ * stage (right after INIT, before PRD_BASE/Spec) and its snapshot feeds PRD_BASE
+ * and the deeper ARCH analysis. When the server is unavailable, the Pensador
+ * degrades gracefully to plain `Read`/`Glob`/`Grep` exploration (handled via
+ * AskUserQuestion) — the stage is still visited.
+ *
+ * The constant is a deterministic descriptor (server id, tool names, config
+ * locations, snapshot filename) consumed by the prose layer and the tests; the
+ * engine performs no I/O.
+ */
+export const CODEBASE_MEMORY = {
+  server: 'codebase-memory-mcp',
+  repo: 'https://github.com/DeusData/codebase-memory-mcp',
+  mandatory: true,
+  /** Where the MCP server is typically registered, by host. */
+  configFiles: {
+    claudeProject: '.mcp.json',
+    claudeGlobal: '~/.claude/.mcp.json',
+    kiro: '.kiro/settings/mcp.json',
+  },
+  /** The subset of the 14 MCP tools the Pensador relies on for exploration. */
+  tools: {
+    indexRepository: 'index_repository',
+    indexStatus: 'index_status',
+    listProjects: 'list_projects',
+    getArchitecture: 'get_architecture',
+    getGraphSchema: 'get_graph_schema',
+    searchGraph: 'search_graph',
+    tracePath: 'trace_path',
+    detectChanges: 'detect_changes',
+    getCodeSnippet: 'get_code_snippet',
+    searchCode: 'search_code',
+  },
+  /** Working snapshot written under <featurePath>/ (not a final artifact). */
+  snapshotFile: 'codebase-memory.md',
+};
+
+/**
+ * Builds the path of the Code Base Memory exploration snapshot inside the update
+ * directory. Like `architecture.md`, this is a working file (it is NOT part of
+ * buildArtifactList) consumed by PRD_BASE/Spec and ARCH.
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function codebaseMemorySnapshotPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${CODEBASE_MEMORY.snapshotFile}`;
+}
+
+/**
+ * Returns the canonical ordered sequence of Code Base Memory tool calls the
+ * Pensador uses to explore a project before generating the PRD/Spec base.
+ *
+ * Pure and total: same input → same output, never throws. When the demand is a
+ * fix/change over existing code (`isFix`), `detect_changes` is appended to map
+ * the git diff to affected symbols and blast radius.
+ *
+ * @param {{ isFix?: boolean }} [options]
+ * @returns {string[]} ordered MCP tool names
+ */
+export function codebaseMemoryExplorationPlan(options = {}) {
+  const t = CODEBASE_MEMORY.tools;
+  const plan = [
+    t.indexRepository,
+    t.getArchitecture,
+    t.getGraphSchema,
+    t.searchGraph,
+    t.tracePath,
+  ];
+  if (options?.isFix === true) {
+    plan.push(t.detectChanges);
+  }
+  return plan;
+}
+
+// ---------------------------------------------------------------------------
+// Output/artifact mode (PRD vs OpenSpec) — orthogonal to execution mode
+// ---------------------------------------------------------------------------
+
+/**
+ * The artifact mode selects WHICH base deliverable the flow produces. It is
+ * orthogonal to the execution mode (--modo) and to the domain lenses.
+ *
+ *   - `prd` (default): the classic Pensador flow. PRD_BASE drafts a base PRD and
+ *     FINAL emits prd.md (+ userhistory.md, + comunication_json.md when backend).
+ *   - `spec`: OpenSpec mode (https://github.com/Fission-AI/OpenSpec). Offered
+ *     ONLY when preflight detects OpenSpec; chosen by the user via AskUserQuestion
+ *     in INIT. The PRD_BASE stage is repurposed into a structured OpenSpec base
+ *     assembly, and every later stage reasons over the spec instead of the PRD.
+ *     FINAL emits the OpenSpec change set (proposal.md, specs.md, design.md,
+ *     tasks.md) in place of prd.md.
+ *
+ * The stage machine (STAGE_ORDER) is unchanged in either mode: `PRD_BASE` keeps
+ * its id and simply produces a spec base when artifactMode === 'spec'.
+ */
+export const DEFAULT_ARTIFACT_MODE = 'prd';
+
+export const ARTIFACT_MODES = {
+  prd: {
+    mode: 'prd',
+    label: 'PRD',
+    baseStageLabel: 'PRD base',
+    primaryArtifact: 'prd.md',
+    openspec: false,
+  },
+  spec: {
+    mode: 'spec',
+    label: 'OpenSpec',
+    baseStageLabel: 'montagem de specs estruturadas (OpenSpec)',
+    primaryArtifact: 'proposal.md',
+    openspec: true,
+  },
+};
+
+/**
+ * Normalizes an artifact-mode key. Unknown / nullish → the default ('prd').
+ * Pure and total.
+ *
+ * @param {string|null|undefined} mode
+ * @returns {'prd'|'spec'}
+ */
+export function resolveArtifactMode(mode) {
+  return Object.prototype.hasOwnProperty.call(ARTIFACT_MODES, mode)
+    ? mode
+    : DEFAULT_ARTIFACT_MODE;
+}
+
+/**
+ * Returns a new state with the chosen artifact mode applied (normalized).
+ * The Pensador calls this in INIT after the user answers the PRD-vs-Spec
+ * AskUserQuestion (only presented when OpenSpec is detected).
+ *
+ * @param {StageState} state
+ * @param {string} mode
+ * @returns {StageState}
+ */
+export function withArtifactMode(state, mode) {
+  return { ...state, artifactMode: resolveArtifactMode(mode) };
+}
+
+/**
+ * OpenSpec (https://github.com/Fission-AI/OpenSpec) descriptor.
+ *
+ * In spec mode the Pensador does NOT hand-write the change files: it drives the
+ * `openspec-*` skills/commands, which scaffold and manage the change set under
+ * `openspec/changes/<name>/`. The legacy `/opsx:*` prefix is DEPRECATED — always
+ * use `openspec-*`. Detection (CLI on PATH, an `openspec/` directory, or the
+ * openspec plugin) lives in preflight.mjs.
+ *
+ * If the `openspec-*` commands are unavailable when spec mode is chosen, the
+ * Pensador must NOT create the structure manually nor proceed as plain Claude:
+ * it asks (via AskUserQuestion) whether to fall back to PRD mode or abort.
+ */
+export const OPENSPEC = {
+  cli: 'openspec',
+  package: '@fission-ai/openspec',
+  repo: 'https://github.com/Fission-AI/OpenSpec',
+  dir: 'openspec',
+  specsDir: 'openspec/specs',
+  changesDir: 'openspec/changes',
+  optional: true,
+  /** openspec-* slash commands (the legacy /opsx:* prefix is deprecated). */
+  commands: {
+    onboard: '/openspec-onboard',
+    explore: '/openspec-explore',
+    newChange: '/openspec-new-change',
+    ffChange: '/openspec-ff-change',
+    continueChange: '/openspec-continue-change',
+    applyChange: '/openspec-apply-change',
+    verifyChange: '/openspec-verify-change',
+    syncSpecs: '/openspec-sync-specs',
+    archiveChange: '/openspec-archive-change',
+    bulkArchiveChange: '/openspec-bulk-archive-change',
+  },
+  /** Files OpenSpec scaffolds inside openspec/changes/<name>/. */
+  changeFiles: ['proposal.md', 'design.md', 'tasks.md', 'specs/'],
+};
+
+/**
+ * Derives the OpenSpec change name from the update directory. The change name is
+ * the feature slug (e.g. `.pensador/login-social-v1` → `login-social-v1`).
+ * Empty/absent → `atualizacao-v1`. Pure and total.
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function openspecChangeName(featurePath) {
+  return dirNameFromFeatureDir(featurePath) || 'atualizacao-v1';
+}
+
+/**
+ * Builds the OpenSpec change directory for an update: `openspec/changes/<name>`.
+ * This is where the `openspec-*` commands scaffold the change set (it lives in
+ * the project's `openspec/` tree, NOT under `.pensador/`).
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function openspecChangeDir(featurePath) {
+  return `${OPENSPEC.changesDir}/${openspecChangeName(featurePath)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Project classification & fullstack detection
 // ---------------------------------------------------------------------------
 
@@ -705,6 +925,11 @@ export function codexParticipates(signals = {}) {
  * Plans which artifacts should be generated.
  * Returns an empty plan when not in FINAL or DONE stage (gate enforcement).
  *
+ * In PRD mode (default) it plans prd.md + userhistory.md (+ comunication_json.md
+ * when back-end). In spec mode (artifactMode === 'spec', OpenSpec) it plans ONLY
+ * the change set (proposal/design/tasks/specs) — userhistory and comunication do
+ * not apply.
+ *
  * The comunication_json artifact documents the API/communication contract
  * (endpoints, request/response schemas, error codes). That contract is valuable
  * whenever a back-end exists — both for a fullstack front↔back boundary and for a
@@ -716,35 +941,71 @@ export function codexParticipates(signals = {}) {
  */
 export function planArtifacts(state) {
   const finalStages = new Set(['FINAL', 'DONE']);
+  const empty = {
+    prd: false,
+    userhistory: false,
+    comunication: false,
+    proposal: false,
+    specs: false,
+    design: false,
+    tasks: false,
+  };
   if (!finalStages.has(state.currentStage)) {
-    return { prd: false, userhistory: false, comunication: false };
+    return empty;
+  }
+
+  const spec = resolveArtifactMode(state.artifactMode) === 'spec';
+  const hasBackend = classifyProject(state.consolidated).hasBackend;
+
+  if (spec) {
+    // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
+    // openspec-* commands). userhistory.md and comunication_json.md do not apply.
+    return {
+      prd: false,
+      proposal: true,
+      specs: true,
+      design: true,
+      tasks: true,
+      userhistory: false,
+      comunication: false,
+    };
   }
 
   return {
     prd: true,
+    proposal: false,
+    specs: false,
+    design: false,
+    tasks: false,
     userhistory: true,
-    comunication: classifyProject(state.consolidated).hasBackend,
+    comunication: hasBackend,
   };
 }
 
 /**
  * Builds the list of Artifact objects to be generated.
- * Always includes prd and userhistory; includes comunication iff there is a
- * back-end (see planArtifacts). Every artifact has a filename consistent with
- * its kind and a non-empty path.
+ * In PRD mode includes prd + userhistory (+ comunication when back-end). In spec
+ * mode (OpenSpec) it returns ONLY the change set (proposal/design/tasks/specs)
+ * under openspec/changes/<name>/, scaffolded by the openspec-* commands — no
+ * prd/userhistory/comunication. Every artifact has a filename consistent with its
+ * kind and a non-empty path.
  *
  * @param {StageState} state
  * @returns {Artifact[]}
  */
 export function buildArtifactList(state) {
   const plan = planArtifacts(state);
-  // Artifacts are written directly inside the update directory
+  // PRD-mode artifacts are written directly inside the update directory
   // (.pensador/<slug-da-demanda>-vN/) so a /pensador run never clobbers a pre-existing prd.md
   // (or sibling) at the project root. The LLM still confirms before overwriting
   // a file that already exists in here.
   const basePath = state.featurePath
     ? `${state.featurePath}/`
     : '.pensador/atualizacao-v1/';
+
+  // Spec-mode artifacts live under the project's OpenSpec tree and are scaffolded
+  // by the openspec-* commands (the Pensador never hand-writes them).
+  const changeDir = openspecChangeDir(state.featurePath);
 
   /** @type {Artifact[]} */
   const artifacts = [];
@@ -754,6 +1015,44 @@ export function buildArtifactList(state) {
       kind: 'prd',
       filename: 'prd.md',
       path: `${basePath}prd.md`,
+    });
+  }
+
+  // OpenSpec (spec mode) change set — created via the openspec-* commands under
+  // openspec/changes/<name>/, replacing prd.md as the base deliverable.
+  if (plan.proposal) {
+    artifacts.push({
+      kind: 'proposal',
+      filename: 'proposal.md',
+      path: `${changeDir}/proposal.md`,
+      managedBy: 'openspec',
+    });
+  }
+
+  if (plan.design) {
+    artifacts.push({
+      kind: 'design',
+      filename: 'design.md',
+      path: `${changeDir}/design.md`,
+      managedBy: 'openspec',
+    });
+  }
+
+  if (plan.tasks) {
+    artifacts.push({
+      kind: 'tasks',
+      filename: 'tasks.md',
+      path: `${changeDir}/tasks.md`,
+      managedBy: 'openspec',
+    });
+  }
+
+  if (plan.specs) {
+    artifacts.push({
+      kind: 'specs',
+      filename: 'specs/',
+      path: `${changeDir}/specs/`,
+      managedBy: 'openspec',
     });
   }
 
@@ -918,7 +1217,7 @@ export function deserializeState(serialized) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'INIT'|'PRD_BASE'|'ARCH'|'EXPAND'|'COMPLEXITY'|'BRAINSTORM_GERAL'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
+ * @typedef {'INIT'|'EXPLORE'|'PRD_BASE'|'ARCH'|'EXPAND'|'COMPLEXITY'|'BRAINSTORM_GERAL'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
  */
 
 /**
@@ -959,6 +1258,7 @@ export function deserializeState(serialized) {
  * @property {PrdDocument} prdBase
  * @property {Requirement[]} consolidated
  * @property {string|null} [featurePath] // .pensador/<slug-da-demanda>-vN - set after update-dir allocation
+ * @property {'prd'|'spec'} [artifactMode] // output mode: 'prd' (default) or 'spec' (OpenSpec)
  */
 
 /**
@@ -966,13 +1266,18 @@ export function deserializeState(serialized) {
  * @property {boolean} prd
  * @property {boolean} userhistory
  * @property {boolean} comunication
+ * @property {boolean} [proposal]  // OpenSpec (spec mode)
+ * @property {boolean} [specs]     // OpenSpec (spec mode)
+ * @property {boolean} [design]    // OpenSpec (spec mode)
+ * @property {boolean} [tasks]     // OpenSpec (spec mode)
  */
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'comunication'|'userhistory'} kind
- * @property {'prd.md'|'comunication_json.md'|'userhistory.md'} filename
+ * @property {'prd'|'comunication'|'userhistory'|'proposal'|'specs'|'design'|'tasks'} kind
+ * @property {'prd.md'|'comunication_json.md'|'userhistory.md'|'proposal.md'|'specs/'|'design.md'|'tasks.md'} filename
  * @property {string} path
+ * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
  */
 
 /**

@@ -10,7 +10,7 @@ Toda pergunta usa `AskUserQuestion`, sem excecoes:
 
 | Origem | Exemplos |
 |---|---|
-| Pensador | Demanda ausente, EXPAND, COMPLEXITY, confirmacao de back-end, sobrescrita, recap final |
+| Pensador | Demanda ausente, escolha PRD vs Spec (OpenSpec), fallback do Code Base Memory, EXPAND, COMPLEXITY, confirmacao de back-end, sobrescrita, recap final |
 | ARCH | Entrevista greenfield, duvidas de arquitetura |
 | BRAINSTORM_GERAL | Perguntas de `requirements-clarity`, Codex, AGY ou fallback por dominio |
 | CODEX | Lacunas tecnicas finais ou fallback |

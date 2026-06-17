@@ -1,0 +1,213 @@
+/**
+ * Integration tests — Code Base Memory (mandatory exploration) and OpenSpec
+ * (optional spec mode).
+ *
+ * These pin the deterministic reference behavior added to pensador-engine.mjs:
+ *   - CODEBASE_MEMORY registry + codebaseMemorySnapshotPath + exploration plan.
+ *   - ARTIFACT_MODES (prd/spec) + resolveArtifactMode + withArtifactMode.
+ *   - planArtifacts / buildArtifactList in spec mode (OpenSpec change set).
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  CODEBASE_MEMORY,
+  codebaseMemorySnapshotPath,
+  codebaseMemoryExplorationPlan,
+  DEFAULT_ARTIFACT_MODE,
+  ARTIFACT_MODES,
+  resolveArtifactMode,
+  withArtifactMode,
+  OPENSPEC,
+  openspecChangeName,
+  openspecChangeDir,
+  initState,
+  planArtifacts,
+  buildArtifactList,
+} from '../scripts/pensador-engine.mjs';
+
+// ---------------------------------------------------------------------------
+// Code Base Memory
+// ---------------------------------------------------------------------------
+
+describe('Code Base Memory (mandatory exploration)', () => {
+  it('exposes the codebase-memory-mcp server descriptor', () => {
+    expect(CODEBASE_MEMORY.server).toBe('codebase-memory-mcp');
+    expect(CODEBASE_MEMORY.mandatory).toBe(true);
+    expect(CODEBASE_MEMORY.snapshotFile).toBe('codebase-memory.md');
+    expect(CODEBASE_MEMORY.tools.indexRepository).toBe('index_repository');
+    expect(CODEBASE_MEMORY.tools.getArchitecture).toBe('get_architecture');
+    expect(CODEBASE_MEMORY.tools.detectChanges).toBe('detect_changes');
+  });
+
+  it('codebaseMemorySnapshotPath writes inside the update directory', () => {
+    expect(codebaseMemorySnapshotPath('.pensador/login-social-v1')).toBe(
+      '.pensador/login-social-v1/codebase-memory.md'
+    );
+  });
+
+  it('codebaseMemorySnapshotPath falls back when featurePath is null', () => {
+    expect(codebaseMemorySnapshotPath(null)).toBe('.pensador/atualizacao-v1/codebase-memory.md');
+    expect(codebaseMemorySnapshotPath(undefined)).toBe('.pensador/atualizacao-v1/codebase-memory.md');
+  });
+
+  it('exploration plan starts with index then architecture/schema/search/trace', () => {
+    expect(codebaseMemoryExplorationPlan()).toEqual([
+      'index_repository',
+      'get_architecture',
+      'get_graph_schema',
+      'search_graph',
+      'trace_path',
+    ]);
+  });
+
+  it('appends detect_changes only for a fix over existing code', () => {
+    expect(codebaseMemoryExplorationPlan({ isFix: true })).toContain('detect_changes');
+    expect(codebaseMemoryExplorationPlan({ isFix: false })).not.toContain('detect_changes');
+  });
+
+  it('exploration plan is total — never throws', () => {
+    expect(() => codebaseMemoryExplorationPlan()).not.toThrow();
+    expect(() => codebaseMemoryExplorationPlan(null)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artifact mode (PRD vs OpenSpec)
+// ---------------------------------------------------------------------------
+
+describe('artifact mode (PRD vs OpenSpec)', () => {
+  it('defaults to prd', () => {
+    expect(DEFAULT_ARTIFACT_MODE).toBe('prd');
+    expect(initState('x').artifactMode).toBe('prd');
+  });
+
+  it('exposes prd and spec modes', () => {
+    expect(ARTIFACT_MODES.prd.openspec).toBe(false);
+    expect(ARTIFACT_MODES.spec.openspec).toBe(true);
+    expect(ARTIFACT_MODES.spec.primaryArtifact).toBe('proposal.md');
+  });
+
+  it('resolveArtifactMode normalizes unknown/nullish to prd', () => {
+    expect(resolveArtifactMode('spec')).toBe('spec');
+    expect(resolveArtifactMode('prd')).toBe('prd');
+    expect(resolveArtifactMode('bogus')).toBe('prd');
+    expect(resolveArtifactMode(undefined)).toBe('prd');
+    expect(resolveArtifactMode(null)).toBe('prd');
+  });
+
+  it('withArtifactMode sets the mode without mutating the input', () => {
+    const state = initState('Criar uma tela de login');
+    const next = withArtifactMode(state, 'spec');
+    expect(next.artifactMode).toBe('spec');
+    expect(state.artifactMode).toBe('prd');
+  });
+
+  it('withArtifactMode normalizes an invalid mode to prd', () => {
+    expect(withArtifactMode(initState('x'), 'turbo').artifactMode).toBe('prd');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OpenSpec descriptor
+// ---------------------------------------------------------------------------
+
+describe('OpenSpec descriptor', () => {
+  it('pins CLI, dir and openspec-* commands (legacy /opsx:* is deprecated)', () => {
+    expect(OPENSPEC.cli).toBe('openspec');
+    expect(OPENSPEC.dir).toBe('openspec');
+    expect(OPENSPEC.changesDir).toBe('openspec/changes');
+    expect(OPENSPEC.optional).toBe(true);
+    expect(OPENSPEC.changeFiles).toEqual(['proposal.md', 'design.md', 'tasks.md', 'specs/']);
+    expect(OPENSPEC.commands.newChange).toBe('/openspec-new-change');
+    expect(OPENSPEC.commands.ffChange).toBe('/openspec-ff-change');
+    expect(OPENSPEC.commands.verifyChange).toBe('/openspec-verify-change');
+    // No deprecated /opsx:* prefix anywhere in the command set.
+    for (const cmd of Object.values(OPENSPEC.commands)) {
+      expect(cmd.startsWith('/openspec-')).toBe(true);
+      expect(cmd).not.toContain('opsx');
+    }
+  });
+
+  it('derives the change name and directory from the feature path', () => {
+    expect(openspecChangeName('.pensador/login-social-v1')).toBe('login-social-v1');
+    expect(openspecChangeName(null)).toBe('atualizacao-v1');
+    expect(openspecChangeDir('.pensador/login-social-v1')).toBe(
+      'openspec/changes/login-social-v1'
+    );
+    expect(openspecChangeDir(null)).toBe('openspec/changes/atualizacao-v1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec-mode artifact planning
+// ---------------------------------------------------------------------------
+
+/** Builds a FINAL-stage state in the given artifact mode with the given consolidated reqs. */
+function finalState(artifactMode, consolidated = []) {
+  return { ...initState('demanda'), currentStage: 'FINAL', artifactMode, consolidated };
+}
+
+const backendReq = { id: 'b1', source: 'expand', text: 'REST API with a database backend' };
+const frontendReq = { id: 'f1', source: 'expand', text: 'A React frontend UI component' };
+
+describe('planArtifacts in spec mode', () => {
+  it('delivers only the OpenSpec change set (no prd/userhistory/comunication)', () => {
+    const plan = planArtifacts(finalState('spec', [frontendReq]));
+    expect(plan.prd).toBe(false);
+    expect(plan.proposal).toBe(true);
+    expect(plan.specs).toBe(true);
+    expect(plan.design).toBe(true);
+    expect(plan.tasks).toBe(true);
+    expect(plan.userhistory).toBe(false);
+    expect(plan.comunication).toBe(false);
+  });
+
+  it('drops comunication even when a back-end is present (spec mode)', () => {
+    const plan = planArtifacts(finalState('spec', [backendReq]));
+    expect(plan.comunication).toBe(false);
+    expect(plan.userhistory).toBe(false);
+  });
+
+  it('keeps prd mode unchanged (prd + userhistory + comunication on backend)', () => {
+    const plan = planArtifacts(finalState('prd', [backendReq]));
+    expect(plan.prd).toBe(true);
+    expect(plan.proposal).toBe(false);
+    expect(plan.userhistory).toBe(true);
+    expect(plan.comunication).toBe(true);
+  });
+
+  it('returns an empty plan outside FINAL/DONE regardless of mode', () => {
+    const plan = planArtifacts({ ...initState('x'), currentStage: 'EXPLORE', artifactMode: 'spec' });
+    expect(plan.proposal).toBe(false);
+    expect(plan.prd).toBe(false);
+  });
+});
+
+describe('buildArtifactList in spec mode', () => {
+  it('emits only proposal/design/tasks/specs (no prd/userhistory/comunication)', () => {
+    const kinds = buildArtifactList(finalState('spec', [backendReq])).map((a) => a.kind);
+    expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks', 'specs']));
+    expect(kinds).not.toContain('prd');
+    expect(kinds).not.toContain('userhistory');
+    expect(kinds).not.toContain('comunication');
+    expect(kinds).toHaveLength(4);
+  });
+
+  it('writes spec artifacts under openspec/changes/<name>/ (not .pensador/)', () => {
+    const state = { ...finalState('spec', [frontendReq]), featurePath: '.pensador/login-social-v1' };
+    const artifacts = buildArtifactList(state);
+    const proposal = artifacts.find((a) => a.kind === 'proposal');
+    expect(proposal.path).toBe('openspec/changes/login-social-v1/proposal.md');
+    expect(proposal.managedBy).toBe('openspec');
+    const specs = artifacts.find((a) => a.kind === 'specs');
+    expect(specs.path).toBe('openspec/changes/login-social-v1/specs/');
+    for (const a of artifacts) {
+      expect(a.path.startsWith('openspec/changes/')).toBe(true);
+      expect(a.managedBy).toBe('openspec');
+    }
+  });
+
+  it('prd mode is unaffected (prd + userhistory only, no backend)', () => {
+    const kinds = buildArtifactList(finalState('prd', [frontendReq])).map((a) => a.kind);
+    expect(kinds).toEqual(['prd', 'userhistory']);
+  });
+});

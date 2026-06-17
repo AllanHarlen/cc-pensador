@@ -42,6 +42,7 @@ describe('Pensador Engine — smoke', () => {
   it('exports STAGE_ORDER with the correct canonical sequence', () => {
     expect(STAGE_ORDER).toEqual([
       'INIT',
+      'EXPLORE',
       'PRD_BASE',
       'ARCH',
       'EXPAND',

@@ -1,7 +1,7 @@
 {
   "name": "cc-pensador",
-  "version": "2.5.0",
-  "description": "Pensador PRD workflow skill and command, with --modo execution-mode delegation (claude/agy/kiro/codex)",
+  "version": "2.6.0",
+  "description": "Pensador PRD workflow skill and command, with --modo execution-mode delegation (claude/agy/kiro/codex), mandatory Code Base Memory exploration and optional OpenSpec spec mode",
   "license": "MIT",
   "type": "module",
   "scripts": {
