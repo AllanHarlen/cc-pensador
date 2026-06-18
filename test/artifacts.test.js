@@ -127,7 +127,7 @@ describe('isFullstack(requirements)', () => {
 
 describe('planArtifacts(state)', () => {
   describe('gate: empty plan outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
+    const nonFinalStages = ['INIT', 'EXPLORE', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty plan for currentStage = ${stage}`, () => {
@@ -191,7 +191,7 @@ describe('planArtifacts(state)', () => {
 
 describe('buildArtifactList(state)', () => {
   describe('gate enforcement — no artifacts outside FINAL/DONE', () => {
-    const nonFinalStages = ['INIT', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
+    const nonFinalStages = ['INIT', 'EXPLORE', 'PRD_BASE', 'ARCH', 'EXPAND', 'COMPLEXITY', 'BRAINSTORM_GERAL', 'CODEX', 'AGY'];
 
     for (const stage of nonFinalStages) {
       it(`returns empty list for currentStage = ${stage}`, () => {

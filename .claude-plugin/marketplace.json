@@ -14,8 +14,8 @@
     "plugins": [
         {
             "name": "cc-pensador",
-            "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation + --modo parsing), PRD_BASE (Strict PRD Schema), ARCH (project scan via Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>/). Execution modes (--modo agy|kiro|codex) delegate the heavy work to an external CLI while Claude orchestrates. All dialogue routes exclusively through AskUserQuestion.",
-            "version": "2.5.1",
+            "description": "Pensador v2 skill + /pensador slash command. 10-stage PRD workflow: INIT (checkpoint v2 + feature isolation + --modo parsing + Code Base Memory exploration + optional OpenSpec PRD/Spec choice), PRD_BASE (Strict PRD Schema, or OpenSpec change set in spec mode), ARCH (project scan via Code Base Memory + Read/Glob/Grep + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>/). Mandatory Code Base Memory (codebase-memory-mcp) exploration before PRD/Spec generation; optional OpenSpec spec mode. Execution modes (--modo agy|kiro|codex) delegate the heavy work to an external CLI while Claude orchestrates. All dialogue routes exclusively through AskUserQuestion.",
+            "version": "2.6.0",
             "author": {
                 "name": "allanharlen"
             },
@@ -38,6 +38,10 @@
                 "agy",
                 "kiro",
                 "execution-modes",
+                "codebase-memory",
+                "mcp",
+                "openspec",
+                "spec",
                 "claude-code"
             ],
             "homepage": "https://github.com/AllanHarlen/cc-pensador",

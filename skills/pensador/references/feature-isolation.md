@@ -10,6 +10,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
 .pensador/
   login-social-v1/
     .pensador-progress.json
+    codebase-memory.md
     handoff.json
     architecture.md
     shared-agents/
@@ -25,7 +26,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     ...
 ```
 
-O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta.
+O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE. No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`comunication_json.md` nao se aplicam.
 
 ---
 
@@ -66,9 +67,11 @@ O `StageState` deve incluir:
 | `checkpointVersion` | Sim | Deve ser `2` |
 | `currentStage` | Sim | Um dos estagios de `STAGE_ORDER` v2 |
 | `featurePath` | Sim | Ex.: `.pensador/login-social-v1` |
+| `artifactMode` | Sim | `prd` (padrao) ou `spec` (OpenSpec) |
 | `slug` | Sim | Slug base da demanda, sem o sufixo `-vN` (ex.: `login-social`). Usado pelo handoff e pela correlacao entre estagios. |
 | `demanda` | Sim | Demanda original ou retomada |
-| `prdBase` | Apos PRD_BASE | Estrutura do PRD Base |
+| `codebaseMemoryPath` | Apos EXPLORE | Normalmente `<featurePath>/codebase-memory.md` (ou fallback registrado) |
+| `prdBase` | Apos PRD_BASE | Estrutura do PRD Base (ou change set OpenSpec no modo Spec) |
 | `architecturePath` | Apos ARCH | Normalmente `<featurePath>/architecture.md` |
 | `complexity` | Apos COMPLEXITY | `Lite` ou `Completo` + sinais |
 | `questions` | Conforme fluxo | Perguntas, respostas e diferimentos |
@@ -137,6 +140,11 @@ Artefatos finais ficam diretamente em:
 
 Arquivos:
 
+- `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado pelos comandos `openspec-*`), fora de `.pensador/`.
+- `userhistory.md`: modo PRD (nao se aplica no modo Spec).
+- `comunication_json.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
+
+Alem dos artefatos finais, `<featurePath>/` contem dois arquivos de trabalho: `codebase-memory.md` (snapshot da exploracao do Code Base Memory, gravado no EXPLORE) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.
 - `userhistory.md`: sempre.
 - `comunication_json.md`: somente quando ha back-end confirmado.

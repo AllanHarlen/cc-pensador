@@ -35,7 +35,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -58,6 +58,17 @@ const AGY_SUBAGENT_KEY = "cc-antigravity-plugin:antigravity-agent";
 const KIRO_MARKETPLACE = "cc-kiro-plugin";
 const KIRO_PLUGIN_NAME = "cc-kiro-plugin";
 const KIRO_COMMAND = "/cc-kiro-plugin:kiro";
+
+/**
+ * Code Base Memory MCP (https://github.com/DeusData/codebase-memory-mcp) — the
+ * MANDATORY project-exploration support. Used before PRD_BASE/Spec generation to
+ * build an accurate, token-cheap understanding of the existing codebase.
+ */
+const CODEBASE_MEMORY_SERVER = "codebase-memory-mcp";
+
+/** OpenSpec (https://github.com/Fission-AI/OpenSpec) — OPTIONAL spec workflow. */
+const OPENSPEC_CLI = "openspec";
+const OPENSPEC_DIR = "openspec";
 
 /**
  * Execution modes recognized by --modo. Mirrors EXECUTION_MODES in
@@ -229,6 +240,94 @@ function checkAgy() {
 }
 
 /**
+ * Returns true when `path` exists and its text content mentions `needle`.
+ * Total: never throws (missing/unreadable file → false).
+ */
+function fileMentions(path, needle) {
+  try {
+    return existsSync(path) && readFileSync(path, "utf8").includes(needle);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * MANDATORY: Code Base Memory MCP availability.
+ *
+ * The server may be reachable either as a CLI binary on PATH or as a registered
+ * MCP server in one of the common host config files (project `.mcp.json`, Kiro
+ * `.kiro/settings/mcp.json`, or the user-level Claude `~/.claude/.mcp.json`).
+ * Both signals are advisory in isolation; availability is their OR.
+ *
+ * If unavailable, the Pensador asks (via AskUserQuestion) whether the user wants
+ * to install the server now. If the user says yes, Claude runs the platform
+ * installer and resumes the flow from EXPLORE. If the user declines, the fallback
+ * is plain Read/Glob/Grep exploration.
+ */
+function checkCodebaseMemory() {
+  const cli = checkCli(CODEBASE_MEMORY_SERVER);
+  const configCandidates = [
+    join(process.cwd(), ".mcp.json"),
+    join(process.cwd(), ".kiro", "settings", "mcp.json"),
+    join(HOME, ".claude", ".mcp.json"),
+    join(HOME, ".claude", "settings", "mcp.json"),
+  ];
+  const configuredIn = configCandidates.filter((p) => fileMentions(p, CODEBASE_MEMORY_SERVER));
+  const configured = configuredIn.length > 0;
+  const available = cli.ok || configured;
+
+  // Platform-specific install commands exposed so the Pensador can run them
+  // directly when the user accepts the installation offer in EXPLORE.
+  const installCommands = {
+    linux:   "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash",
+    mac:     "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash",
+    windows: "Invoke-WebRequest -Uri https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1 -OutFile install.ps1; .\\install.ps1",
+  };
+
+  return {
+    server: CODEBASE_MEMORY_SERVER,
+    mandatory: true,
+    available,
+    cli,
+    configured,
+    configuredIn,
+    stage: "EXPLORE (pre-PRD_BASE/Spec exploration) + ARCH",
+    purpose:
+      "Explore the existing project before generating the PRD/Spec base, for an accurate understanding of the structure the feature/fix will act upon.",
+    installCommands,
+    fallbackBehavior:
+      "If unavailable, offer installation via AskUserQuestion: " +
+      "(A) install codebase-memory-mcp now (Claude runs the installer and restarts EXPLORE), " +
+      "(B) skip exploration and use Read/Glob/Grep instead.",
+  };
+}
+
+/**
+ * OPTIONAL: OpenSpec availability.
+ *
+ * Detected via the `openspec` CLI on PATH or an existing `openspec/` directory in
+ * the working tree (created by `openspec init`). When present, the Pensador asks
+ * (via AskUserQuestion) in INIT whether to generate a PRD or a structured Spec.
+ */
+function checkOpenSpec() {
+  const cli = checkCli(OPENSPEC_CLI);
+  const dirPath = join(process.cwd(), OPENSPEC_DIR);
+  const initialized = existsSync(dirPath);
+  const available = cli.ok || initialized;
+
+  return {
+    cli: OPENSPEC_CLI,
+    optional: true,
+    available,
+    cliCheck: cli,
+    initialized,
+    stage: "INIT",
+    behavior:
+      "When available, INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.",
+  };
+}
+
+/**
  * Availability check for the selected execution mode (--modo). For the default
  * `claude` mode, always available (no external plugin needed). For a delegating
  * mode, checks the plugin cache for the engine plugin; the matching CLI binary is
@@ -282,13 +381,17 @@ const { mode, requestedMode, modeValid } = parseModeArg(process.argv.slice(2));
 const codex = checkCodex();
 const agy = checkAgy();
 const executionMode = checkExecutionMode(mode, modeValid, requestedMode);
+const codebaseMemory = checkCodebaseMemory();
+const openspec = checkOpenSpec();
 
 const subagentsAvailable = codex.available && agy.available;
-// Overall status considers BOTH the domain subagents AND (for a delegating mode)
-// the selected execution engine. A delegating mode whose engine is missing is a
-// handled condition (fall back to claude), so it degrades to "partial" rather
-// than blocking.
-const allAvailable = subagentsAvailable && executionMode.available;
+// Overall status considers the domain subagents, the selected execution engine,
+// AND the mandatory Code Base Memory exploration support. A delegating mode whose
+// engine is missing, or a missing Code Base Memory server, are handled conditions
+// (graceful fallback), so they degrade to "partial" rather than blocking. OpenSpec
+// is optional and never affects status.
+const allAvailable =
+  subagentsAvailable && executionMode.available && codebaseMemory.available;
 
 /**
  * Summary consumed by the /pensador command.
@@ -303,7 +406,7 @@ const allAvailable = subagentsAvailable && executionMode.available;
 const report = {
   status: allAvailable
     ? "ok"
-    : subagentsAvailable || executionMode.available || codex.available || agy.available
+    : subagentsAvailable || executionMode.available || codex.available || agy.available || codebaseMemory.available
     ? "partial"
     : "unavailable",
   generatedAt: new Date().toISOString(),
@@ -312,7 +415,11 @@ const report = {
     codex,
     agy,
   },
-  guidance: buildGuidance(codex, agy, executionMode),
+  integrations: {
+    codebaseMemory,
+    openspec,
+  },
+  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, openspec),
 };
 
 console.log(JSON.stringify(report, null, 2));
@@ -329,7 +436,7 @@ process.exit(0);
  * opening context or relay to the user when a subagent / execution engine is
  * missing.
  */
-function buildGuidance(codex, agy, executionMode) {
+function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec) {
   const lines = [];
 
   // Execution mode summary first — it is the most impactful decision.
@@ -358,6 +465,47 @@ function buildGuidance(codex, agy, executionMode) {
     }
   } else {
     lines.push("Execution mode: --modo claude (default) — Claude Code performs the workflow itself.");
+  }
+
+  lines.push("");
+
+  // Code Base Memory (mandatory exploration support) + OpenSpec (optional).
+  if (codebaseMemory) {
+    if (codebaseMemory.available) {
+      lines.push(
+        `Code Base Memory: ${codebaseMemory.server} available — explore the project before PRD_BASE/Spec generation ` +
+          `(index_repository → get_architecture → search_graph/trace_path).`,
+      );
+    } else {
+      lines.push(
+        `Code Base Memory: ${codebaseMemory.server} NOT available (no CLI on PATH, no MCP config entry).`,
+      );
+      lines.push(
+        `  → EXPLORE stage action: use AskUserQuestion with two options:`,
+      );
+      lines.push(
+        `    (A) Instalar agora — Claude runs the platform installer then resumes EXPLORE with the server running.`,
+      );
+      lines.push(
+        `        Linux/macOS: ${codebaseMemory.installCommands?.linux ?? "install.sh"}`,
+      );
+      lines.push(
+        `        Windows (PowerShell): ${codebaseMemory.installCommands?.windows ?? "install.ps1"}`,
+      );
+      lines.push(
+        `    (B) Seguir sem o Code Base Memory — use Read/Glob/Grep exploration; record fallback in codebase-memory.md.`,
+      );
+    }
+  }
+
+  if (openspec) {
+    if (openspec.available) {
+      lines.push(
+        "OpenSpec: detected — INIT should ask (via AskUserQuestion) whether to generate a PRD or a structured Spec.",
+      );
+    } else {
+      lines.push("OpenSpec: not detected — flow stays in PRD mode (no PRD-vs-Spec question).");
+    }
   }
 
   lines.push("");
