@@ -213,18 +213,20 @@ Se um participante falhar:
 **Proposito:** consolidar respostas e gerar artefatos finais.
 
 1. Aplicar `withConsolidated(state)`.
-2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao.
+2. Confirmar back-end e geracao de `comunication_json.md` via `AskUserQuestion`.
 3. Gerar artefatos em `<featurePath>/` (ex.: `.pensador/<slug-da-demanda>-vN/`).
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
-5. Apresentar recap final e handoff.
+5. Gravar `handoff.json` na raiz de `<featurePath>/` conforme `references/handoff-contract.md` (manifesto de descoberta para o Orchestrador).
+6. Apresentar recap final e handoff.
 
 | Artefato | Condicao |
 |---|---|
 | `prd.md` | Sempre |
 | `userhistory.md` | Sempre |
 | `comunication_json.md` | Quando ha back-end confirmado |
+| `handoff.json` | Sempre |
 
-**Gate:** artefatos aplicaveis gerados, caminhos reportados, recap final e handoff entregues.
+**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados, recap final e handoff entregues.
 
 ---
 

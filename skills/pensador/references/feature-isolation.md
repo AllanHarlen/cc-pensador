@@ -10,6 +10,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
 .pensador/
   login-social-v1/
     .pensador-progress.json
+    handoff.json
     architecture.md
     shared-agents/
       context-pack.md
@@ -65,6 +66,7 @@ O `StageState` deve incluir:
 | `checkpointVersion` | Sim | Deve ser `2` |
 | `currentStage` | Sim | Um dos estagios de `STAGE_ORDER` v2 |
 | `featurePath` | Sim | Ex.: `.pensador/login-social-v1` |
+| `slug` | Sim | Slug base da demanda, sem o sufixo `-vN` (ex.: `login-social`). Usado pelo handoff e pela correlacao entre estagios. |
 | `demanda` | Sim | Demanda original ou retomada |
 | `prdBase` | Apos PRD_BASE | Estrutura do PRD Base |
 | `architecturePath` | Apos ARCH | Normalmente `<featurePath>/architecture.md` |
@@ -138,8 +140,47 @@ Arquivos:
 - `prd.md`: sempre.
 - `userhistory.md`: sempre.
 - `comunication_json.md`: somente quando ha back-end confirmado.
+- `handoff.json`: sempre (manifesto de handoff; veja secao abaixo).
 
 Antes de sobrescrever qualquer artefato existente, confirme via `AskUserQuestion`.
+
+---
+
+## Manifesto de handoff `handoff.json`
+
+Ao fechar o estagio FINAL, grave `<featurePath>/handoff.json` seguindo `references/handoff-contract.md` (`HANDOFF_VERSION = 1`). Esse arquivo e a ancora de descoberta que o Orchestrador le antes de planejar.
+
+Regras:
+
+1. `stage: "pensador"`, `upstream: null` (primeiro estagio da cadeia).
+2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
+3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `codebase-memory`, `shared-agents`.
+4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
+5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orchestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
+
+Exemplo minimo:
+
+```json
+{
+  "handoffVersion": 1,
+  "stage": "pensador",
+  "slug": "login-social",
+  "producer": { "plugin": "cc-pensador", "version": "2.5.1" },
+  "artifactRoot": ".pensador/login-social-v1",
+  "status": "DONE",
+  "createdAt": "2026-06-18T15:40:00.000Z",
+  "updatedAt": "2026-06-18T15:40:00.000Z",
+  "summary": "PRD, user history e contratos de comunicacao para login social multitenant.",
+  "upstream": null,
+  "artifacts": [
+    { "role": "prd", "path": "prd.md", "required": true, "description": "PRD consolidado" },
+    { "role": "userhistory", "path": "userhistory.md", "required": true, "description": "Historias de usuario" },
+    { "role": "architecture", "path": "architecture.md", "required": false, "description": "Arquitetura alvo" },
+    { "role": "communication-contract", "path": "comunication_json.md", "required": false, "description": "Contratos front-back" }
+  ],
+  "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orchestrador", "instructions": "Ingerir os artefatos e implementar o plano." }
+}
+```
 
 ---
 

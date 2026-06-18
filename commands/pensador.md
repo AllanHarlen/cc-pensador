@@ -104,12 +104,15 @@ Artefatos e estado devem ficar sob:
 ```text
 .pensador/<slug-da-demanda>-vN/
   .pensador-progress.json
+  handoff.json
   architecture.md
   shared-agents/
   prd.md
   userhistory.md
   comunication_json.md
 ```
+
+No estagio FINAL, grave tambem o manifesto de handoff `handoff.json` na raiz de `<featurePath>/`, conforme `skills/pensador/references/handoff-contract.md`. Ele e a ancora de descoberta que o `/cc-orchestrador-subagents:orchestrador` usa para ingerir o PRD/Spec. Liste em `artifacts[]` cada arquivo final gerado com seu `role` (`prd`, `userhistory`, `architecture`, `communication-contract`, `codebase-memory`, `shared-agents`) e marque `status: "DONE"` apenas quando todos os gates fecharem.
 
 ### Passo 5 - Reportar ao usuario
 
@@ -120,7 +123,8 @@ Ao concluir FINAL, informe:
 - Caminho de `comunication_json.md`, se houver back-end confirmado.
 - Caminho de `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
-- Recap final e handoff.
+- Caminho de `handoff.json` (manifesto de handoff para o Orchestrador).
+- Recap final e handoff: informe que o proximo passo e `/cc-orchestrador-subagents:orchestrador implemente o plano destacado`, que ira ingerir `handoff.json`.
 
 ---
 
@@ -135,6 +139,7 @@ Ao concluir FINAL, informe:
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Codex/AGY/Kiro, roteamento por dominio, motores de execucao e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex), parsing, preflight e contrato de delegacao |
+| `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes `.pensador/.orchestration/.executor`, correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | AskUserQuestion, opcoes recomendadas, previews, recap final e handoff |
 | `scripts/preflight.mjs` | Verifica disponibilidade de Codex, AGY, Kiro e do motor de execucao escolhido |
 | `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia, nao importada em runtime pela skill |

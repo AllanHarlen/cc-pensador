@@ -59,6 +59,7 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(sempre)*
 - `comunication_json.md` — Contrato de comunicação/API em JSON. *(sempre que houver back-end)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
+- `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orchestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
 
 ## Isolamento por atualização
 
@@ -68,6 +69,7 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo
 .pensador/
 └── <slug-da-demanda>-vN/          ← ex.: login-social-v1
     ├── .pensador-progress.json    ← checkpoint v2
+    ├── handoff.json               ← manifesto de handoff (descoberta p/ Orchestrador)
     ├── architecture.md
     ├── shared-agents/             ← troca entre subagentes
     │   ├── context-pack.md

@@ -114,6 +114,7 @@ All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUser
 - `userhistory.md` — User journey in sequential steps. *(always)*
 - `comunication_json.md` — Communication/API contract in JSON. *(when backend exists)*
 - `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*
+- `handoff.json` — Handoff manifest for `/cc-orchestrador-subagents:orchestrador` (artifact discovery anchor; see `references/handoff-contract.md`). *(always)*
 
 ## Lite vs. Full Mode
 
