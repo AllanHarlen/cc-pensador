@@ -171,6 +171,7 @@ O arquivo deve conter demanda, PRD Base, `architecture.md`, respostas de EXPAND,
 | `requirements-clarity` | sempre | Clareza, ambiguidades, aceite, escopo |
 | Codex `effort high` | `hasBackend` | Dados, APIs, seguranca, contratos, riscos tecnicos |
 | AGY `gemini-3.1-pro-high` | `hasFrontend` | Experiencia, produto, jornadas, telas, cenarios |
+| Open Design (`od`) | `hasFrontend` | Brief de design (tom, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) -> `design-system.md` no FINAL. Veja `references/open-design.md`. |
 
 Em modo Lite, limite a quantidade de perguntas por dominio e favoreca `"TBD"` para lacunas menores. Em modo Completo, aprofunde dominios de maior risco.
 
@@ -242,7 +243,7 @@ Se um participante falhar:
 1. Aplicar `withConsolidated(state)`.
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao (so no modo PRD; no modo Spec nao se aplica).
 3. Gerar artefatos conforme `artifactMode`:
-   - Modo PRD: `prd.md` + `userhistory.md` (+ `comunication_json.md` quando ha back-end) em `<featurePath>/`.
+   - Modo PRD: `prd.md` + `userhistory.md` (+ `comunication_json.md` quando ha back-end) (+ `design-system.md` quando ha front-end) em `<featurePath>/`.
    - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
 5. Apresentar recap final e handoff. No modo Spec, orientar com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este move pastas: so apos confirmacao do usuario).
@@ -252,6 +253,7 @@ Se um participante falhar:
 | `prd.md` | Modo PRD |
 | `userhistory.md` | Modo PRD |
 | `comunication_json.md` | Modo PRD, quando ha back-end confirmado |
+| `design-system.md` | Modo PRD, quando ha front-end (gerado via Open Design; fallback inline) |
 | `openspec/changes/<nome>/` (`proposal.md` · `design.md` · `tasks.md` · `specs/`) | Modo Spec (via comandos `openspec-*`) |
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados, recap final e handoff entregues.

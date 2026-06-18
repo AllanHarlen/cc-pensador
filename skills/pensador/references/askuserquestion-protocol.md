@@ -12,7 +12,7 @@ Toda pergunta usa `AskUserQuestion`, sem excecoes:
 |---|---|
 | Pensador | Demanda ausente, escolha PRD vs Spec (OpenSpec), fallback do Code Base Memory, EXPAND, COMPLEXITY, confirmacao de back-end, sobrescrita, recap final |
 | ARCH | Entrevista greenfield, duvidas de arquitetura |
-| BRAINSTORM_GERAL | Perguntas de `requirements-clarity`, Codex, AGY ou fallback por dominio |
+| BRAINSTORM_GERAL | Perguntas de `requirements-clarity`, Codex, AGY, brief de design (Open Design) ou fallback por dominio |
 | CODEX | Lacunas tecnicas finais ou fallback |
 | AGY | Lacunas de produto finais ou fallback |
 | Retomada | Checkpoint v2 ou checkpoint v1 incompativel |
@@ -66,6 +66,7 @@ Exemplos:
 
 - COMPLEXITY: mostrar diferenca entre Lite e Completo.
 - Confirmacao de back-end: mostrar se `comunication_json.md` sera gerado.
+- Brief de design (front-end): mostrar que `design-system.md` sera gerado via Open Design (ou inline) e a oferta de instalacao quando indisponivel.
 - Sobrescrita: mostrar caminho do arquivo existente.
 - Handoff: mostrar artefatos finais e proximos passos.
 
@@ -126,7 +127,7 @@ O handoff e a orientacao final para quem vai implementar ou revisar o PRD. Ele d
 - `shared-agents/agent.response.md`.
 - Decisoes que precisam validacao humana antes de implementar.
 
-Se houver back-end confirmado, mencionar `comunication_json.md`. Se nao houver, registrar que o artefato nao se aplica.
+Se houver back-end confirmado, mencionar `comunication_json.md`. Se nao houver, registrar que o artefato nao se aplica. Se houver front-end, mencionar `design-system.md` (gerado via Open Design ou inline); se nao houver, registrar que nao se aplica.
 
 ---
 

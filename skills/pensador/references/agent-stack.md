@@ -53,6 +53,7 @@ Roteamento:
 | Clareza de requisitos | `requirements-clarity` | sempre | `requirements-clarity.response.md` |
 | Backend/tecnico | Codex | `hasBackend = true` | `codex.response.md` |
 | Frontend/produto | AGY | `hasFrontend = true` | `agy.response.md` |
+| Design system | Open Design (`od`) | `hasFrontend = true` | brief de design parseado -> `design-system.md` (no FINAL) |
 
 O Pensador consolida as respostas em:
 
@@ -138,6 +139,14 @@ AGY roda sempre como varredura final de produto, considerando o consolidado ate 
 
 ---
 
+## Open Design (motor de design)
+
+O Open Design (`od`, MCP/CLI) nao e uma lente de perguntas como Codex/AGY: e o **motor de design** acionado quando `hasFrontend = true`. No `BRAINSTORM_GERAL`, o Pensador parseia o **brief de design** (tom visual, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) via `AskUserQuestion`; no `FINAL`, esse brief alimenta o Open Design para gerar o artefato `design-system.md` (DESIGN.md de 9 secoes).
+
+Fallback (decidido via `AskUserQuestion`): instalar o Open Design agora (`curl -fsSL https://open-design.ai/install.sh | sh -s <agent>` + `od mcp install <agent>`) ou escrever um `design-system.md` inline a partir do schema de 9 secoes. Detalhes em `references/open-design.md`.
+
+---
+
 ## Fallback
 
 Fallback e sempre decidido via `AskUserQuestion`.
@@ -157,4 +166,5 @@ Nos estagios `CODEX` e `AGY`, o fallback bloqueia o gate do proprio estagio ate 
 - `references/stages.md`: gates e comportamento por estagio.
 - `references/feature-isolation.md`: layout de `shared-agents/` e retomada.
 - `references/skill-stack.md`: skills como lentes de dominio.
+- `references/open-design.md`: Open Design como motor de design (brief + `design-system.md`).
 - `references/askuserquestion-protocol.md`: canal unico, autoria, previews e handoff.

@@ -14,7 +14,7 @@ Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre onze esta
 4. **ARCH** - Analise do projeto (reaproveita o indice do Code Base Memory + `Read`/`Glob`/`Grep`); em greenfield, entrevista o usuario; grava `architecture.md`.
 5. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
 6. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
-7. **BRAINSTORM_GERAL** - Orquestracao por dominio: `requirements-clarity`, Codex `effort high` se `hasBackend`, AGY `gemini-3.1-pro-high` se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
+7. **BRAINSTORM_GERAL** - Orquestracao por dominio: `requirements-clarity`, Codex `effort high` se `hasBackend`, AGY `gemini-3.1-pro-high` se `hasFrontend`, e Open Design (brief de design -> `design-system.md`) se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
 8. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`; nao participa em atividade especifica de front-end (`hasFrontend` sem `hasBackend`).
 9. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
 10. **FINAL** - Consolidacao, artefatos, recap final e handoff.
@@ -71,6 +71,7 @@ Leia tambem o bloco `integrations`:
 
 - `integrations.codebaseMemory` (obrigatorio): disponibilidade do MCP `codebase-memory-mcp` para a exploracao pre-PRD/Spec.
 - `integrations.openspec` (opcional): se detectado, o INIT deve oferecer PRD vs Spec.
+- `integrations.openDesign` (opcional, condicional a front-end): se a demanda tiver front-end e o Open Design (`od`) nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para `design-system.md` inline. Veja `skills/pensador/references/open-design.md`.
 
 Se o preflight falhar, nao aborte. Trate como `partial`.
 
@@ -122,11 +123,12 @@ Artefatos e estado devem ficar sob:
   prd.md
   userhistory.md
   comunication_json.md
+  design-system.md
 ```
 
-> No modo Spec (OpenSpec), o entregavel e o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), criado pelos comandos `openspec-*`; `prd.md`, `userhistory.md` e `comunication_json.md` nao se aplicam.
+> No modo Spec (OpenSpec), o entregavel e o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), criado pelos comandos `openspec-*`; `prd.md`, `userhistory.md`, `comunication_json.md` e `design-system.md` nao se aplicam.
 
-No estagio FINAL, grave tambem o manifesto de handoff `handoff.json` na raiz de `<featurePath>/`, conforme `skills/pensador/references/handoff-contract.md`. Ele e a ancora de descoberta que o `/cc-orchestrador-subagents:orchestrador` usa para ingerir o PRD/Spec. Liste em `artifacts[]` cada arquivo final gerado com seu `role` (`prd`, `userhistory`, `architecture`, `communication-contract`, `codebase-memory`, `shared-agents`) e marque `status: "DONE"` apenas quando todos os gates fecharem.
+No estagio FINAL, grave tambem o manifesto de handoff `handoff.json` na raiz de `<featurePath>/`, conforme `skills/pensador/references/handoff-contract.md`. Ele e a ancora de descoberta que o `/cc-orchestrador-subagents:orchestrador` usa para ingerir o PRD/Spec. Liste em `artifacts[]` cada arquivo final gerado com seu `role` (`prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `codebase-memory`, `shared-agents`) e marque `status: "DONE"` apenas quando todos os gates fecharem.
 
 ### Passo 5 - Reportar ao usuario
 
@@ -135,6 +137,7 @@ Ao concluir FINAL, informe:
 - Caminho de `prd.md` (modo PRD) ou do change set `openspec/changes/<nome>/` (modo Spec).
 - Caminho de `userhistory.md` (modo PRD).
 - Caminho de `comunication_json.md`, se houver back-end confirmado (modo PRD).
+- Caminho de `design-system.md`, se houver front-end (modo PRD; DESIGN.md gerado via Open Design ou inline).
 - Caminho de `codebase-memory.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
 - Recap final e handoff. No modo Spec, oriente `/openspec-verify-change`, `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.
@@ -155,10 +158,11 @@ Ao concluir FINAL, informe:
 | `skills/pensador/references/agent-stack.md` | Codex/AGY/Kiro, roteamento por dominio, motores de execucao e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex), parsing, preflight e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
+| `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes `.pensador/.orchestration/.executor`, correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | AskUserQuestion, opcoes recomendadas, previews, recap final e handoff |
-| `scripts/preflight.mjs` | Verifica disponibilidade de Codex, AGY, Kiro, motor de execucao, Code Base Memory e OpenSpec |
+| `scripts/preflight.mjs` | Verifica disponibilidade de Codex, AGY, Kiro, motor de execucao, Code Base Memory, OpenSpec e Open Design |
 | `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia, nao importada em runtime pela skill |
 
 ---

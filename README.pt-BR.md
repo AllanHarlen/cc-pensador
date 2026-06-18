@@ -2,7 +2,7 @@
 
 > Plugin de Claude Code que conduz uma demanda em linguagem natural por **onze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
 
-`versão 2.6.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
+`versão 2.7.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
 ## Sumário
 
@@ -14,6 +14,7 @@
 - [Uso](#uso)
 - [Modos de execução (`--modo`)](#modos-de-execução---modo)
 - [Code Base Memory (exploração obrigatória)](#code-base-memory-exploração-obrigatória)
+- [Open Design (sistema de design opcional)](#open-design-sistema-de-design-opcional)
 - [OpenSpec (modo Spec opcional)](#openspec-modo-spec-opcional)
 - [Modos Lite e Completo](#modos-lite-e-completo)
 - [Preflight](#preflight)
@@ -46,7 +47,7 @@ O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → ca
 | **ARCH** | Analisa arquitetura (reaproveita o índice do Code Base Memory + Read/Glob/Grep); grava `architecture.md`. Entrevista greenfield se necessário. | — | sempre |
 | **EXPAND** | Amplia demanda com requisitos candidatos (perguntas do Pensador). | — | sempre |
 | **COMPLEXITY** | Calcula score por `detectComplexity()`; propõe Lite ou Completo; usuário confirma. | — | sempre |
-| **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY | sempre |
+| **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend + brief de design do Open Design se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY · Open Design (`od`) | sempre |
 | **CODEX** | Refinamento técnico dedicado com `effort high`. Não participa em atividade específica de front-end (`hasFrontend` sem `hasBackend`). | `codex:codex-rescue` | exceto front-end específico |
 | **AGY** | Varredura final de lacunas de produto. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | sempre |
 | **FINAL** | Aplica `withConsolidated`, confirma back-end, gera artefatos, apresenta recap e handoff. | — | sempre |
@@ -62,6 +63,7 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `openspec/changes/<name>/` — change set OpenSpec (`proposal.md`, `design.md`, `tasks.md`, `specs/`), montado pelos comandos `openspec-*`. *(modo Spec)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(só no modo PRD)*
 - `comunication_json.md` — Contrato de comunicação/API em JSON. *(modo PRD, quando houver back-end)*
+- `design-system.md` — Sistema de design brand-grade (DESIGN.md: paleta, tipografia, espaçamento, componentes, motion, voz), gerado via Open Design a partir do brief de design parseado. *(modo PRD, quando houver front-end; fallback inline se o Open Design não estiver disponível)*
 - `codebase-memory.md` — Snapshot da exploração do Code Base Memory. *(sempre, em `<featurePath>/`)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
 - `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orchestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
@@ -83,7 +85,8 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo
     │   └── agy.response.md
     ├── prd.md                     ← artefatos finais
     ├── userhistory.md
-    └── comunication_json.md
+    ├── comunication_json.md
+    └── design-system.md           ← quando há front-end (via Open Design)
 ```
 
 `<slug>` é o nome curto da demanda recebida normalizado (minúsculas, sem acentos, hifenizado); `-vN` é a versão local da mesma demanda (`v1` na primeira execução, depois `v2`, `v3`, ...). Fallback `atualizacao-v1`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.
@@ -189,6 +192,20 @@ O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/Op
 
 Instalação: `npm install -g @fission-ai/openspec@latest` e depois `openspec init`. Veja `skills/pensador/references/openspec.md`.
 
+## Open Design (sistema de design opcional)
+
+O Pensador integra opcionalmente o **[Open Design](https://github.com/nexu-io/open-design)** (`od`, um servidor MCP + CLI) para fechar a lacuna de design que requisitos puramente funcionais deixam aberta. Sem ele, uma UI com antd no tema default vira template administrativo genérico; com ele, o agente de front-end ganha um alvo visual real.
+
+- Relevante apenas quando a demanda tem **front-end** (`hasFrontend`). No **BRAINSTORM_GERAL**, o Pensador parseia um **brief de design** via `AskUserQuestion` — tom visual, marca/referências, paleta de cores, tipografia, estados de componente, responsividade, acessibilidade (alvo WCAG) e microcopy.
+- No **FINAL**, esse brief alimenta o Open Design para gerar `design-system.md` (um `DESIGN.md` brand-grade: paleta, tipografia, espaçamento, layout, componentes, motion, voz, anti-padrões).
+- Detectado pelo preflight (CLI `od` no PATH ou entrada de MCP). Indisponível quando há front-end: o Pensador pergunta via `AskUserQuestion` se deve **instalar agora** (roda o instalador + `od mcp install <agent>` e retoma) ou **cair** para um `design-system.md` inline a partir do mesmo schema de 9 seções — nunca bloqueia.
+
+Instalação: `curl -fsSL https://open-design.ai/install.sh | sh -s claude` e depois `od mcp install claude` (troque `claude` pelo seu agente). Veja `skills/pensador/references/open-design.md`.
+
+## PRD abrangente e sem truncamento
+
+O `Strict_PRD_Schema` (`skills/prd/SKILL.md`) define **17 seções obrigatórias** para que o PRD detalhe o produto inteiro na profundidade de sistemas modernos: Visão Geral, Problema & Contexto, Objetivos & Métricas, Personas, Escopo, Requisitos Funcionais, Requisitos Não-Funcionais, **Design System & UI/UX**, Casos de Uso & Fluxos, **Modelo de Dados & Domínio**, **Contratos de API & Integrações**, **Segurança/Privacidade & Conformidade (LGPD, papéis, multitenancy)**, **Observabilidade & Operação**, Critérios de Aceite, Arquitetura, **Riscos & Mitigações** e Plano de Entrega. Uma diretriz explícita de anti-truncamento exige que todo gap (regra de negócio ou tecnologia) seja resolvido ou marcado exatamente como `"TBD"` — o PRD nunca é encurtado por brevidade.
+
 ## Modos Lite e Completo
 
 No estágio **COMPLEXITY**, o Pensador calcula um score (0–4) com base em quatro sinais:
@@ -212,7 +229,7 @@ O comando `/pensador` executa um preflight antes de iniciar o fluxo, informando 
 node scripts/preflight.mjs --modo <claude|agy|kiro|codex>
 ```
 
-Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade dos subagentes de domínio (Codex e AGY) e do **motor de execução** do `--modo` (Antigravity, Kiro ou Codex), e emite um JSON com o bloco `executionMode`, o bloco `integrations` (obrigatório `codebaseMemory` + opcional `openspec`) e o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
+Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade dos subagentes de domínio (Codex e AGY) e do **motor de execução** do `--modo` (Antigravity, Kiro ou Codex), e emite um JSON com o bloco `executionMode`, o bloco `integrations` (obrigatório `codebaseMemory` + opcional `openspec` + opcional `openDesign`) e o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
 
 ## Gates de avanço
 
@@ -248,6 +265,7 @@ cc-pensador/
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
 │  │  │  ├─ execution-modes.md           # modos --modo (claude/agy/kiro/codex), parsing, preflight, delegação
 │  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) obrigatório: exploração antes do PRD/Spec
+│  │  │  ├─ open-design.md               # Open Design (MCP/CLI) opcional: brief de design → design-system.md
 │  │  │  ├─ openspec.md                  # OpenSpec opcional: escolha PRD vs Spec no INIT
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
 │  │  └─ assets/                         # templates: prd · userhistory · comunication_json
@@ -266,7 +284,7 @@ cc-pensador/
 │  ├─ consolidate.test.js          # consolidate, withConsolidated
 │  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
 │  ├─ execution-modes.test.js      # --modo: parse/resolve/buildDelegationInvocation
-│  ├─ integrations.test.js         # Code Base Memory + OpenSpec (modo Spec)
+│  ├─ integrations.test.js         # Code Base Memory + OpenSpec (modo Spec) + Open Design
 │  └─ docs-consistency.test.js     # STAGE_ORDER verbatim nos docs
 ├─ CHANGELOG.md              # histórico de versões e breaking changes
 └─ LICENSE                   # MIT

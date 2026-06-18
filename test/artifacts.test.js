@@ -311,9 +311,19 @@ describe('buildArtifactList(state)', () => {
       expect(artifacts).toHaveLength(2);
     });
 
-    it('returns 3 artifacts (prd + userhistory + comunication) for a back-end project in FINAL', () => {
+    it('returns 4 artifacts (prd + userhistory + comunication + design-system) for a fullstack project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
+      expect(artifacts).toHaveLength(4);
+    });
+
+    it('returns 3 artifacts (prd + userhistory + comunication) for a back-end-only project in FINAL', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
       expect(artifacts).toHaveLength(3);
+    });
+
+    it('returns 3 artifacts (prd + userhistory + design-system) for a front-end-only project in FINAL', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
+      expect(artifacts.map((a) => a.kind)).toEqual(['prd', 'userhistory', 'design-system']);
     });
   });
 });

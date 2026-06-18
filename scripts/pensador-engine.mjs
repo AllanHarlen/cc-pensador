@@ -848,6 +848,108 @@ export function openspecChangeDir(featurePath) {
 }
 
 // ---------------------------------------------------------------------------
+// Open Design (MCP + CLI) — design-system support for front-end work
+// ---------------------------------------------------------------------------
+
+/**
+ * Open Design (https://github.com/nexu-io/open-design).
+ *
+ * The open-source, local-first design engine that ships as skills, an `od` CLI,
+ * and an MCP server consumed natively by coding agents. The Pensador uses it to
+ * close the design gap that pure functional requirements leave open: instead of
+ * "antd default + functional flows" (which renders as a generic admin template),
+ * Open Design turns a parsed design brief into a brand-grade `DESIGN.md` design
+ * system — palette, typography, spacing, layout, components, motion, voice and
+ * anti-patterns — so the downstream front-end agent has an actual visual target.
+ *
+ * This is an OPTIONAL, front-end-conditional support (like Code Base Memory's
+ * offer, but only relevant when `hasFrontend`): when the demand has a front-end
+ * and the server is unavailable, the Pensador offers to install it via
+ * AskUserQuestion. If declined, it degrades to an inline `DESIGN.md` written from
+ * the same 9-section schema. The constant is a deterministic descriptor consumed
+ * by the prose layer and the tests; the engine performs no I/O.
+ */
+export const OPEN_DESIGN = {
+  cli: 'od',
+  repo: 'https://github.com/nexu-io/open-design',
+  optional: true,
+  /** Only relevant when the demand has a front-end (hasFrontend). */
+  relevantWhen: 'hasFrontend',
+  /** Where the MCP server is typically registered, by host. */
+  configFiles: {
+    claudeProject: '.mcp.json',
+    claudeGlobal: '~/.claude/.mcp.json',
+    kiro: '.kiro/settings/mcp.json',
+  },
+  /** Platform/agent install commands the Pensador can run when the user accepts. */
+  installCommands: {
+    /** One-line install of Open Design into a given coding agent. */
+    agent: 'curl -fsSL https://open-design.ai/install.sh | sh -s claude',
+    /** Wire the MCP server into the agent's config after install. */
+    mcp: 'od mcp install claude',
+  },
+  /** The `od` CLI commands the Pensador relies on to drive the design system. */
+  commands: {
+    skillList: 'od skill list',
+    pluginApply: 'od plugin apply',
+    getFile: 'od get-file',
+    searchFiles: 'od search-files',
+    getArtifact: 'od get-artifact',
+  },
+  /**
+   * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every
+   * section the Pensador parses from the design brief maps onto one of these.
+   */
+  designSchema: [
+    'color',
+    'typography',
+    'spacing',
+    'layout',
+    'components',
+    'motion',
+    'voice',
+    'brand',
+    'anti-patterns',
+  ],
+  /** Final design-system artifact written under <featurePath>/ in PRD mode. */
+  designSystemFile: 'design-system.md',
+};
+
+/**
+ * Builds the path of the design-system artifact (DESIGN.md) inside the update
+ * directory. This is a FINAL artifact (it IS part of buildArtifactList in PRD
+ * mode when the demand has a front-end).
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function designSystemArtifactPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${OPEN_DESIGN.designSystemFile}`;
+}
+
+/**
+ * Returns the ordered design-brief dimensions the Pensador must parse (via
+ * AskUserQuestion when not inferable) before driving Open Design. Feeding all of
+ * these to Open Design is what guarantees a brand-grade result instead of a flat
+ * default theme. Pure and total: same input → same output, never throws.
+ *
+ * @returns {string[]}
+ */
+export function openDesignBriefPlan() {
+  return [
+    'visualTone',        // ex.: "clean azul/grafite tipo Linear/Vercel", "vibrante"
+    'brandReferences',   // produtos/sites de referência ou identidade existente
+    'colorPalette',      // cor de marca, neutros, semânticas (sucesso/erro/aviso)
+    'typography',        // famílias, escala, pesos
+    'componentStates',   // default/hover/focus/active/disabled/loading/vazio/erro
+    'responsiveness',    // breakpoints, grid, densidade
+    'accessibility',     // contraste, foco, leitura de tela, alvo WCAG
+    'microcopy',         // voz/tom de textos, mensagens de estado
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Project classification & fullstack detection
 // ---------------------------------------------------------------------------
 
@@ -945,6 +1047,7 @@ export function planArtifacts(state) {
     prd: false,
     userhistory: false,
     comunication: false,
+    designSystem: false,
     proposal: false,
     specs: false,
     design: false,
@@ -955,7 +1058,7 @@ export function planArtifacts(state) {
   }
 
   const spec = resolveArtifactMode(state.artifactMode) === 'spec';
-  const hasBackend = classifyProject(state.consolidated).hasBackend;
+  const { hasBackend, hasFrontend } = classifyProject(state.consolidated);
 
   if (spec) {
     // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
@@ -968,6 +1071,7 @@ export function planArtifacts(state) {
       tasks: true,
       userhistory: false,
       comunication: false,
+      designSystem: false,
     };
   }
 
@@ -979,6 +1083,10 @@ export function planArtifacts(state) {
     tasks: false,
     userhistory: true,
     comunication: hasBackend,
+    // The design-system artifact (DESIGN.md, produced via Open Design) is planned
+    // whenever the demand has a front-end — that is the layer the bare functional
+    // PRD leaves unspecified.
+    designSystem: hasFrontend,
   };
 }
 
@@ -1070,6 +1178,14 @@ export function buildArtifactList(state) {
       // Deliberate spelling — matches the user-requested filename, do NOT "fix" to "communication".
       filename: 'comunication_json.md',
       path: `${basePath}comunication_json.md`,
+    });
+  }
+
+  if (plan.designSystem) {
+    artifacts.push({
+      kind: 'design-system',
+      filename: OPEN_DESIGN.designSystemFile,
+      path: `${basePath}${OPEN_DESIGN.designSystemFile}`,
     });
   }
 
@@ -1266,6 +1382,7 @@ export function deserializeState(serialized) {
  * @property {boolean} prd
  * @property {boolean} userhistory
  * @property {boolean} comunication
+ * @property {boolean} [designSystem] // design-system.md (Open Design) when hasFrontend, PRD mode
  * @property {boolean} [proposal]  // OpenSpec (spec mode)
  * @property {boolean} [specs]     // OpenSpec (spec mode)
  * @property {boolean} [design]    // OpenSpec (spec mode)
@@ -1274,8 +1391,8 @@ export function deserializeState(serialized) {
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'comunication'|'userhistory'|'proposal'|'specs'|'design'|'tasks'} kind
- * @property {'prd.md'|'comunication_json.md'|'userhistory.md'|'proposal.md'|'specs/'|'design.md'|'tasks.md'} filename
+ * @property {'prd'|'comunication'|'userhistory'|'design-system'|'proposal'|'specs'|'design'|'tasks'} kind
+ * @property {'prd.md'|'comunication_json.md'|'userhistory.md'|'design-system.md'|'proposal.md'|'specs/'|'design.md'|'tasks.md'} filename
  * @property {string} path
  * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
  */

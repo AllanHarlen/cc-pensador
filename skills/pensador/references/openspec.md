@@ -50,7 +50,7 @@ Opção A (recomendada quando o time já usa OpenSpec): Spec estruturada (OpenSp
 Impacto: o PRD_BASE aciona os comandos openspec-* e monta o change set em openspec/changes/<nome>/.
 
 Opção B: PRD
-Impacto: fluxo clássico do Pensador; gera prd.md + userhistory.md (+ comunication_json.md se houver back-end).
+Impacto: fluxo clássico do Pensador; gera prd.md + userhistory.md (+ comunication_json.md se houver back-end) (+ design-system.md se houver front-end).
 ```
 
 A escolha é registrada em `artifactMode` com `withArtifactMode(state, escolha)` (`'prd'` ou `'spec'`). O `artifactMode` é **ortogonal** ao modo de execução (`--modo`) e às lentes de domínio.

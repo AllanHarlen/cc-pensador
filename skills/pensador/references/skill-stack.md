@@ -17,6 +17,8 @@ Os antigos estagios `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` nao fazem parte de
 
 `requirements-clarity` e a lente skill primaria do BRAINSTORM_GERAL. As demais skills continuam disponiveis como lentes especializadas de dominio, mas nao criam estagios independentes.
 
+> **Motor de design (Open Design).** Quando `hasFrontend = true`, o Pensador parseia um **brief de design** e usa o **Open Design** (`od`, MCP/CLI) como motor para gerar o `design-system.md` (DESIGN.md brand-grade). As lentes `ui-ux-pro-max` e `frontend-design` definem *o que* perguntar; o Open Design materializa *o sistema de design*. Se indisponivel, ofereca instalacao via `AskUserQuestion` ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+
 ---
 
 ## Protocolo de invocacao

@@ -19,6 +19,9 @@ import {
   OPENSPEC,
   openspecChangeName,
   openspecChangeDir,
+  OPEN_DESIGN,
+  designSystemArtifactPath,
+  openDesignBriefPlan,
   initState,
   planArtifacts,
   buildArtifactList,
@@ -206,8 +209,91 @@ describe('buildArtifactList in spec mode', () => {
     }
   });
 
-  it('prd mode is unaffected (prd + userhistory only, no backend)', () => {
+  it('prd mode emits design-system for a front-end demand (prd + userhistory + design-system)', () => {
     const kinds = buildArtifactList(finalState('prd', [frontendReq])).map((a) => a.kind);
-    expect(kinds).toEqual(['prd', 'userhistory']);
+    expect(kinds).toEqual(['prd', 'userhistory', 'design-system']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Open Design (design-system support for front-end work)
+// ---------------------------------------------------------------------------
+
+describe('Open Design descriptor', () => {
+  it('exposes the od CLI descriptor and DESIGN.md schema', () => {
+    expect(OPEN_DESIGN.cli).toBe('od');
+    expect(OPEN_DESIGN.optional).toBe(true);
+    expect(OPEN_DESIGN.relevantWhen).toBe('hasFrontend');
+    expect(OPEN_DESIGN.designSystemFile).toBe('design-system.md');
+    // The 9-section DESIGN.md brand contract.
+    expect(OPEN_DESIGN.designSchema).toEqual([
+      'color',
+      'typography',
+      'spacing',
+      'layout',
+      'components',
+      'motion',
+      'voice',
+      'brand',
+      'anti-patterns',
+    ]);
+    expect(OPEN_DESIGN.installCommands.agent).toContain('open-design.ai/install.sh');
+    expect(OPEN_DESIGN.installCommands.mcp).toContain('od mcp install');
+  });
+
+  it('designSystemArtifactPath writes inside the update directory', () => {
+    expect(designSystemArtifactPath('.pensador/locadora-v1')).toBe(
+      '.pensador/locadora-v1/design-system.md'
+    );
+  });
+
+  it('designSystemArtifactPath falls back when featurePath is null/undefined', () => {
+    expect(designSystemArtifactPath(null)).toBe('.pensador/atualizacao-v1/design-system.md');
+    expect(designSystemArtifactPath(undefined)).toBe('.pensador/atualizacao-v1/design-system.md');
+  });
+
+  it('openDesignBriefPlan covers every design dimension and never throws', () => {
+    const plan = openDesignBriefPlan();
+    expect(plan).toEqual([
+      'visualTone',
+      'brandReferences',
+      'colorPalette',
+      'typography',
+      'componentStates',
+      'responsiveness',
+      'accessibility',
+      'microcopy',
+    ]);
+    expect(() => openDesignBriefPlan()).not.toThrow();
+  });
+});
+
+describe('design-system artifact planning (PRD mode, front-end gated)', () => {
+  it('plans design-system when the demand has a front-end', () => {
+    const plan = planArtifacts(finalState('prd', [frontendReq]));
+    expect(plan.designSystem).toBe(true);
+  });
+
+  it('does NOT plan design-system for a back-end-only demand', () => {
+    const plan = planArtifacts(finalState('prd', [backendReq]));
+    expect(plan.designSystem).toBe(false);
+  });
+
+  it('never plans design-system in spec mode', () => {
+    const plan = planArtifacts(finalState('spec', [frontendReq]));
+    expect(plan.designSystem).toBe(false);
+  });
+
+  it('buildArtifactList includes a design-system artifact with the right filename/path', () => {
+    const state = { ...finalState('prd', [frontendReq]), featurePath: '.pensador/locadora-v1' };
+    const ds = buildArtifactList(state).find((a) => a.kind === 'design-system');
+    expect(ds).toBeDefined();
+    expect(ds.filename).toBe('design-system.md');
+    expect(ds.path).toBe('.pensador/locadora-v1/design-system.md');
+  });
+
+  it('fullstack demand emits prd + userhistory + comunication + design-system', () => {
+    const kinds = buildArtifactList(finalState('prd', [backendReq, frontendReq])).map((a) => a.kind);
+    expect(kinds).toEqual(['prd', 'userhistory', 'comunication', 'design-system']);
   });
 });

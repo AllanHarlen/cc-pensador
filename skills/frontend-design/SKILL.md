@@ -1,15 +1,15 @@
 ---
 name: frontend-design
-description: Lente de design de front-end para o estágio FRONTEND do Pensador. Levanta lacunas de componentização, design system/tokens, responsividade, layout/grid, padrões de interação e estados de componente, como perguntas para o usuário. Relevante quando a demanda tem front-end.
+description: Lente de design de front-end do estágio BRAINSTORM_GERAL do Pensador. Levanta lacunas de componentização, design system/tokens, responsividade, layout/grid, padrões de interação e estados de componente, como perguntas para o usuário. Relevante quando a demanda tem front-end. Alimenta o brief de design do Open Design.
 ---
 
 # frontend-design — Lente de Design de Front-End
 
-Skill de brainstorm do Pensador (estágio **FRONTEND**, relevante quando `hasFrontend`). Complementa a UIUX olhando o **como** construir a interface: estrutura, sistema de design e implementação visual. Alimenta **Arquitetura** (stack/estrutura de front) e **Requisitos Funcionais** de interface.
+Skill de brainstorm do Pensador (lente de design do estágio **BRAINSTORM_GERAL**, relevante quando `hasFrontend`). Complementa a UIUX olhando o **como** construir a interface: estrutura, sistema de design e implementação visual. Alimenta **Arquitetura** (stack/estrutura de front), a seção **Design System & UI/UX** e os **Requisitos Funcionais** de interface.
 
 > Conteúdo upstream (mcp.directory id 1) pode enriquecer esta skill. Baixe com:
 > `curl -L -o skill.zip "https://mcp.directory/api/skills/download/1" && unzip -o skill.zip -d skills/frontend-design && rm skill.zip`
-> Mesmo sem o download, o checklist abaixo torna o estágio FRONTEND operacional.
+> Mesmo sem o download, o checklist abaixo torna a lente de design de front-end operacional.
 
 ## Relevância
 
@@ -31,3 +31,7 @@ Rode quando houver front-end. Em interfaces simples, é aceitável produzir pouc
 ## Saída esperada
 
 Perguntas por lacuna de design/implementação de interface. Quando definir stack ou estrutura, registre para a seção **Arquitetura** do PRD.
+
+## Integração com o Open Design
+
+Quando `hasFrontend = true`, o checklist acima alimenta o **brief de design** que o Pensador parseia e entrega ao **Open Design** (`od`, MCP/CLI) para gerar o artefato `design-system.md` (DESIGN.md: paleta, tipografia, espaçamento, layout, componentes, motion, voz, anti-padrões). Esta skill define *o que* perguntar; o Open Design materializa *o sistema de design*. Se o Open Design não estiver instalado, o Pensador oferece a instalação via `AskUserQuestion` ou escreve um `design-system.md` inline. Veja `skills/pensador/references/open-design.md`.

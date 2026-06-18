@@ -94,6 +94,7 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 | `userhistory` | `userhistory.md` | sim |
 | `architecture` | `architecture.md` | quando houver ARCH |
 | `communication-contract` | `comunication_json.md` | quando `backendConfirmed` |
+| `design-system` | `design-system.md` | quando `hasFrontend` (DESIGN.md via Open Design) |
 | `codebase-memory` | `codebase-memory.md` | opcional |
 | `shared-agents` | `shared-agents/` | opcional |
 
@@ -131,7 +132,7 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 1. Procure `.pensador/*/handoff.json`. Para multiplos `slug`, confirme com o usuario qual demanda implementar.
 2. Para o mesmo `slug` com varias versoes `-vN`, **use a maior versao** (mais recente). Confirme via `AskUserQuestion` se houver duvida.
 3. Sem `handoff.json`: leia `.pensador/<slug>-vN/.pensador-progress.json` (`checkpointVersion: 2`) e o array `artifacts`.
-4. Ingira na ordem: `prd` → `userhistory` → `architecture` → `communication-contract`. Use o `communication-contract` como base dos contratos API/UI da Fase 8.
+4. Ingira na ordem: `prd` → `userhistory` → `architecture` → `communication-contract` → `design-system`. Use o `communication-contract` como base dos contratos API/UI da Fase 8 e o `design-system` como contrato visual (tokens, tipografia, estados) do front-end.
 
 ### Executor ingere Orchestrador
 1. Procure `.orchestration/<slug>/handoff.json`.

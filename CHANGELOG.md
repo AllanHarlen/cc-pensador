@@ -1,5 +1,43 @@
 # Changelog
 
+## [2.7.0] — 2026-06-18
+
+### PRD abrangente (anti-truncamento)
+
+- **`Strict_PRD_Schema` expandido de 10 para 17 seções obrigatórias**, cobrindo o produto inteiro na profundidade de sistemas modernos: adiciona **Escopo**, **Design System & UI/UX**, **Modelo de Dados & Domínio**, **Contratos de API & Integrações**, **Segurança/Privacidade & Conformidade (LGPD, papéis, multitenancy)**, **Observabilidade & Operação** e **Riscos & Mitigações**.
+- Nova **diretriz de exaustividade (anti-truncamento)**: o PRD não tem teto de tamanho; todo gap (regra de negócio ou tecnologia) deve ser resolvido ou marcado exatamente como `"TBD"`. Proíbe placeholders rasos em Design System, Modelo de Dados e Contratos de API.
+- `skills/prd/SKILL.md` e `skills/pensador/assets/prd-template.md` reescritos para as 17 seções, com IDs adicionais (`ENT-`, `EP-`) e referências cruzadas.
+
+### Integração com o Open Design (sistema de design)
+
+- Nova integração **opcional e condicional a front-end** com o **[Open Design](https://github.com/nexu-io/open-design)** (`od`, MCP + CLI) para fechar a lacuna de design (sem design system/tokens, a UI vira template genérico).
+  - Quando `hasFrontend`, o **BRAINSTORM_GERAL** parseia um **brief de design** via `AskUserQuestion` (tom visual, marca/referências, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`).
+  - O **FINAL** gera o novo artefato `design-system.md` (DESIGN.md de 9 seções) via Open Design a partir do brief; modo PRD apenas, quando `hasFrontend`.
+  - Detecção via preflight; indisponível quando há front-end: o Pensador oferece instalação via `AskUserQuestion` (igual ao Code Base Memory) — `curl -fsSL https://open-design.ai/install.sh | sh -s <agent>` + `od mcp install <agent>` — ou cai para um `design-system.md` inline. Nunca bloqueia e não altera o `status` do preflight.
+  - Novo role de handoff `design-system` no contrato Pensador→Orchestrador.
+
+### Engine (`pensador-engine.mjs`)
+
+- Novos exports puros e testados:
+  - `OPEN_DESIGN` (descritor: CLI `od`, comandos de instalação, schema DESIGN.md de 9 seções, arquivo `design-system.md`).
+  - `designSystemArtifactPath()` — caminho do artefato sob `<featurePath>/`.
+  - `openDesignBriefPlan()` — dimensões do brief de design a parsear.
+- `planArtifacts()` / `buildArtifactList()`: no modo PRD planejam `design-system.md` quando `hasFrontend` (`plan.designSystem`); modo Spec inalterado.
+- Typedefs `ArtifactPlan` e `Artifact` atualizados (kind `design-system`).
+
+### Preflight (`preflight.mjs`)
+
+- Novo bloco `integrations.openDesign` (opcional, `relevantWhen: hasFrontend`) com disponibilidade, origem da detecção, comandos de instalação e fallback. Continua saindo sempre com código 0; não afeta o `status`.
+
+### Documentação
+
+- Nova referência `skills/pensador/references/open-design.md`.
+- `SKILL.md`, `stages.md`, `skill-stack.md`, `agent-stack.md`, `askuserquestion-protocol.md`, `openspec.md`, `ui-ux-pro-max/SKILL.md`, `frontend-design/SKILL.md`, `feature-isolation.md`, `handoff-contract.md`, `commands/pensador.md`, `README.md` e `README.pt-BR.md` atualizados para o Open Design, o artefato/role `design-system` e o PRD de 17 seções. As lentes `ui-ux-pro-max` e `frontend-design` deixaram de citar os estágios legados `UIUX`/`FRONTEND` e passaram a se descrever como lentes do `BRAINSTORM_GERAL`.
+
+### Testes
+
+- `test/integrations.test.js` ganhou cobertura do Open Design (descritor, `designSystemArtifactPath`, `openDesignBriefPlan`, planejamento gated por front-end). `test/artifacts.test.js` atualizado para o artefato `design-system`. Suíte total: 195 testes verdes.
+
 ## [2.6.0] — 2026-06-17
 
 ### Mudança de Estágios (STAGE_ORDER)

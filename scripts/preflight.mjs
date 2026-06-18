@@ -15,6 +15,11 @@
  *    cost is billed to that engine's quota instead, while Claude orchestrates and
  *    keeps AskUserQuestion as the only user-dialogue channel.
  *
+ * It also reports an `integrations` block: codebaseMemory (MANDATORY exploration
+ * before PRD/Spec), openspec (OPTIONAL spec mode), and openDesign (OPTIONAL,
+ * front-end-conditional design-system support — parsed design brief → DESIGN.md).
+ * Optional integrations never affect the overall `status`.
+ *
  * Detection strategy: inspect the Claude Code plugin cache on disk to determine
  * whether each plugin is installed. Claude Code caches plugins under
  * ~/.claude/plugins/cache/<marketplace>/<plugin-name>/<version>/
@@ -69,6 +74,16 @@ const CODEBASE_MEMORY_SERVER = "codebase-memory-mcp";
 /** OpenSpec (https://github.com/Fission-AI/OpenSpec) — OPTIONAL spec workflow. */
 const OPENSPEC_CLI = "openspec";
 const OPENSPEC_DIR = "openspec";
+
+/**
+ * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
+ * conditional design-system support. Detected via the `od` CLI on PATH or a
+ * registered MCP entry. When the demand has a front-end and OD is unavailable,
+ * the Pensador offers to install it (like Code Base Memory); otherwise it
+ * degrades to an inline DESIGN.md. Never blocks and never affects status.
+ */
+const OPEN_DESIGN_CLI = "od";
+const OPEN_DESIGN_SERVER = "open-design";
 
 /**
  * Execution modes recognized by --modo. Mirrors EXECUTION_MODES in
@@ -328,6 +343,54 @@ function checkOpenSpec() {
 }
 
 /**
+ * OPTIONAL (front-end-conditional): Open Design availability.
+ *
+ * Reachable either as the `od` CLI on PATH or as a registered MCP server entry
+ * in one of the common host configs. Relevant only when the demand has a
+ * front-end: in that case, if unavailable, the Pensador offers to install it via
+ * AskUserQuestion (one-line installer + `od mcp install <agent>`). If declined,
+ * the fallback is an inline DESIGN.md written from the same 9-section schema.
+ *
+ * Like OpenSpec, this is purely optional and never affects the overall status.
+ */
+function checkOpenDesign() {
+  const cli = checkCli(OPEN_DESIGN_CLI);
+  const configCandidates = [
+    join(process.cwd(), ".mcp.json"),
+    join(process.cwd(), ".kiro", "settings", "mcp.json"),
+    join(HOME, ".claude", ".mcp.json"),
+    join(HOME, ".claude", "settings", "mcp.json"),
+  ];
+  const configuredIn = configCandidates.filter((p) => fileMentions(p, OPEN_DESIGN_SERVER));
+  const configured = configuredIn.length > 0;
+  const available = cli.ok || configured;
+
+  const installCommands = {
+    agent: "curl -fsSL https://open-design.ai/install.sh | sh -s claude",
+    mcp: "od mcp install claude",
+  };
+
+  return {
+    server: OPEN_DESIGN_SERVER,
+    cli: OPEN_DESIGN_CLI,
+    optional: true,
+    relevantWhen: "hasFrontend",
+    available,
+    cliCheck: cli,
+    configured,
+    configuredIn,
+    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (design-system.md)",
+    purpose:
+      "Turn a parsed design brief into a brand-grade DESIGN.md (palette, type, spacing, components, motion, voice) so the front-end agent has a real visual target instead of a flat default theme.",
+    installCommands,
+    fallbackBehavior:
+      "When the demand has a front-end and Open Design is unavailable, offer installation via AskUserQuestion: " +
+      "(A) install Open Design now (Claude runs the installer + `od mcp install <agent>` and resumes), " +
+      "(B) skip and write an inline DESIGN.md (design-system.md) from the 9-section schema.",
+  };
+}
+
+/**
  * Availability check for the selected execution mode (--modo). For the default
  * `claude` mode, always available (no external plugin needed). For a delegating
  * mode, checks the plugin cache for the engine plugin; the matching CLI binary is
@@ -383,6 +446,7 @@ const agy = checkAgy();
 const executionMode = checkExecutionMode(mode, modeValid, requestedMode);
 const codebaseMemory = checkCodebaseMemory();
 const openspec = checkOpenSpec();
+const openDesign = checkOpenDesign();
 
 const subagentsAvailable = codex.available && agy.available;
 // Overall status considers the domain subagents, the selected execution engine,
@@ -418,8 +482,9 @@ const report = {
   integrations: {
     codebaseMemory,
     openspec,
+    openDesign,
   },
-  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, openspec),
+  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, openDesign),
 };
 
 console.log(JSON.stringify(report, null, 2));
@@ -436,7 +501,7 @@ process.exit(0);
  * opening context or relay to the user when a subagent / execution engine is
  * missing.
  */
-function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec) {
+function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, openDesign) {
   const lines = [];
 
   // Execution mode summary first — it is the most impactful decision.
@@ -505,6 +570,28 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec) {
       );
     } else {
       lines.push("OpenSpec: not detected — flow stays in PRD mode (no PRD-vs-Spec question).");
+    }
+  }
+
+  if (openDesign) {
+    if (openDesign.available) {
+      lines.push(
+        `Open Design: ${openDesign.cli} available — when the demand has a front-end, parse a design brief and drive it ` +
+          `to emit a brand-grade design-system.md (DESIGN.md).`,
+      );
+    } else {
+      lines.push(
+        `Open Design: not detected (no \`${openDesign.cli}\` on PATH, no MCP config entry).`,
+      );
+      lines.push(
+        `  → Only relevant when the demand has a front-end. In that case, use AskUserQuestion with two options:`,
+      );
+      lines.push(
+        `    (A) Instalar agora — Claude runs \`${openDesign.installCommands?.agent}\` then \`${openDesign.installCommands?.mcp}\` and resumes.`,
+      );
+      lines.push(
+        `    (B) Seguir sem — write an inline design-system.md from the 9-section DESIGN.md schema.`,
+      );
     }
   }
 

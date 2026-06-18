@@ -23,6 +23,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY/Kiro e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
+| `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes ocultas e correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |
@@ -80,9 +81,10 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   prd.md
   userhistory.md
   comunication_json.md
+  design-system.md
 ```
 
-> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT.
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` (DESIGN.md gerado via Open Design) so e gravado no modo PRD quando a demanda tem front-end (`hasFrontend`).
 
 Regras:
 
@@ -172,8 +174,9 @@ COMPLEXITY
 
 BRAINSTORM_GERAL
   Orquestra em paralelo requirements-clarity, Codex high se hasBackend e AGY
-  gemini-3.1-pro-high se hasFrontend. Usa context-pack.md e agent.response.md.
-  Aplica fallback por dominio.
+  gemini-3.1-pro-high se hasFrontend. Quando hasFrontend, parseia o brief de
+  design para o Open Design (gera design-system.md no FINAL). Usa
+  context-pack.md e agent.response.md. Aplica fallback por dominio.
 
 CODEX
   Refinamento tecnico final com Codex usando effort high.
@@ -183,7 +186,8 @@ AGY
   Lacunas remanescentes de produto com AGY usando gemini-3.1-pro-high.
 
 FINAL
-  Consolida, confirma back-end, gera artefatos e apresenta recap final/handoff.
+  Consolida, confirma back-end, gera artefatos (incl. design-system.md quando
+  hasFrontend) e apresenta recap final/handoff.
 
 DONE
   Estado terminal.
@@ -327,6 +331,7 @@ Roteamento padrao:
 - `requirements-clarity`: sempre aplicavel como lente de clareza.
 - Codex com effort `high`: adicional no BRAINSTORM_GERAL quando `hasBackend = true`.
 - AGY com modelo `gemini-3.1-pro-high`: adicional no BRAINSTORM_GERAL quando `hasFrontend = true`.
+- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Esse brief alimenta o Open Design no FINAL para gerar o `design-system.md`. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline a partir do schema de 9 secoes. Veja `references/open-design.md`.
 
 Contrato:
 
@@ -400,10 +405,10 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 1. Aplique `withConsolidated(state)`.
 2. Confirme com o usuario via `AskUserQuestion` se ha back-end/API/contrato de comunicacao. Mostre a heuristica como sugestao e deixe a resposta do usuario prevalecer.
 3. Planeje artefatos conforme `artifactMode`:
-   - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end, todos em `<featurePath>/`.
-   - Modo Spec (OpenSpec): apenas o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md` e `comunication_json.md` nao se aplicam.
+   - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end; `design-system.md` quando ha front-end (`hasFrontend`), todos em `<featurePath>/`.
+   - Modo Spec (OpenSpec): apenas o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md`, `comunication_json.md` e `design-system.md` nao se aplicam.
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
-5. Gere os artefatos: no modo PRD use os templates; no modo Spec, finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+5. Gere os artefatos: no modo PRD use os templates; o `design-system.md` e gerado via Open Design a partir do brief consolidado (ou inline se indisponivel). No modo Spec, finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, caminhos reportados e recap/handoff apresentados.
@@ -439,5 +444,6 @@ Estado terminal. O fluxo esta encerrado.
 | `BRAINSTORM_GERAL` | skill | `requirements-clarity` | sempre | `shared-agents/requirements-clarity.response.md` |
 | `BRAINSTORM_GERAL` | subagente | `codex:codex-rescue` | `hasBackend` | `shared-agents/codex.response.md` |
 | `BRAINSTORM_GERAL` | subagente | `cc-antigravity-plugin:antigravity-agent` | `hasFrontend` | `shared-agents/agy.response.md` |
+| `BRAINSTORM_GERAL`/`FINAL` | MCP/CLI | Open Design (`od`) | `hasFrontend` | `design-system.md` (brief parseado; fallback inline) |
 | `CODEX` | subagente | `codex:codex-rescue` | nao especifico de front-end (`hasBackend` ou nao `hasFrontend`) | perguntas tecnicas finais |
 | `AGY` | subagente | `cc-antigravity-plugin:antigravity-agent` | sempre | perguntas de produto finais |

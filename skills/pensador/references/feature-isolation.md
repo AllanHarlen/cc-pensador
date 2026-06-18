@@ -22,6 +22,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     prd.md
     userhistory.md
     comunication_json.md
+    design-system.md
   carrinho-checkout-v1/
     ...
 ```
@@ -143,11 +144,13 @@ Arquivos:
 - `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado pelos comandos `openspec-*`), fora de `.pensador/`.
 - `userhistory.md`: modo PRD (nao se aplica no modo Spec).
 - `comunication_json.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
+- `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`); DESIGN.md gerado via Open Design (fallback inline). Nao se aplica no modo Spec.
 
 Alem dos artefatos finais, `<featurePath>/` contem dois arquivos de trabalho: `codebase-memory.md` (snapshot da exploracao do Code Base Memory, gravado no EXPLORE) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.
 - `userhistory.md`: sempre.
 - `comunication_json.md`: somente quando ha back-end confirmado.
+- `design-system.md`: somente quando ha front-end.
 - `handoff.json`: sempre (manifesto de handoff; veja secao abaixo).
 
 Antes de sobrescrever qualquer artefato existente, confirme via `AskUserQuestion`.
@@ -162,7 +165,7 @@ Regras:
 
 1. `stage: "pensador"`, `upstream: null` (primeiro estagio da cadeia).
 2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
-3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `codebase-memory`, `shared-agents`.
+3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `codebase-memory`, `shared-agents`.
 4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
 5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orchestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
 
@@ -178,13 +181,14 @@ Exemplo minimo:
   "status": "DONE",
   "createdAt": "2026-06-18T15:40:00.000Z",
   "updatedAt": "2026-06-18T15:40:00.000Z",
-  "summary": "PRD, user history e contratos de comunicacao para login social multitenant.",
+  "summary": "PRD, user history, design system e contratos de comunicacao para login social multitenant.",
   "upstream": null,
   "artifacts": [
     { "role": "prd", "path": "prd.md", "required": true, "description": "PRD consolidado" },
     { "role": "userhistory", "path": "userhistory.md", "required": true, "description": "Historias de usuario" },
     { "role": "architecture", "path": "architecture.md", "required": false, "description": "Arquitetura alvo" },
-    { "role": "communication-contract", "path": "comunication_json.md", "required": false, "description": "Contratos front-back" }
+    { "role": "communication-contract", "path": "comunication_json.md", "required": false, "description": "Contratos front-back" },
+    { "role": "design-system", "path": "design-system.md", "required": false, "description": "Design system (DESIGN.md) via Open Design" }
   ],
   "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orchestrador", "instructions": "Ingerir os artefatos e implementar o plano." }
 }
