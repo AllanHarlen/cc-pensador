@@ -77,10 +77,13 @@ const OPENSPEC_DIR = "openspec";
 
 /**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
- * conditional design-system support. Detected via the `od` CLI on PATH or a
- * registered MCP entry. When the demand has a front-end and OD is unavailable,
- * the Pensador offers to install it (like Code Base Memory); otherwise it
- * degrades to an inline DESIGN.md. Never blocks and never affects status.
+ * conditional design-system support. Detected via a registered MCP entry or a
+ * non-coreutils `od` CLI on PATH. NOTE: GNU coreutils also ships an `od`
+ * (octal-dump) binary, so a bare PATH probe is ambiguous — `checkOpenDesign()`
+ * filters out the coreutils signature. When the demand has a front-end and OD is
+ * unavailable, the Pensador offers to install it (local Docker/pnpm app — there
+ * is no one-line installer); otherwise it degrades to an inline DESIGN.md. Never
+ * blocks and never affects status.
  */
 const OPEN_DESIGN_CLI = "od";
 const OPEN_DESIGN_SERVER = "open-design";
@@ -348,13 +351,29 @@ function checkOpenSpec() {
  * Reachable either as the `od` CLI on PATH or as a registered MCP server entry
  * in one of the common host configs. Relevant only when the demand has a
  * front-end: in that case, if unavailable, the Pensador offers to install it via
- * AskUserQuestion (one-line installer + `od mcp install <agent>`). If declined,
- * the fallback is an inline DESIGN.md written from the same 9-section schema.
+ * AskUserQuestion. Install is automated by the bundled script
+ * (scripts/install-open-design.ps1|.sh): it brings Open Design up via Docker and
+ * wires the MCP. If declined, the fallback is an inline DESIGN.md written from
+ * the same 9-section schema.
  *
  * Like OpenSpec, this is purely optional and never affects the overall status.
  */
 function checkOpenDesign() {
-  const cli = checkCli(OPEN_DESIGN_CLI);
+  const cliRaw = checkCli(OPEN_DESIGN_CLI);
+
+  // GNU coreutils ships an `od` (octal-dump) binary on virtually every Unix-like
+  // system, and its `--version` advertises "GNU coreutils". That is NOT the Open
+  // Design daemon CLI. Without this guard, `checkCli("od")` reports success on any
+  // machine with coreutils, producing a false positive that makes the Pensador
+  // believe Open Design is installed when it is not.
+  const looksLikeCoreutils = cliRaw.ok && /coreutils/i.test(cliRaw.version ?? "");
+  const cli = looksLikeCoreutils
+    ? {
+        ok: false,
+        error: `Ignored GNU coreutils 'od' (octal-dump) on PATH, not the Open Design CLI: ${cliRaw.version}`,
+      }
+    : cliRaw;
+
   const configCandidates = [
     join(process.cwd(), ".mcp.json"),
     join(process.cwd(), ".kiro", "settings", "mcp.json"),
@@ -363,10 +382,27 @@ function checkOpenDesign() {
   ];
   const configuredIn = configCandidates.filter((p) => fileMentions(p, OPEN_DESIGN_SERVER));
   const configured = configuredIn.length > 0;
+
+  // Because PATH-based `od` detection collides with coreutils, the reliable signal
+  // for Open Design availability is an explicit MCP registration. A non-coreutils
+  // `od` on PATH is still honored, but the registered MCP entry is authoritative.
   const available = cli.ok || configured;
 
+  // Open Design has no one-line `curl | sh` installer (the old
+  // open-design.ai/install.sh endpoint is gone — 404). It is a local-first daemon
+  // + web app, brought up via Docker or a pnpm dev environment (Node 24 +
+  // pnpm 10.33). This repo ships an installer script (scripts/install-open-design.*)
+  // that automates the Docker path; `od mcp install <agent>` is the real
+  // post-setup step that wires the daemon's MCP server into the agent.
+  // See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
   const installCommands = {
-    agent: "curl -fsSL https://open-design.ai/install.sh | sh -s claude",
+    repo: "https://github.com/nexu-io/open-design",
+    scriptWindows: 'pwsh -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
+    scriptUnix: 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"',
+    docker:
+      "git clone --depth 1 https://github.com/nexu-io/open-design && cd open-design/deploy && cp .env.example .env && docker compose up -d   # app em http://localhost:7456",
+    local:
+      "git clone https://github.com/nexu-io/open-design && cd open-design && corepack enable && pnpm install && pnpm tools-dev run web   # requer Node 24 + pnpm 10.33",
     mcp: "od mcp install claude",
   };
 
@@ -381,11 +417,11 @@ function checkOpenDesign() {
     configuredIn,
     stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (design-system.md)",
     purpose:
-      "Turn a parsed design brief into a brand-grade DESIGN.md (palette, type, spacing, components, motion, voice) so the front-end agent has a real visual target instead of a flat default theme.",
+      "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade DESIGN.md the Pensador consolidates into design-system.md, so the front-end agent has a real visual target instead of a flat default theme.",
     installCommands,
     fallbackBehavior:
       "When the demand has a front-end and Open Design is unavailable, offer installation via AskUserQuestion: " +
-      "(A) install Open Design now (Claude runs the installer + `od mcp install <agent>` and resumes), " +
+      "(A) install Open Design now — Claude runs the bundled installer script (scripts/install-open-design.ps1|.sh), which checks git+docker, brings the daemon up via Docker, and wires the MCP, then resumes; " +
       "(B) skip and write an inline DESIGN.md (design-system.md) from the 9-section schema.",
   };
 }
@@ -581,13 +617,18 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, open
       );
     } else {
       lines.push(
-        `Open Design: not detected (no \`${openDesign.cli}\` on PATH, no MCP config entry).`,
+        `Open Design: not detected (no registered MCP entry; any \`${openDesign.cli}\` on PATH is GNU coreutils octal-dump, not Open Design).`,
       );
       lines.push(
         `  → Only relevant when the demand has a front-end. In that case, use AskUserQuestion with two options:`,
       );
       lines.push(
-        `    (A) Instalar agora — Claude runs \`${openDesign.installCommands?.agent}\` then \`${openDesign.installCommands?.mcp}\` and resumes.`,
+        `    (A) Instalar agora — Open Design é um app local (daemon + web). O cc-pensador traz um script instalador que usa Docker:`,
+      );
+      lines.push(`        Windows:  ${openDesign.installCommands?.scriptWindows}`);
+      lines.push(`        macOS/Linux: ${openDesign.installCommands?.scriptUnix}`);
+      lines.push(
+        `        (o script verifica git+docker, sobe o daemon e conecta o MCP via \`${openDesign.installCommands?.mcp}\`)`,
       );
       lines.push(
         `    (B) Seguir sem — write an inline design-system.md from the 9-section DESIGN.md schema.`,

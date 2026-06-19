@@ -881,20 +881,50 @@ export const OPEN_DESIGN = {
     claudeGlobal: '~/.claude/.mcp.json',
     kiro: '.kiro/settings/mcp.json',
   },
-  /** Platform/agent install commands the Pensador can run when the user accepts. */
+  /**
+   * How the user actually brings Open Design up when they accept the install
+   * offer (made via AskUserQuestion when the demand has a front-end).
+   *
+   * NOTE: Open Design has NO one-line `curl | sh` installer — the old
+   * `open-design.ai/install.sh` endpoint is gone (404). It is a local-first
+   * daemon + web/desktop app run via Docker or a pnpm dev environment
+   * (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist and is the real
+   * post-setup step that wires the daemon's stdio MCP server into the agent.
+   * See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
+   */
   installCommands: {
-    /** One-line install of Open Design into a given coding agent. */
-    agent: 'curl -fsSL https://open-design.ai/install.sh | sh -s claude',
-    /** Wire the MCP server into the agent's config after install. */
+    /** Recommended: the repo's installer script offered via AskUserQuestion. */
+    scriptWindows: 'scripts/install-open-design.ps1',
+    scriptUnix: 'scripts/install-open-design.sh',
+    /** What the script does under the hood (Docker — simplest, no Node toolchain). */
+    docker:
+      'git clone --depth 1 https://github.com/nexu-io/open-design && cd open-design/deploy && cp .env.example .env && docker compose up -d',
+    /** Alternative: the pnpm dev environment, which also yields the `od` binary. */
+    local:
+      'git clone https://github.com/nexu-io/open-design && cd open-design && corepack enable && pnpm install && pnpm tools-dev run web',
+    /** Post-setup: wire the daemon's MCP server into the agent (needs `od`). */
     mcp: 'od mcp install claude',
   },
-  /** The `od` CLI commands the Pensador relies on to drive the design system. */
+  /**
+   * Open Design does NOT synthesize a DESIGN.md from a prose brief; it curates /
+   * imports DESIGN.md systems and uses them to skin generated prototypes. So the
+   * Pensador drives it with these REAL verbs: list/show the curated systems (or
+   * import one from a real brand/repo), pull the chosen DESIGN.md, then
+   * consolidate + adapt it into <featurePath>/design-system.md.
+   *
+   * The `od …` forms assume the pnpm/local install (a host `od` binary). With the
+   * Docker install there is no host `od`, so the same data is read straight from
+   * the daemon's REST API (the endpoints the `od` verbs wrap).
+   */
   commands: {
-    skillList: 'od skill list',
-    pluginApply: 'od plugin apply',
-    getFile: 'od get-file',
-    searchFiles: 'od search-files',
-    getArtifact: 'od get-artifact',
+    designSystemsList: 'od design-systems list --json',
+    designSystemShow: 'od design-systems show <id> --json',
+    importGithub: 'od design-systems import-github <url>',
+    importShadcn: 'od design-systems import-shadcn <reference>',
+    mcpInstall: 'od mcp install claude',
+    mcpConfigHelper: 'node scripts/od-mcp-config.mjs --config <.mcp.json> --daemon-url http://localhost:7456',
+    apiDesignSystems: 'GET http://localhost:7456/api/design-systems',
+    apiDesignSystemById: 'GET http://localhost:7456/api/design-systems/<id>',
   },
   /**
    * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every

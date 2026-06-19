@@ -237,8 +237,24 @@ describe('Open Design descriptor', () => {
       'brand',
       'anti-patterns',
     ]);
-    expect(OPEN_DESIGN.installCommands.agent).toContain('open-design.ai/install.sh');
+    // Open Design is a local-first app (Docker or pnpm), offered via an installer script.
+    expect(OPEN_DESIGN.installCommands.scriptWindows).toContain('install-open-design.ps1');
+    expect(OPEN_DESIGN.installCommands.scriptUnix).toContain('install-open-design.sh');
+    expect(OPEN_DESIGN.installCommands.docker).toContain('docker compose up');
+    expect(OPEN_DESIGN.installCommands.docker).toContain('nexu-io/open-design');
+    expect(OPEN_DESIGN.installCommands.local).toContain('pnpm tools-dev');
+    // `od mcp install` is the real post-setup wiring step.
     expect(OPEN_DESIGN.installCommands.mcp).toContain('od mcp install');
+    // Real design verbs the Pensador drives.
+    expect(OPEN_DESIGN.commands.designSystemsList).toContain('od design-systems list');
+    expect(OPEN_DESIGN.commands.designSystemShow).toContain('od design-systems show');
+    expect(OPEN_DESIGN.commands.mcpInstall).toContain('od mcp install');
+    expect(OPEN_DESIGN.commands.mcpConfigHelper).toContain('od-mcp-config.mjs');
+    // Docker-friendly REST fallback the verbs wrap.
+    expect(OPEN_DESIGN.commands.apiDesignSystems).toContain('/api/design-systems');
+    // The dead one-line installer must never come back.
+    expect(JSON.stringify(OPEN_DESIGN.installCommands)).not.toContain('open-design.ai/install.sh');
+    expect(JSON.stringify(OPEN_DESIGN.commands)).not.toContain('open-design.ai/install.sh');
   });
 
   it('designSystemArtifactPath writes inside the update directory', () => {

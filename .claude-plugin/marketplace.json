@@ -15,7 +15,7 @@
         {
             "name": "cc-pensador",
             "description": "Pensador v2 skill + /pensador slash command. 11-stage PRD workflow: INIT (checkpoint v2 + feature isolation + --modo parsing + optional OpenSpec PRD/Spec choice), EXPLORE (Code Base Memory exploration + codebase-memory.md), PRD_BASE (comprehensive 17-section Strict PRD Schema, or OpenSpec change set in spec mode), ARCH (project scan + architecture.md), EXPAND (candidate requirements), COMPLEXITY (Lite/Completo heuristic via detectComplexity), BRAINSTORM_GERAL (parallel domain orchestration: requirements-clarity + Codex if backend + AGY + Open Design design brief if frontend), CODEX (technical refinement), AGY (product gap analysis), FINAL (consolidation + artefacts under .pensador/<slug>-vN/, including design-system.md when frontend). Mandatory Code Base Memory (codebase-memory-mcp) exploration before PRD/Spec generation; optional Open Design (od MCP/CLI) for the design system and optional OpenSpec spec mode. Execution modes (--modo agy|kiro|codex) delegate the heavy work to an external CLI while Claude orchestrates. All dialogue routes exclusively through AskUserQuestion.",
-            "version": "2.7.0",
+            "version": "2.7.1",
             "author": {
                 "name": "allanharlen"
             },

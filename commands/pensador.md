@@ -71,7 +71,7 @@ Leia tambem o bloco `integrations`:
 
 - `integrations.codebaseMemory` (obrigatorio): disponibilidade do MCP `codebase-memory-mcp` para a exploracao pre-PRD/Spec.
 - `integrations.openspec` (opcional): se detectado, o INIT deve oferecer PRD vs Spec.
-- `integrations.openDesign` (opcional, condicional a front-end): se a demanda tiver front-end e o Open Design (`od`) nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para `design-system.md` inline. Veja `skills/pensador/references/open-design.md`.
+- `integrations.openDesign` (opcional, condicional a front-end): se a demanda tiver front-end e o Open Design (`od`) nao for detectado, ofereca instalacao via `AskUserQuestion` rodando o script `scripts/install-open-design.ps1` (Windows) ou `scripts/install-open-design.sh` (macOS/Linux), que sobe o Open Design via Docker e conecta o MCP; ou caia para `design-system.md` inline. Com o Open Design no ar, puxe o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Veja `skills/pensador/references/open-design.md`.
 
 Se o preflight falhar, nao aborte. Trate como `partial`.
 
@@ -163,6 +163,8 @@ Ao concluir FINAL, informe:
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes `.pensador/.orchestration/.executor`, correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | AskUserQuestion, opcoes recomendadas, previews, recap final e handoff |
 | `scripts/preflight.mjs` | Verifica disponibilidade de Codex, AGY, Kiro, motor de execucao, Code Base Memory, OpenSpec e Open Design |
+| `scripts/install-open-design.ps1` / `scripts/install-open-design.sh` | Instalador opcional do Open Design via Docker (verifica git+docker, sobe o daemon, conecta o MCP), oferecido via `AskUserQuestion` quando ha front-end |
+| `scripts/od-mcp-config.mjs` | Helper que busca `/api/mcp/install-info` do daemon e faz merge da entrada `mcpServers.<nome>` no `.mcp.json` (usado pelo instalador no modo Docker, sem `od` no host) |
 | `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia, nao importada em runtime pela skill |
 
 ---

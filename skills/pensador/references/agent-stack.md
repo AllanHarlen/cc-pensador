@@ -143,7 +143,7 @@ AGY roda sempre como varredura final de produto, considerando o consolidado ate 
 
 O Open Design (`od`, MCP/CLI) nao e uma lente de perguntas como Codex/AGY: e o **motor de design** acionado quando `hasFrontend = true`. No `BRAINSTORM_GERAL`, o Pensador parseia o **brief de design** (tom visual, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) via `AskUserQuestion`; no `FINAL`, esse brief alimenta o Open Design para gerar o artefato `design-system.md` (DESIGN.md de 9 secoes).
 
-Fallback (decidido via `AskUserQuestion`): instalar o Open Design agora (`curl -fsSL https://open-design.ai/install.sh | sh -s <agent>` + `od mcp install <agent>`) ou escrever um `design-system.md` inline a partir do schema de 9 secoes. Detalhes em `references/open-design.md`.
+Fallback (decidido via `AskUserQuestion`): instalar o Open Design agora (app local-first; o cc-pensador traz um script Docker — `scripts/install-open-design.ps1|.sh` — que verifica git+docker, sobe o daemon e conecta o MCP via `od mcp install <agent>`) ou escrever um `design-system.md` inline a partir do schema de 9 secoes. Com o Open Design no ar, o Pensador puxa o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Detalhes em `references/open-design.md`.
 
 ---
 

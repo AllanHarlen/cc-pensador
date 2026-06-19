@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.7.2] — 2026-06-18
+
+### Open Design via CLI real + instalador Docker (opcional, via AskUserQuestion)
+
+- **Novo script instalador** `scripts/install-open-design.ps1` (Windows) e `scripts/install-open-design.sh` (macOS/Linux): automatiza o caminho Docker do QUICKSTART — verifica `git`/`docker`/`docker compose`, clona `nexu-io/open-design`, gera `OD_API_TOKEN` em `deploy/.env` (idempotente, preserva token existente), sobe `docker compose up -d`, aguarda o daemon em `http://localhost:7456` e conecta o MCP. Parâmetros: `-Agent`/`--agent`, `-Port`/`--port`, `-McpConfig`/`--mcp-config`, `-McpName`/`--mcp-name`, `-SkipMcp`/`--skip-mcp`.
+- **Auto-wiring do MCP nos dois cenários** via novo helper `scripts/od-mcp-config.mjs`: com `od` no host usa o nativo `od mcp install <agent>`; no modo Docker (sem `od`) busca a spec canônica do daemon em `GET /api/mcp/install-info` e faz merge da entrada `mcpServers.<nome>` no `.mcp.json`, preservando o resto do arquivo (usa Node, sem `jq`/`python`). Ressalva documentada: o bridge stdio do `od mcp` precisa do `od` no host para subir; sem ele, o Pensador usa a API REST do daemon (`/api/design-systems`).
+- **Fluxo do Pensador atualizado:** quando a demanda tem front-end e o Open Design não é detectado, o `AskUserQuestion` oferece **(A) instalar via Docker** (o Claude roda o script) ou **(B) `design-system.md` inline**. Após a instalação, o Pensador aciona o Open Design pelos **verbos reais**.
+- **Correção de modelo:** o `od mcp install <agent>` **existe** e é o passo real de wiring do MCP (a entrada anterior do 2.7.1 dizia o contrário). O que de fato não existe é o instalador de uma linha `open-design.ai/install.sh` (404). Esclarecido também que o Open Design **não sintetiza** um DESIGN.md a partir de um brief: ele **cura/importa** systems (`od design-systems list/show/import-github/import-shadcn`) e o Pensador consolida o DESIGN.md escolhido em `design-system.md`. No modo Docker (sem `od` no host), os mesmos dados vêm da API do daemon (`/api/design-systems`).
+- **Descritor `OPEN_DESIGN` (`pensador-engine.mjs`):** `installCommands` agora expõe `scriptWindows`/`scriptUnix`/`docker`/`local`/`mcp`; `commands` traz os verbos reais (`designSystemsList`, `designSystemShow`, `importGithub`, `importShadcn`, `mcpInstall`) e os equivalentes REST (`apiDesignSystems`, `apiDesignSystemById`). Removidos os verbos fictícios (`od skill list`, `od plugin apply`, `od get-file`, `od get-artifact`).
+- **Docs/preflight/testes** atualizados em conjunto (`open-design.md`, `agent-stack.md`, `commands/pensador.md`, `preflight.mjs`, `README*`). Suíte: 195 testes verdes.
+
+## [2.7.1] — 2026-06-18
+
+### Correção — instalação/detecção do Open Design
+
+- **Falso positivo de detecção corrigido (`preflight.mjs`):** o GNU coreutils instala um binário `od` (octal-dump) em quase todo sistema Unix-like, e `checkCli("od")` o aceitava como sucesso, reportando o Open Design como disponível quando não estava. O `checkOpenDesign()` agora filtra a assinatura "GNU coreutils" do `od --version`; a detecção confiável passa a ser a **entrada MCP registrada**, e só um `od` não-coreutils no PATH é honrado.
+- **Comandos de instalação inexistentes removidos:** o `curl -fsSL https://open-design.ai/install.sh | sh -s <agent>` retornava **404** (endpoint fora do ar) e o `od mcp install` **não existe**. O Open Design é um app **local-first** (daemon + web/desktop) — agora os artefatos apontam para os métodos reais do [QUICKSTART](https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md): **Docker** (`docker compose up -d`, app em http://localhost:7456) ou **pnpm** (`pnpm tools-dev run web`, Node 24 + pnpm 10.33).
+- **Descritor `OPEN_DESIGN` (`pensador-engine.mjs`) atualizado:** `installCommands` agora expõe `docker`/`local`; os subcomandos fictícios `od skill list` / `od plugin apply` / `od get-file` / `od get-artifact` foram substituídos por `commands.daemonBuild` / `commands.toolsDev`, alinhados ao CLI real (`apps/daemon/dist/cli.js`).
+- **Docs atualizadas:** `references/open-design.md`, `references/agent-stack.md`, `README.md` e `README.pt-BR.md` descrevem a detecção (com o aviso do falso positivo do coreutils) e a instalação local-first real.
+- **Testes:** `test/integrations.test.js` agora valida os comandos reais e impede o retorno das strings fictícias. Suíte total: 195 testes verdes.
+
 ## [2.7.0] — 2026-06-18
 
 ### PRD abrangente (anti-truncamento)

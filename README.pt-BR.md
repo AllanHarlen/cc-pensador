@@ -2,7 +2,7 @@
 
 > Plugin de Claude Code que conduz uma demanda em linguagem natural por **onze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
 
-`versão 2.7.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
+`versão 2.7.1` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
 ## Sumário
 
@@ -198,9 +198,9 @@ O Pensador integra opcionalmente o **[Open Design](https://github.com/nexu-io/op
 
 - Relevante apenas quando a demanda tem **front-end** (`hasFrontend`). No **BRAINSTORM_GERAL**, o Pensador parseia um **brief de design** via `AskUserQuestion` — tom visual, marca/referências, paleta de cores, tipografia, estados de componente, responsividade, acessibilidade (alvo WCAG) e microcopy.
 - No **FINAL**, esse brief alimenta o Open Design para gerar `design-system.md` (um `DESIGN.md` brand-grade: paleta, tipografia, espaçamento, layout, componentes, motion, voz, anti-padrões).
-- Detectado pelo preflight (CLI `od` no PATH ou entrada de MCP). Indisponível quando há front-end: o Pensador pergunta via `AskUserQuestion` se deve **instalar agora** (roda o instalador + `od mcp install <agent>` e retoma) ou **cair** para um `design-system.md` inline a partir do mesmo schema de 9 seções — nunca bloqueia.
+- Detectado pelo preflight (entrada de MCP registrada; um `od` no PATH que **não** seja o octal-dump do GNU coreutils). Indisponível quando há front-end: o Pensador pergunta via `AskUserQuestion` se deve **instalar agora** (app local-first, sem instalador de uma linha) ou **cair** para um `design-system.md` inline a partir do mesmo schema de 9 seções — nunca bloqueia.
 
-Instalação: `curl -fsSL https://open-design.ai/install.sh | sh -s claude` e depois `od mcp install claude` (troque `claude` pelo seu agente). Veja `skills/pensador/references/open-design.md`.
+Instalação: o Open Design é um app local-first (daemon + web); não há `curl | sh` de uma linha. O cc-pensador traz um script instalador que automatiza o caminho Docker — `scripts/install-open-design.ps1` (Windows) / `scripts/install-open-design.sh` (macOS/Linux): verifica git+docker, sobe o daemon (`docker compose up -d`, app em http://localhost:7456) e conecta o MCP via `od mcp install <agent>`. O Pensador oferece rodá-lo via `AskUserQuestion` quando a demanda tem front-end. Veja `skills/pensador/references/open-design.md`.
 
 ## PRD abrangente e sem truncamento
 
