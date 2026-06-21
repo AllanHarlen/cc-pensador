@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0] — 2026-06-21
+
+### Open Design consumido como pipeline de artefatos (não como prosa) + integração no modo Spec
+
+Causa raiz endereçada: versões anteriores puxavam **só o `DESIGN.md`** do Open Design e o re-escreviam em prosa no `design-system.md`, descartando `tokens.css`, `components.html` e `preview/`. O agente de front-end nunca via os tokens reais → tema chapado, magic numbers, anti-padrões (emoji como ícone, `borderRadius` inventado, accent espalhado).
+
+- **Artefatos verbatim (`OPEN_DESIGN.systemArtifacts` + `openDesignFetchPlan()`):** o Pensador agora baixa e **persiste verbatim** todos os arquivos do system na read-order oficial do `USAGE.md` (`USAGE.md → DESIGN.md → tokens.css → components.html → components.manifest.json → preview/app.html`) em `packages/ui/design-systems/<id>/`. `tokens.css` é a **fonte de verdade** (colar antes de qualquer CSS); inventar token é proibido pelo skills-protocol do Open Design.
+- **`design-system.md` vira documento de decisões:** deixa de duplicar tokens; passa a registrar seleção do system, merge e overrides justificados, **apontando** para `tokens.css`/`components.html`.
+- **Roteamento do brief (`openDesignBriefRouting()`):** as 8 dimensões do `AskUserQuestion` deixam de virar prosa e são roteadas para destinos estruturados do Open Design — `selection` (escolha/import do system), `input` (`od.inputs`: conteúdo/componentes), `parameter` (`od.parameters`: `accent_hue`/`section_spacing`/…), `constraint` (gate WCAG AA).
+- **Integração com o modo Spec/OpenSpec (`openDesignDeliveryFor()`):** o Open Design agora **também roda no modo Spec** (antes era excluído). Os arquivos verbatim continuam indo para o repo; as **decisões** entram na seção *Decisions* do `design.md` do change; e os **requisitos** de UI viram a capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenários `#### Scenario:`), dando ao review um critério de aceite formal. `planArtifacts` mantém `designSystem: false` no modo Spec (sem arquivo standalone) — Open Design roda mesmo assim.
+- **Acesso a arquivo verificado:** documentado que os arquivos brutos vêm via MCP `get_file` ou cópia do clone Docker — **não** fabricar endpoint REST sem confirmar o payload de `/api/design-systems/<id>`.
+- **Docs/testes:** `references/open-design.md` reescrito (passos 4-7 + read order + roteamento do brief + seção **Modo Spec**); `references/openspec.md` atualizado (exceção do design-system no modo Spec). Suíte: **202 testes** verdes (7 novos cobrindo `systemArtifacts`, `briefRouting`, `fetchPlan`, `deliveryFor`).
+
 ## [2.7.2] — 2026-06-18
 
 ### Open Design via CLI real + instalador Docker (opcional, via AskUserQuestion)

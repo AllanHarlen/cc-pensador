@@ -925,7 +925,34 @@ export const OPEN_DESIGN = {
     mcpConfigHelper: 'node scripts/od-mcp-config.mjs --config <.mcp.json> --daemon-url http://localhost:7456',
     apiDesignSystems: 'GET http://localhost:7456/api/design-systems',
     apiDesignSystemById: 'GET http://localhost:7456/api/design-systems/<id>',
+    /**
+     * The verbatim system files (tokens.css, components.html, …) are NOT prose —
+     * pull them as files, not as a summary. Verified file-access paths, in order
+     * of preference: MCP `get_file`, then the cloned repo's on-disk folder. Do NOT
+     * fabricate a REST file endpoint — confirm the `/api/design-systems/<id>`
+     * payload empirically before relying on it for raw file bodies.
+     */
+    mcpGetFile: 'get_file (Open Design MCP tool) — pulls a system file verbatim (tokens.css, components.html, …)',
+    clonedSystemsDir: 'open-design/design-systems/<id>/  (filesystem source when no REST/MCP file access)',
   },
+  /**
+   * The verbatim artifacts every curated/imported system ships, in the official
+   * USAGE.md read order (router → intent → tokens → fixtures → preview). The
+   * Pensador must fetch ALL of these — not just DESIGN.md — and persist them into
+   * the target repo so the front-end agent consumes tokens.css/components.html
+   * DIRECTLY, never a prose re-write. `tokens.css` is the source of truth;
+   * inventing tokens is forbidden by the Open Design skills protocol.
+   */
+  systemArtifacts: [
+    'USAGE.md', // router: how to consume the package (read first)
+    'DESIGN.md', // intent: 9-section prose + anti-patterns
+    'tokens.css', // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
+    'components.html', // fixtures: real component HTML/CSS + states
+    'components.manifest.json', // component inventory
+    'preview/app.html', // visual sanity-check target for the review gate
+  ],
+  /** Where the verbatim system files are persisted in the target repo. */
+  systemsDir: 'packages/ui/design-systems',
   /**
    * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every
    * section the Pensador parses from the design brief maps onto one of these.
@@ -977,6 +1004,103 @@ export function openDesignBriefPlan() {
     'accessibility',     // contraste, foco, leitura de tela, alvo WCAG
     'microcopy',         // voz/tom de textos, mensagens de estado
   ];
+}
+
+/**
+ * Routes each design-brief dimension (collected via AskUserQuestion) to WHERE it
+ * acts on Open Design — instead of dissolving every answer into the prose of
+ * design-system.md, which is what produced a flat theme. There are four
+ * destinations, not one:
+ *
+ *  - 'selection'  → picks/imports the curated system (and its `theme` enum input).
+ *  - 'input'      → typed `od.inputs` of the generation skill (content/components).
+ *  - 'parameter'  → tweakable `od.parameters` sliders (hue, spacing, opacity).
+ *  - 'constraint' → a validation gate over the output (e.g. WCAG AA contrast).
+ *
+ * A user answer that MATCHES the chosen system becomes an input/parameter; one
+ * that CONFLICTS becomes a documented override in design-system.md — never a new
+ * invented token (forbidden by the Open Design skills protocol). Pure and total:
+ * same input → same output, never throws, no I/O.
+ *
+ * @returns {Record<string, 'selection'|'input'|'parameter'|'constraint'>}
+ */
+export function openDesignBriefRouting() {
+  return {
+    visualTone: 'selection',      // casa o system curado mais próximo + `theme` enum
+    brandReferences: 'selection', // marca real citada → import-github do system
+    colorPalette: 'parameter',    // accent_hue / accent_strength sobre o token
+    typography: 'parameter',      // escala/família (section override quando conflita)
+    componentStates: 'input',     // estados exigidos, validados vs components.html
+    responsiveness: 'parameter',  // section_spacing / densidade
+    accessibility: 'constraint',  // gate WCAG (contraste AA) sobre o output
+    microcopy: 'input',           // tagline + copy das seções + CTAs
+  };
+}
+
+/**
+ * Plans the verbatim system files to fetch from Open Design and where each lands
+ * in the target repo, so the front-end agent consumes tokens.css/components.html
+ * directly. This is a deterministic descriptor — the engine performs NO I/O; the
+ * skill/LLM layer (MCP `get_file` or the cloned repo) does the actual fetch.
+ *
+ * `tokens.css` and `DESIGN.md` are marked required (a system is unusable without
+ * them); the rest are best-effort. Pure and total: same input → same output.
+ *
+ * @param {string[]|null|undefined} systemIds  selected/imported system slugs
+ * @param {string} [uiPackageDir='packages/ui']  the design-system package root
+ * @returns {{ id: string, destDir: string, files: { source: string, dest: string, required: boolean }[] }[]}
+ */
+export function openDesignFetchPlan(systemIds, uiPackageDir = 'packages/ui') {
+  const ids = Array.isArray(systemIds) ? systemIds.filter(Boolean) : [];
+  const base = `${String(uiPackageDir).replace(/\/+$/, '')}/design-systems`;
+  const required = new Set(['tokens.css', 'DESIGN.md']);
+  return ids.map((id) => ({
+    id,
+    destDir: `${base}/${id}/`,
+    files: OPEN_DESIGN.systemArtifacts.map((source) => ({
+      source,
+      dest: `${base}/${id}/${source}`,
+      required: required.has(source),
+    })),
+  }));
+}
+
+/**
+ * Open Design applies whenever the demand has a front-end — in BOTH artifact
+ * modes. The verbatim system files (tokens.css, components.html, …) are always
+ * persisted to the repo (`systemsDir`), mode-independent. What changes per mode
+ * is WHERE the design decisions and the design-system requirements are written:
+ *
+ *  - PRD mode  → a standalone `design-system.md` (decisions + 9-section schema).
+ *  - Spec mode → folded into the OpenSpec change: decisions go into `design.md`
+ *    (Decisions section) and the UI design-system requirements become a delta
+ *    spec capability `specs/ui-design-system/spec.md` (normative SHALL/Scenario
+ *    form: use tokens.css, never invent tokens, accent ≤ 2×, WCAG AA). The
+ *    Pensador does NOT hand-write these — it feeds the `openspec-*` commands.
+ *
+ * This is why `planArtifacts` keeps `designSystem: false` in spec mode: there is
+ * no standalone file, but Open Design still runs. Pure and total.
+ *
+ * @param {'prd'|'spec'|undefined} artifactMode
+ * @param {string} [changeName='<name>']  the OpenSpec change folder name
+ * @returns {{ mode: 'prd'|'spec', systemsDir: string, standaloneArtifact: boolean, decisionsDoc: string, requirementsDoc: string }}
+ */
+export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
+  const spec = resolveArtifactMode(artifactMode) === 'spec';
+  const changeDir = `openspec/changes/${changeName}`;
+  return {
+    mode: spec ? 'spec' : 'prd',
+    // Verbatim system files land in the repo in BOTH modes.
+    systemsDir: OPEN_DESIGN.systemsDir,
+    // A standalone design-system.md exists only in PRD mode.
+    standaloneArtifact: !spec,
+    // Where the design DECISIONS (selection, merge, justified overrides) are written.
+    decisionsDoc: spec ? `${changeDir}/design.md` : OPEN_DESIGN.designSystemFile,
+    // Where the UI design-system REQUIREMENTS live.
+    requirementsDoc: spec
+      ? `${changeDir}/specs/ui-design-system/spec.md`
+      : OPEN_DESIGN.designSystemFile,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1093,6 +1217,10 @@ export function planArtifacts(state) {
   if (spec) {
     // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
     // openspec-* commands). userhistory.md and comunication_json.md do not apply.
+    // Open Design STILL runs when hasFrontend (see openDesignDeliveryFor): the
+    // verbatim system files go to the repo, decisions fold into design.md, and
+    // the UI requirements become a `ui-design-system` delta spec — so there is
+    // no standalone design-system.md here (designSystem: false), by design.
     return {
       prd: false,
       proposal: true,

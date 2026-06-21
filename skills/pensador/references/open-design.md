@@ -31,15 +31,16 @@ Mapeamento determinístico em `pensador-engine.mjs`: `OPEN_DESIGN`, `designSyste
   | `accessibility` | Contraste, foco visível, leitura de tela, alvo WCAG |
   | `microcopy` | Voz/tom dos textos e mensagens de estado |
 
-- **FINAL (modo PRD, quando `hasFrontend`):** o Pensador aciona o Open Design com o brief consolidado e grava o artefato:
+- **FINAL (modo PRD, quando `hasFrontend`):** o Pensador aciona o Open Design com o brief consolidado, **baixa os artefatos verbatim do system** para o repo-alvo e grava o documento de decisões:
 
   ```text
-  <featurePath>/design-system.md
+  packages/ui/design-systems/<id>/{USAGE,DESIGN}.md · tokens.css · components.html · …  (verbatim)
+  <featurePath>/design-system.md                                                         (decisões + ponteiros)
   ```
 
-  Esse é um **artefato final** (entra em `buildArtifactList` no modo PRD quando `hasFrontend`) e segue o schema de 9 seções do `DESIGN.md`: `color`, `typography`, `spacing`, `layout`, `components`, `motion`, `voice`, `brand`, `anti-patterns`.
+  Os arquivos verbatim são a **fonte de design real**; o `design-system.md` (artefato final em `buildArtifactList`, schema de 9 seções `color`/`typography`/`spacing`/`layout`/`components`/`motion`/`voice`/`brand`/`anti-patterns`) deixa de duplicar tokens e passa a **documentar** a seleção do system, o merge e os overrides justificados, **apontando** para `tokens.css`/`components.html`.
 
-No modo Spec (OpenSpec), o `design-system.md` não se aplica — o entregável é o change set OpenSpec.
+No modo Spec (OpenSpec), **o Open Design continua rodando** (diferente de `userhistory.md`/`comunication_json.md`, que não se aplicam): só muda *onde* o design é escrito — ver a seção **Modo Spec** abaixo.
 
 ---
 
@@ -69,12 +70,96 @@ Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do 
 | 1. Listar os systems curados | `od design-systems list --json` | `GET http://localhost:7456/api/design-systems` |
 | 2. (Opcional) Importar de uma marca/repo real citado no brief | `od design-systems import-github <url>` · `od design-systems import-shadcn <ref>` | `POST /api/design-systems/import/github` |
 | 3. Casar o brief (tom, marca, paleta, tipografia) com o system mais próximo | escolha do Pensador | escolha do Pensador |
-| 4. Puxar o `DESIGN.md` escolhido | `od design-systems show <id> --json` | `GET /api/design-systems/<id>` |
-| 5. Consolidar + adaptar em `design-system.md` | reconcilia cores semânticas, estados de componente, microcopy e alvo WCAG do brief | idem |
+| 4. Seguir o `USAGE.md` do system e **baixar TODOS os artefatos verbatim** | `od design-systems show <id> --json` + `get_file` (MCP) por arquivo | `GET /api/design-systems/<id>` + MCP `get_file` / cópia do clone |
+| 5. Persistir os arquivos no repo-alvo | grava em `packages/ui/design-systems/<id>/` | idem |
+| 6. Derivar o `tokens.css` do projeto (composição rastreável, **nunca** objeto JS à mão) | base real do tema; `theme.ts` lê `var(--*)` | idem |
+| 7. `design-system.md` = **documento de decisões** (seleção, merge, overrides justificados, ponteiros) | referencia os arquivos; não os duplica | idem |
+
+> ⚠️ **O bug que isto corrige.** Versões anteriores puxavam **só o `DESIGN.md`** (prosa) e o re-escreviam em `design-system.md`, descartando `tokens.css`, `components.html` e `preview/`. O agente de front-end nunca via os tokens reais → tema chapado, magic numbers, anti-padrões. O Open Design **não é fonte de inspiração textual; é um pipeline de artefatos de código.**
+
+### Artefatos verbatim (read order do `USAGE.md` oficial)
+
+O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **baixar e persistir** todos, não resumir (`OPEN_DESIGN.systemArtifacts` / `openDesignFetchPlan()`):
+
+| Arquivo | Papel | Obrigatório |
+|---|---|---|
+| `USAGE.md` | router: como consumir o pacote (ler primeiro) | — |
+| `DESIGN.md` | intenção: 9 seções de prosa + anti-padrões | ✅ |
+| `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
+| `components.html` | fixtures: HTML/CSS real dos componentes + estados | — |
+| `components.manifest.json` | inventário de componentes | — |
+| `preview/app.html` | alvo de sanity check visual para o gate de review | — |
+
+Destino no repo: `packages/ui/design-systems/<id>/` (constante `OPEN_DESIGN.systemsDir`).
+
+> ⚠️ **Acesso aos arquivos — verificar empiricamente.** `GET /api/design-systems/<id>` pode devolver só metadados+`DESIGN.md`. Os arquivos brutos (`tokens.css`, `components.html`) vêm, em ordem de preferência: (1) MCP `get_file`; (2) cópia do clone Docker em `open-design/design-systems/<id>/`. **Não fabricar** um endpoint REST de arquivo sem confirmar o payload real do daemon.
 
 O MCP do Open Design (`od mcp install <agent>`, depois `od mcp`) é o que conecta o servidor ao agente; ele expõe ferramentas como `list_projects`, `get_file`, `search_files` e `create_artifact`. O instalador deste repo (ver abaixo) tenta conectá-lo automaticamente.
 
-O Pensador nunca delega o diálogo: toda decisão de direção visual que precisa do usuário vira pergunta `AskUserQuestion`. O Open Design só fornece o material de design (o `DESIGN.md`) que o Pensador relê e consolida.
+O Pensador nunca delega o diálogo: toda decisão de direção visual que precisa do usuário vira pergunta `AskUserQuestion`. O Open Design fornece o material de design (os arquivos `tokens.css`/`components.html`/`DESIGN.md`) que o Pensador **persiste verbatim** e referencia — sem reinventar tokens.
+
+---
+
+## Do brief (`AskUserQuestion`) para o Open Design
+
+As 8 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa do `design-system.md` (foi isso que gerou o tema chapado). Cada resposta tem um **destino estruturado** no Open Design — `openDesignBriefRouting()` define qual. O Open Design expõe dois mecanismos tipados no bloco `od:` de uma skill: **`inputs`** (conteúdo/componentes: `product_name`, `tagline`, `theme` enum) e **`parameters`** (estilização ao vivo: `accent_hue`, `hero_density`, `section_spacing`, `accent_strength`).
+
+| Dimensão do brief | Destino | Onde age no Open Design |
+|---|---|---|
+| `visualTone` | `selection` | escolha do system curado + `theme` enum (`dark-glass`/`minimal`/…) |
+| `brandReferences` | `selection` | marca real citada → `od design-systems import-github <url>` |
+| `colorPalette` | `parameter` | `accent_hue` (matiz da cor de marca) / `accent_strength` (opacity) |
+| `typography` | `parameter` | escala/família via `sections:[typography]` (override doc se conflita) |
+| `componentStates` | `input` | inventário de estados exigidos, **validado vs `components.html`** |
+| `responsiveness` | `parameter` | `section_spacing` / densidade |
+| `accessibility` | `constraint` | gate de validação (contraste WCAG AA) sobre o output |
+| `microcopy` | `input` | `tagline` + copy das seções + CTAs |
+
+**Regra inviolável (do `skills-protocol.md` do Open Design):** *"never invent new tokens."* Resposta que **bate** com o system vira `input`/`parameter`. Resposta que **conflita** vira **override documentado** no `design-system.md` (com justificativa) — nunca um hex/raio/spacing solto no `theme.ts`. As regras de uso do system viajam junto para o agente de front-end e o review: *accent usado ≤ 2× por página (hero + CTA + links), sem inventar hex, sem sombra se Depth & Elevation = minimal.*
+
+---
+
+## Modo Spec (OpenSpec) — onde o design entra no change set
+
+O Open Design é **ortogonal ao `artifactMode`**: roda sempre que `hasFrontend`, nos dois modos. O que muda é **onde** cada saída é escrita (`openDesignDeliveryFor(artifactMode, changeName)` no engine). No modo Spec o Pensador **não escreve à mão** os arquivos do change — alimenta os comandos `openspec-*`.
+
+| Saída do Open Design | Modo PRD | Modo Spec (OpenSpec) |
+|---|---|---|
+| Arquivos verbatim do system (`tokens.css`, `components.html`, …) | `packages/ui/design-systems/<id>/` | **idem** (vão para o repo nos dois modos — não são geridos pelo OpenSpec) |
+| **Decisões** de design (seleção, merge, overrides justificados, ponteiros) | `design-system.md` (standalone) | seção **Decisions** do `openspec/changes/<nome>/design.md` |
+| **Requisitos** de UI do design system (estados, contraste AA, uso do accent) | `design-system.md` (schema de 9 seções) | capability delta-spec `openspec/changes/<nome>/specs/ui-design-system/spec.md` |
+
+### A capability `ui-design-system` (delta spec)
+
+Os requisitos de design viram uma capability OpenSpec com requisitos normativos (`SHALL`/`MUST`) e cenários `#### Scenario:` — testáveis, como manda o OpenSpec. Exemplo do que o Pensador alimenta no `proposal.md` (lista de capabilities) e no `specs/ui-design-system/spec.md`:
+
+```markdown
+## ADDED Requirements
+
+### Requirement: Tokens são a fonte de verdade do estilo
+O front-end MUST consumir `packages/ui/design-systems/<id>/tokens.css` como base de
+estilo e NÃO MUST inventar valores de cor/raio/espaçamento fora dos tokens.
+
+#### Scenario: Cor de marca aplicada
+- **WHEN** um componente precisa da cor primária
+- **THEN** usa a custom property do `tokens.css` (ex.: `var(--color-accent)`), nunca um hex literal
+
+### Requirement: Uso contido do accent
+O accent MUST aparecer no máximo 2× por página (hero + CTA), além de links.
+
+#### Scenario: Landing não floda o accent
+- **WHEN** a landing é renderizada
+- **THEN** o accent aparece só no hero e no CTA do rodapé (e em links)
+```
+
+> A regra "never invent new tokens" e o uso do accent ≤ 2× saem como **requisitos verificáveis** no modo Spec — o que dá ao review (Fase 9 do Orquestrador) um critério de aceite formal, não só prosa.
+
+### Fluxo no FINAL (modo Spec)
+
+1. Baixa e persiste os arquivos verbatim do system em `packages/ui/design-systems/<id>/` (igual ao PRD).
+2. Alimenta o `proposal.md` com a capability `ui-design-system` na seção **Capabilities**.
+3. Conduz `/openspec-ff-change <nome>` (ou `continue`) para gerar `design.md` (Decisions de design) e `specs/ui-design-system/spec.md` (requisitos + cenários).
+4. `/openspec-verify-change <nome>` valida — cenários com exatamente 4 `#` e todo requisito com ≥ 1 cenário.
 
 ---
 

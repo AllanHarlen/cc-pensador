@@ -22,6 +22,9 @@ import {
   OPEN_DESIGN,
   designSystemArtifactPath,
   openDesignBriefPlan,
+  openDesignBriefRouting,
+  openDesignFetchPlan,
+  openDesignDeliveryFor,
   initState,
   planArtifacts,
   buildArtifactList,
@@ -281,6 +284,97 @@ describe('Open Design descriptor', () => {
       'microcopy',
     ]);
     expect(() => openDesignBriefPlan()).not.toThrow();
+  });
+
+  it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
+    // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
+    expect(OPEN_DESIGN.systemArtifacts).toEqual([
+      'USAGE.md',
+      'DESIGN.md',
+      'tokens.css',
+      'components.html',
+      'components.manifest.json',
+      'preview/app.html',
+    ]);
+    expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
+    // File access must go through a verified path, never a fabricated REST endpoint.
+    expect(OPEN_DESIGN.commands.mcpGetFile).toContain('get_file');
+    expect(OPEN_DESIGN.commands.clonedSystemsDir).toContain('design-systems/<id>');
+  });
+
+  it('openDesignBriefRouting sends every brief dimension to a structured destination (not prose)', () => {
+    const routing = openDesignBriefRouting();
+    // Every brief dimension from openDesignBriefPlan must be routed.
+    for (const dim of openDesignBriefPlan()) {
+      expect(routing[dim]).toBeDefined();
+    }
+    expect(routing).toEqual({
+      visualTone: 'selection',
+      brandReferences: 'selection',
+      colorPalette: 'parameter',
+      typography: 'parameter',
+      componentStates: 'input',
+      responsiveness: 'parameter',
+      accessibility: 'constraint',
+      microcopy: 'input',
+    });
+    // Only the four documented destinations exist.
+    const allowed = new Set(['selection', 'input', 'parameter', 'constraint']);
+    for (const dest of Object.values(routing)) expect(allowed.has(dest)).toBe(true);
+    expect(() => openDesignBriefRouting()).not.toThrow();
+  });
+
+  it('openDesignFetchPlan persists every system file under packages/ui/design-systems, tokens.css required', () => {
+    const plan = openDesignFetchPlan(['bmw', 'clean']);
+    expect(plan).toHaveLength(2);
+    const bmw = plan[0];
+    expect(bmw.id).toBe('bmw');
+    expect(bmw.destDir).toBe('packages/ui/design-systems/bmw/');
+    expect(bmw.files.map((f) => f.source)).toEqual(OPEN_DESIGN.systemArtifacts);
+    const tokens = bmw.files.find((f) => f.source === 'tokens.css');
+    expect(tokens.dest).toBe('packages/ui/design-systems/bmw/tokens.css');
+    expect(tokens.required).toBe(true);
+    expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
+    expect(bmw.files.find((f) => f.source === 'preview/app.html').required).toBe(false);
+  });
+
+  it('openDesignFetchPlan honors a custom ui package dir and is total on bad input', () => {
+    const [ds] = openDesignFetchPlan(['vercel'], 'frontend/packages/ui/');
+    expect(ds.destDir).toBe('frontend/packages/ui/design-systems/vercel/');
+    expect(openDesignFetchPlan(null)).toEqual([]);
+    expect(openDesignFetchPlan(undefined)).toEqual([]);
+    expect(openDesignFetchPlan([null, '', 'bmw'])).toHaveLength(1);
+    expect(() => openDesignFetchPlan('not-an-array')).not.toThrow();
+  });
+
+  it('openDesignDeliveryFor: PRD mode writes a standalone design-system.md', () => {
+    const d = openDesignDeliveryFor('prd');
+    expect(d.mode).toBe('prd');
+    expect(d.standaloneArtifact).toBe(true);
+    expect(d.decisionsDoc).toBe('design-system.md');
+    expect(d.requirementsDoc).toBe('design-system.md');
+    // Verbatim files land in the repo regardless of mode.
+    expect(d.systemsDir).toBe('packages/ui/design-systems');
+  });
+
+  it('openDesignDeliveryFor: spec mode folds design into the OpenSpec change set', () => {
+    const d = openDesignDeliveryFor('spec', 'login-social-v1');
+    expect(d.mode).toBe('spec');
+    expect(d.standaloneArtifact).toBe(false); // no standalone design-system.md
+    expect(d.decisionsDoc).toBe('openspec/changes/login-social-v1/design.md');
+    expect(d.requirementsDoc).toBe(
+      'openspec/changes/login-social-v1/specs/ui-design-system/spec.md'
+    );
+    // Verbatim system files still go to the repo, mode-independent.
+    expect(d.systemsDir).toBe('packages/ui/design-systems');
+  });
+
+  it('openDesignDeliveryFor defaults the change name and the mode, and never throws', () => {
+    const d = openDesignDeliveryFor(undefined);
+    expect(d.mode).toBe('prd'); // DEFAULT_ARTIFACT_MODE
+    const spec = openDesignDeliveryFor('spec');
+    expect(spec.decisionsDoc).toBe('openspec/changes/<name>/design.md');
+    expect(() => openDesignDeliveryFor('spec', 'x')).not.toThrow();
   });
 });
 
