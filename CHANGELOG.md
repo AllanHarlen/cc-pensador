@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.8.1] — 2026-06-22
+
+### Correção — o 2.8.0 não estava "ligado" ao caminho de execução
+
+O 2.8.0 adicionou os helpers (`openDesignFetchPlan`/`openDesignBriefRouting`/`openDesignDeliveryFor`) e reescreveu `references/open-design.md`, mas **a `SKILL.md` — que é o que o LLM realmente executa — continuava mandando o comportamento antigo** ("gera `design-system.md` via Open Design a partir do brief"). Além disso, `openDesignFetchPlan()` só **planeja** caminhos (o engine não faz I/O), então **nada copiava os arquivos**. Resultado: uma run em 2.8.0 ainda produzia só prosa (confirmado no projeto OficinaAI — nenhum `tokens.css`/`components.html` persistido).
+
+- **Novo `scripts/od-fetch-system.mjs` (o mecanismo de I/O que faltava):** copia os arquivos **verbatim** de um system (`tokens.css`, `components.html`, `components.manifest.json`, `USAGE.md`, `DESIGN.md`, `preview/`) para `<ui-dir>/design-systems/<id>/`. Resolve a fonte por ordem: (1) clone em disco (`~/.open-design/design-systems/<id>/`, robusto), (2) REST `GET /api/design-systems/<id>` com `Bearer` (best-effort, sem fabricar endpoint). `tokens.css` e `DESIGN.md` são obrigatórios (exit ≠ 0 se faltarem). Importa `OPEN_DESIGN.systemArtifacts` do engine (DRY).
+- **`SKILL.md` agora WIRA o fluxo novo:** o estágio **FINAL** instrui rodar `od-fetch-system.mjs` para persistir os verbatim, derivar o `tokens.css` do projeto por composição rastreável, e tornar o `design-system.md` um **documento de decisões** que referencia os arquivos (modo PRD) ou dobrar no change set (modo Spec: decisões no `design.md` + capability `specs/ui-design-system/`). O **BRAINSTORM_GERAL** passa a escolher o system e a rotear o brief (`openDesignBriefRouting`). Linhas de planejamento de artefatos corrigidas (Open Design roda nos dois modos quando `hasFrontend`).
+- **Verificado contra o clone real:** o script copiou o system `agentic` (tokens.css + components.html + preview/) com exit 0. Suíte: **202 testes** verdes.
+
 ## [2.8.0] — 2026-06-21
 
 ### Open Design consumido como pipeline de artefatos (não como prosa) + integração no modo Spec

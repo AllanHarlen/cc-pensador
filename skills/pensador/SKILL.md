@@ -331,7 +331,7 @@ Roteamento padrao:
 - `requirements-clarity`: sempre aplicavel como lente de clareza.
 - Codex com effort `high`: adicional no BRAINSTORM_GERAL quando `hasBackend = true`.
 - AGY com modelo `gemini-3.1-pro-high`: adicional no BRAINSTORM_GERAL quando `hasFrontend = true`.
-- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Esse brief alimenta o Open Design no FINAL para gerar o `design-system.md`. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline a partir do schema de 9 secoes. Veja `references/open-design.md`.
+- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG). **Escolha aqui o(s) system(s) curado(s)** que casam com o brief (via `od design-systems list` / REST); o download verbatim e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
 
 Contrato:
 
@@ -406,9 +406,20 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 2. Confirme com o usuario via `AskUserQuestion` se ha back-end/API/contrato de comunicacao. Mostre a heuristica como sugestao e deixe a resposta do usuario prevalecer.
 3. Planeje artefatos conforme `artifactMode`:
    - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end; `design-system.md` quando ha front-end (`hasFrontend`), todos em `<featurePath>/`.
-   - Modo Spec (OpenSpec): apenas o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md`, `comunication_json.md` e `design-system.md` nao se aplicam.
+   - Modo Spec (OpenSpec): o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md` e `comunication_json.md` nao se aplicam. **Excecao — Open Design continua valendo quando `hasFrontend`:** nao gera `design-system.md` standalone, mas roda do mesmo jeito (arquivos verbatim no repo + decisoes no `design.md` + capability `specs/ui-design-system/`). Ver passo 5.
+   - Em **ambos** os modos, quando `hasFrontend`, os arquivos verbatim do Open Design vao para `packages/ui/design-systems/<id>/` (passo 5).
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
-5. Gere os artefatos: no modo PRD use os templates; o `design-system.md` e gerado via Open Design a partir do brief consolidado (ou inline se indisponivel). No modo Spec, finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+5. Gere os artefatos:
+   - **Design system (Open Design), quando `hasFrontend` — nos DOIS modos):** o Open Design e um **pipeline de arquivos**, nao prosa. NUNCA puxe so o `DESIGN.md` para re-escrever. Para cada system escolhido no BRAINSTORM_GERAL, **baixe e persista os arquivos verbatim** rodando:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/od-fetch-system.mjs" --id <id>[,<id>] --repo <repoRoot> --ui-dir <packages/ui> [--token $OD_API_TOKEN]
+     ```
+
+     Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/` em `<ui-dir>/design-systems/<id>/` (ver `openDesignFetchPlan()`). Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
+   - **Modo PRD:** o `design-system.md` vira **documento de decisoes** (selecao do system, merge, overrides justificados) que **referencia** os arquivos verbatim — nao duplica tokens. Os demais artefatos saem dos templates.
+   - **Modo Spec:** dobre o design no change set (`openDesignDeliveryFor('spec', <nome>)`): decisoes na secao *Decisions* do `design.md`; requisitos de UI na capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenarios `#### Scenario:`). Os arquivos verbatim continuam indo para `packages/ui/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+   - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, caminhos reportados e recap/handoff apresentados.

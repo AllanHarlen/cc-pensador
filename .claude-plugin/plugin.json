@@ -1,6 +1,6 @@
 {
   "name": "cc-pensador",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "description": "Pensador v2: 11-stage PRD workflow skill and /pensador command for Claude Code. Produces a comprehensive, non-truncated PRD (Strict_PRD_Schema with 17 sections covering product, UI/UX design system, data model, API contracts, security/LGPD/multitenancy, observability and architecture). Stages: EXPLORE (project scan + architecture.md), COMPLEXITY (Lite/Completo heuristic), BRAINSTORM_GERAL (parallel domain orchestration with requirements-clarity, Codex and AGY as domain lenses), per-feature isolation under .pensador/<slug>-vN/. Mandatory Code Base Memory (codebase-memory-mcp) exploration before PRD/Spec generation, optional Open Design (od MCP/CLI) integration that parses a design brief into a brand-grade design-system.md when the demand has front-end, plus optional OpenSpec spec mode (PRD vs Spec chosen in INIT). Supports --modo claude|agy|kiro|codex to delegate the workflow's heavy work to an external CLI (Antigravity, Kiro or Codex) while Claude orchestrates via AskUserQuestion. All dialogue routes through AskUserQuestion.",
   "author": {
     "name": "allanharlen"
