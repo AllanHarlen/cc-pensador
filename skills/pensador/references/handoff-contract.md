@@ -94,7 +94,8 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 | `userhistory` | `userhistory.md` | sim |
 | `architecture` | `architecture.md` | quando houver ARCH |
 | `communication-contract` | `comunication_json.md` | quando `backendConfirmed` |
-| `design-system` | `design-system.md` + `packages/ui/design-systems/<id>/` | quando `hasFrontend` (DESIGN.md via Open Design — o diretório verbatim com `tokens.css`, `components.html` e `preview/` também faz parte do contrato) |
+| `design-system` | `design-system.md` | quando `hasFrontend` (documento de decisões via Open Design: seleção, merge, overrides, ponteiros) |
+| `design-system-files` | `packages/ui/design-systems/<id>/` | quando `hasFrontend` **e** um system foi selecionado — **uma entrada por `<id>` concreto** (de `state.designSystems`), com os arquivos verbatim (`tokens.css`, `components.html`, `preview/`, …). É o que `buildArtifactList` emite para o handoff carregar o **caminho real**, sem o consumidor precisar parsear a prosa do `design-system.md`. |
 | `codebase-memory` | `codebase-memory.md` | opcional |
 | `shared-agents` | `shared-agents/` | opcional |
 

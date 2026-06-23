@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.8.3] — 2026-06-23
+
+### Handoff carrega o `<id>` concreto do system (fecha o elo e2e)
+
+O 2.8.2 documentou o diretório verbatim no contrato (prosa), mas o `handoff.json` **emitido** ainda listava só o `design-system.md` — o `<id>` concreto vivia só na prosa do `design-system.md`, forçando o consumidor (orquestrador) a parseá-la.
+
+- **Novo artefato estruturado `design-system-files` em `buildArtifactList`:** quando `hasFrontend` **e** `state.designSystems` está preenchido (system escolhido no BRAINSTORM_GERAL), emite **uma entrada por `<id>` concreto** apontando para `packages/ui/design-systems/<id>/` (via `openDesignFetchPlan`, respeitando `state.uiPackageDir`). Vale nos dois modos (PRD e Spec) e é gated no estágio FINAL. Aditivo e sem `state.designSystems` não emite nada — as contagens de artefato existentes (2/3/4) seguem intactas.
+- **`SKILL.md` FINAL** instrui registrar o(s) `<id>` e o dir verbatim no `handoff.json` (role `design-system-files`); **`references/handoff-contract.md`** ganha a linha do role. 207 testes verdes (+5 em `artifacts.test.js`).
+- **Sincronização de versão:** `package.json` estava em 2.8.1 e `plugin.json` em 2.8.2 — ambos agora em 2.8.3.
+
 ## [2.8.2] — 2026-06-23
 
 ### Correções do review e2e Open Design (4 GAPs)

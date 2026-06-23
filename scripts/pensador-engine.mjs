@@ -1347,6 +1347,29 @@ export function buildArtifactList(state) {
     });
   }
 
+  // Verbatim Open Design system files persisted in the repo (tokens.css,
+  // components.html, preview/, …). Emitting them here — keyed by the CONCRETE
+  // system id(s) chosen at BRAINSTORM_GERAL (state.designSystems) — lets the
+  // handoff carry the real path so the consumer (orchestrator) does not have to
+  // parse design-system.md prose to find them. Fires in BOTH modes when the
+  // demand has a front-end AND a system was selected; gated on FINAL/DONE via
+  // the empty-plan short-circuit above (planArtifacts is all-false otherwise).
+  const isFinalStage = plan.prd || plan.proposal || plan.designSystem || plan.userhistory;
+  const { hasFrontend } = classifyProject(state.consolidated);
+  const selectedSystems = Array.isArray(state.designSystems)
+    ? state.designSystems.filter(Boolean)
+    : [];
+  if (isFinalStage && hasFrontend && selectedSystems.length > 0) {
+    for (const entry of openDesignFetchPlan(selectedSystems, state.uiPackageDir || 'packages/ui')) {
+      artifacts.push({
+        kind: 'design-system-files',
+        filename: `design-systems/${entry.id}/`,
+        path: entry.destDir,
+        verbatim: true,
+      });
+    }
+  }
+
   return artifacts;
 }
 

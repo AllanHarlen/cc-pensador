@@ -326,6 +326,52 @@ describe('buildArtifactList(state)', () => {
       expect(artifacts.map((a) => a.kind)).toEqual(['prd', 'userhistory', 'design-system']);
     });
   });
+
+  describe('design-system-files artifact (verbatim Open Design system dir)', () => {
+    it('is NOT emitted when no system was selected (counts unchanged)', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
+      expect(artifacts.some((a) => a.kind === 'design-system-files')).toBe(false);
+    });
+
+    it('emits one verbatim-dir artifact per selected system, keyed by concrete id', () => {
+      const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['agentic'] };
+      const dsf = buildArtifactList(state).filter((a) => a.kind === 'design-system-files');
+      expect(dsf).toHaveLength(1);
+      expect(dsf[0].path).toBe('packages/ui/design-systems/agentic/');
+      expect(dsf[0].verbatim).toBe(true);
+    });
+
+    it('supports a merge of multiple systems', () => {
+      const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['bmw', 'clean'] };
+      const paths = buildArtifactList(state)
+        .filter((a) => a.kind === 'design-system-files')
+        .map((a) => a.path);
+      expect(paths).toEqual([
+        'packages/ui/design-systems/bmw/',
+        'packages/ui/design-systems/clean/',
+      ]);
+    });
+
+    it('honors a custom uiPackageDir and fires in spec mode too', () => {
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        artifactMode: 'spec',
+        designSystems: ['vercel'],
+        uiPackageDir: 'frontend/packages/ui',
+      };
+      const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
+      expect(dsf.path).toBe('frontend/packages/ui/design-systems/vercel/');
+    });
+
+    it('is gated on the final stage and on hasFrontend', () => {
+      // Not final → nothing.
+      const early = { ...stateAt('EXPAND', [frontendReq()]), designSystems: ['agentic'] };
+      expect(buildArtifactList(early)).toHaveLength(0);
+      // Final but back-end-only → no design-system-files even if a system slipped in.
+      const beOnly = { ...stateAt('FINAL', [backendReq()]), designSystems: ['agentic'] };
+      expect(buildArtifactList(beOnly).some((a) => a.kind === 'design-system-files')).toBe(false);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
