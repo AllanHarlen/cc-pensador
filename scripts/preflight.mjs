@@ -388,6 +388,14 @@ function checkOpenDesign() {
   // `od` on PATH is still honored, but the registered MCP entry is authoritative.
   const available = cli.ok || configured;
 
+  // `available` means the daemon REST API is usable (entry registered or `od` binary
+  // present). It does NOT guarantee the MCP stdio bridge works: the bridge requires
+  // a non-coreutils `od` binary on the host PATH (`od mcp` cmd). When `available` is
+  // true only via a config entry (cli.ok=false), the Pensador reads design-systems
+  // through the REST API — that still works — but MCP `get_file` may fail. The
+  // `mcpFunctional` field makes this distinction explicit for the caller.
+  const mcpFunctional = cli.ok;
+
   // Open Design has no one-line `curl | sh` installer (the old
   // open-design.ai/install.sh endpoint is gone — 404). It is a local-first daemon
   // + web app, brought up via Docker or a pnpm dev environment (Node 24 +
@@ -412,6 +420,10 @@ function checkOpenDesign() {
     optional: true,
     relevantWhen: "hasFrontend",
     available,
+    // true only when a non-coreutils `od` binary is on PATH — the MCP stdio bridge
+    // (`od mcp`) needs this. false means daemon REST is usable but `get_file` via
+    // MCP may not work; od-fetch-system.mjs falls back to the clone on disk.
+    mcpFunctional,
     cliCheck: cli,
     configured,
     configuredIn,

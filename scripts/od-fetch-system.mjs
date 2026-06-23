@@ -24,6 +24,11 @@
  *   node od-fetch-system.mjs --id <slug>[,<slug>] --repo <repoRoot>
  *        [--ui-dir packages/ui] [--clone-dir <path>] [--daemon-url <url>] [--token <bearer>]
  *
+ * --clone-dir must point to the design-systems/ SUBDIRECTORY of the OD clone, not the
+ * repo root. Default: ~/.open-design/design-systems (matches the Docker install layout).
+ * If the script exits 5/6, verify with: ls ~/.open-design/design-systems/<id>/tokens.css
+ * Override via OD_CLONE_DIR env or --clone-dir flag when using a non-default clone path.
+ *
  * Exit codes: 0 ok · 2 usage · 5 no source found for a system · 6 required file missing.
  */
 import {
@@ -155,7 +160,13 @@ for (const id of ids) {
     r = rest.copied.length > 0 ? rest : r || rest;
   }
   if (!r || r.copied.length === 0) {
-    console.error(`od-fetch-system: no source found for "${id}" (clone-dir=${cloneDir}, daemon=${daemonUrl})`);
+    console.error(
+      `od-fetch-system: no source found for "${id}"\n` +
+      `  clone-dir searched: ${cloneDir}/${id}/\n` +
+      `  daemon: ${daemonUrl}/api/design-systems/${id}\n` +
+      `  Verify: ls "${cloneDir}/${id}/tokens.css"\n` +
+      `  Override: --clone-dir <path-to-design-systems-dir>  or  OD_CLONE_DIR env var`
+    );
     results.push({ id, ok: false, reason: "no-source", destDir });
     hadFatal = true;
     continue;

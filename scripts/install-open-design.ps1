@@ -43,7 +43,8 @@ param(
   [int]$Port = 7456,
   [string]$McpConfig = (Join-Path (Get-Location) '.mcp.json'),
   [string]$McpName = 'open-design',
-  [switch]$SkipMcp
+  [switch]$SkipMcp,
+  [switch]$SkipOnboardAgents
 )
 
 $ErrorActionPreference = 'Stop'
@@ -193,6 +194,21 @@ function Register-Mcp {
   }
 }
 
+function Invoke-OnboardAgents {
+  param([string]$TargetDir)
+  if ($SkipOnboardAgents) { Write-Warn 'Onboarding de agentes pulado (-SkipOnboardAgents).'; return }
+  $onboarder = Join-Path $PSScriptRoot 'od-onboard-agents.mjs'
+  if (-not (Test-Command 'node') -or -not (Test-Path $onboarder)) {
+    Write-Warn 'Onboarding de agentes pulado (node ou od-onboard-agents.mjs ausente).'
+    return
+  }
+  Write-Step 'Detectando agentes do host (claude, codex, antigravity) e registrando no app-config local'
+  & node $onboarder --clone-dir $TargetDir
+  Write-Warn 'O daemon Docker (container Linux) NAO executa binarios do host — os agentes acima'
+  Write-Host  '    so sao detectados por um daemon rodando NO HOST. Para subir esse daemon local:'
+  Write-Host  "      pwsh -File `"$(Join-Path $PSScriptRoot 'onboard-open-design-agents.ps1')`" -Launch -StopDocker"
+}
+
 # ---- Main ------------------------------------------------------------------
 Assert-Prerequisites
 Sync-Repo
@@ -201,6 +217,7 @@ $token = Initialize-Env -DeployDir $deployDir
 Start-Daemon -DeployDir $deployDir
 $null = Wait-Daemon -Port $Port
 Register-Mcp -Agent $Agent -Port $Port -Token $token
+Invoke-OnboardAgents -TargetDir $TargetDir
 
 Write-Host ''
 Write-Host '============================================================' -ForegroundColor Cyan

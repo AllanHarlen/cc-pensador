@@ -27,6 +27,7 @@ PORT="7456"
 MCP_CONFIG="$(pwd)/.mcp.json"
 MCP_NAME="open-design"
 SKIP_MCP="0"
+SKIP_ONBOARD_AGENTS="0"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +37,7 @@ while [ $# -gt 0 ]; do
     --mcp-config) MCP_CONFIG="$2"; shift 2 ;;
     --mcp-name)   MCP_NAME="$2"; shift 2 ;;
     --skip-mcp)   SKIP_MCP="1"; shift ;;
+    --skip-onboard-agents) SKIP_ONBOARD_AGENTS="1"; shift ;;
     -h|--help)
       sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "Argumento desconhecido: $1" >&2; exit 2 ;;
@@ -161,6 +163,22 @@ register_mcp() {
   fi
 }
 
+onboard_agents() {
+  [ "${SKIP_ONBOARD_AGENTS}" = "1" ] && { warn "Onboarding de agentes pulado (--skip-onboard-agents)."; return 0; }
+  local script_dir onboarder
+  script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+  onboarder="${script_dir}/od-onboard-agents.mjs"
+  if ! command -v node >/dev/null 2>&1 || [ ! -f "${onboarder}" ]; then
+    warn "Onboarding de agentes pulado (node ou od-onboard-agents.mjs ausente)."
+    return 0
+  fi
+  step "Detectando agentes do host (claude, codex, antigravity) e registrando no app-config local"
+  node "${onboarder}" --clone-dir "${TARGET_DIR}" || true
+  warn "O daemon Docker (container Linux) NAO executa binarios do host — os agentes acima"
+  echo  "    so sao detectados por um daemon rodando NO HOST. Para subir esse daemon local:"
+  echo  "      bash \"${script_dir}/onboard-open-design-agents.sh\" --launch --stop-docker"
+}
+
 # ---- Main ------------------------------------------------------------------
 assert_prerequisites
 sync_repo
@@ -169,6 +187,7 @@ init_env "${DEPLOY_DIR}"
 start_daemon "${DEPLOY_DIR}"
 wait_daemon
 register_mcp
+onboard_agents
 
 echo ""
 echo "============================================================"

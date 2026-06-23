@@ -207,6 +207,20 @@ Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Por
 
 > Ressalva honesta: o bridge **stdio** do MCP (`od mcp`) precisa de um binário `od` no host para realmente subir. No modo Docker puro a entrada é gravada no `.mcp.json`, mas se o agente reportar falha ao iniciar o MCP `open-design`, o caminho que dá um `od` real é o pnpm. Independentemente disso, o Pensador lê os design systems pela API do daemon (`/api/design-systems`) — então a integração funciona mesmo sem o MCP stdio. Depois que o daemon sobe, o Pensador aguarda a confirmação do usuário e retoma.
 
+### Onboarding de agentes (claude / codex / antigravity)
+
+O onboarding do Open Design detecta um agente de código probing seu **binário no PATH do processo do daemon** (`apps/daemon/src/runtimes/executables.ts → resolveOnPath`). Há uma limitação estrutural: no install **Docker** o daemon roda num container **Linux** que não enxerga nem executa os binários do **host** (`claude.cmd` / `codex.cmd` / `agy.exe`). Por isso o onboarding sempre reporta `available: false` para os três — não é erro de configuração, é isolamento do container. **Detectar e rodar agentes do host exige um daemon rodando NO HOST.**
+
+O cc-pensador resolve isso em duas peças:
+
+- **`scripts/od-onboard-agents.mjs`** (núcleo determinístico, testado em `test/onboard-agents.test.js`): localiza o path de cada agente (PATH walk que espelha o `resolveOnPath` do Open Design, honrando `PATHEXT` no Windows; aceita overrides `--claude-bin`/`--codex-bin`/`--agy-bin`) e grava os overrides que o Open Design entende no `app-config.json` do daemon **local** (`<clone>/.od/app-config.json`):
+  - `claude → agentCliEnv.claude.CLAUDE_BIN` e `codex → agentCliEnv.codex.CODEX_BIN` (chaves da allowlist em `apps/daemon/src/app-config.ts`).
+  - **`antigravity` não tem chave `*_BIN`** (o `bin` é `agy`): é resolvido **por PATH**, então o script reporta o diretório do `agy` em `pathAdditions` para o launcher prepender ao PATH do daemon. Com `--verify <daemon-url>` consulta `/api/agents` e confirma `available`.
+
+- **`scripts/onboard-open-design-agents.ps1|.sh`** (orquestrador): registra os agentes e, com `--launch`/`-Launch`, garante deps + build do daemon local, libera a porta (parando o container Docker com `--stop-docker`/`-StopDocker`) e sobe `node apps/daemon/dist/cli.js` com `CLAUDE_BIN`/`CODEX_BIN` setados e o diretório do `agy` prependido ao PATH — então verifica `/api/agents`.
+
+O instalador (`install-open-design.ps1|.sh`) chama a etapa de **registro** (rápida, sem build) ao final por padrão (desligável com `-SkipOnboardAgents`/`--skip-onboard-agents`) e imprime o comando único para subir o daemon local. O Docker permanece como fallback **só-design-systems** (a leitura de `/api/design-systems` independe de agente).
+
 ### Se o usuário escolher "Seguir sem" (Opção B)
 
 O Pensador escreve `design-system.md` inline, preenchendo as 9 seções do schema `DESIGN.md` a partir do brief coletado, e registra que foi gerado sem o Open Design.
@@ -223,3 +237,4 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 - `references/feature-isolation.md` e `references/handoff-contract.md`: artefato `design-system.md` e role `design-system`.
 - `skills/prd/SKILL.md`: seção **Design System & UI/UX** do `Strict_PRD_Schema`.
 - `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `packages/ui/design-systems/<id>/`.
+- `scripts/od-onboard-agents.mjs` + `scripts/onboard-open-design-agents.ps1|.sh`: onboarding dos agentes do host (claude/codex/antigravity) num daemon local — ver a seção **Onboarding de agentes** acima.
