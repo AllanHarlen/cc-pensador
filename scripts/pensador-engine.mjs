@@ -949,7 +949,7 @@ export const OPEN_DESIGN = {
     'tokens.css', // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
     'components.html', // fixtures: real component HTML/CSS + states
     'components.manifest.json', // component inventory
-    'preview/app.html', // visual sanity-check target for the review gate
+    'preview/',          // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
   ],
   /** Where the verbatim system files are persisted in the target repo. */
   systemsDir: 'packages/ui/design-systems',

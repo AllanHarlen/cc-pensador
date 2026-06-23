@@ -24,6 +24,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
+| `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (tokens.css, components.html, preview/, …) para `packages/ui/design-systems/<id>/` |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes ocultas e correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |

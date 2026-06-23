@@ -288,13 +288,15 @@ describe('Open Design descriptor', () => {
 
   it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
     // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
+    // NOTE: preview/ is a *directory* — actual files vary by system (colors.html, spacing.html,
+    // typography.html, …). Only 1 of ~152 curated systems ships preview/app.html.
     expect(OPEN_DESIGN.systemArtifacts).toEqual([
       'USAGE.md',
       'DESIGN.md',
       'tokens.css',
       'components.html',
       'components.manifest.json',
-      'preview/app.html',
+      'preview/',
     ]);
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
     // File access must go through a verified path, never a fabricated REST endpoint.
@@ -335,7 +337,7 @@ describe('Open Design descriptor', () => {
     expect(tokens.dest).toBe('packages/ui/design-systems/bmw/tokens.css');
     expect(tokens.required).toBe(true);
     expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
-    expect(bmw.files.find((f) => f.source === 'preview/app.html').required).toBe(false);
+    expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(false);
   });
 
   it('openDesignFetchPlan honors a custom ui package dir and is total on bad input', () => {

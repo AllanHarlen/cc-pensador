@@ -88,7 +88,9 @@ O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **ba
 | `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
 | `components.html` | fixtures: HTML/CSS real dos componentes + estados | — |
 | `components.manifest.json` | inventário de componentes | — |
-| `preview/app.html` | alvo de sanity check visual para o gate de review | — |
+| `preview/` | diretório de sanity check visual para o gate de review | — |
+
+> ⚠️ **`preview/` varia por system.** Dos ~152 systems curados, só 1 traz `preview/app.html`. A maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`. O `od-fetch-system.mjs` copia o diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
 
 Destino no repo: `packages/ui/design-systems/<id>/` (constante `OPEN_DESIGN.systemsDir`).
 
@@ -196,6 +198,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"
 
 Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Port`/`--port` (padrão 7456), `-McpConfig`/`--mcp-config` (alvo do `.mcp.json`, padrão `<cwd>/.mcp.json`), `-McpName`/`--mcp-name` (padrão `open-design`), `-SkipMcp`/`--skip-mcp`. Pré-requisitos que o usuário precisa ter: **git** e **Docker Desktop** (com Compose v2). O script é idempotente — preserva um `OD_API_TOKEN` existente e apenas atualiza o repo em execuções seguintes.
 
+> 🔑 **Localização do `OD_API_TOKEN`:** o script instalador gera e grava o token em `~/.open-design/deploy/.env` (dentro do clone Docker). O `od-fetch-system.mjs` lê `OD_API_TOKEN` do ambiente — quando o clone em disco está disponível, o token não é necessário (caminho primário). Ele só é exigido pelo fallback REST (`GET /api/design-systems/<id>` retorna 401 sem ele). Se precisar exportar manualmente: `export OD_API_TOKEN=$(grep OD_API_TOKEN ~/.open-design/deploy/.env | cut -d= -f2-)`.
+
 **Conexão do MCP (automática):** o script conecta o MCP nos dois cenários:
 
 - Se houver o binário `od` no host (caminho pnpm), usa o nativo `od mcp install <agent>`.
@@ -218,3 +222,4 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 - `references/codebase-memory.md`: padrão de oferta de instalação via `AskUserQuestion`.
 - `references/feature-isolation.md` e `references/handoff-contract.md`: artefato `design-system.md` e role `design-system`.
 - `skills/prd/SKILL.md`: seção **Design System & UI/UX** do `Strict_PRD_Schema`.
+- `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `packages/ui/design-systems/<id>/`.

@@ -94,7 +94,7 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 | `userhistory` | `userhistory.md` | sim |
 | `architecture` | `architecture.md` | quando houver ARCH |
 | `communication-contract` | `comunication_json.md` | quando `backendConfirmed` |
-| `design-system` | `design-system.md` | quando `hasFrontend` (DESIGN.md via Open Design) |
+| `design-system` | `design-system.md` + `packages/ui/design-systems/<id>/` | quando `hasFrontend` (DESIGN.md via Open Design — o diretório verbatim com `tokens.css`, `components.html` e `preview/` também faz parte do contrato) |
 | `codebase-memory` | `codebase-memory.md` | opcional |
 | `shared-agents` | `shared-agents/` | opcional |
 

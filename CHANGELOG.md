@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.8.2] — 2026-06-23
+
+### Correções do review e2e Open Design (4 GAPs)
+
+- **`preview/` em vez de `preview/app.html` (GAP 1 — bug real):** dos ~152 systems curados do Open Design, só 1 traz `preview/app.html`; a maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`. O `od-fetch-system.mjs` já copiava o diretório inteiro corretamente via `copyTree`; o bug estava nas referências documentais que apontavam para um arquivo inexistente. Corrigido em: `OPEN_DESIGN.systemArtifacts` no `pensador-engine.mjs`, tabela de artefatos verbatim em `references/open-design.md`, e testes em `test/integrations.test.js` (202 testes verdes).
+- **Handoff declara o diretório verbatim por contrato (GAP 2):** `references/handoff-contract.md` role `design-system` expandido para incluir `packages/ui/design-systems/<id>/` (com `tokens.css`, `components.html` e `preview/`) — não apenas o `design-system.md`. Elimina acoplamento por convenção tácita que quebraria silenciosamente se o caminho mudar.
+- **`od-fetch-system.mjs` agora é descobrível (GAP 3):** adicionado à tabela de referências da `SKILL.md` e à seção "Leitura relacionada" de `references/open-design.md`. Um mantenedor lendo a documentação canônica agora encontra o script.
+- **Localização do `OD_API_TOKEN` documentada (GAP 4):** nota adicionada a `references/open-design.md` — o token é gerado em `~/.open-design/deploy/.env` pelo script instalador; necessário apenas pelo fallback REST (`GET /api/design-systems/<id>` retorna 401 sem ele); o caminho primário (clone em disco) não precisa do token.
+
 ## [2.8.1] — 2026-06-22
 
 ### Correção — o 2.8.0 não estava "ligado" ao caminho de execução
