@@ -264,6 +264,7 @@ Projeto existente:
 - Complemente com `Read`, `Glob` e `Grep` para detalhes que o grafo nao cobrir (config, padroes locais, persistencia, UI).
 - Nao execute alteracoes no codigo.
 - Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`.
+- **Derive `uiPackageDir`** quando `hasFrontend`: inspecione se o repo e um monorepo (`pnpm-workspace.yaml`, `packages/` ou `apps/` presentes) ou um app unico. Use `resolveUiPackageDir({ isMonorepo, framework })` do engine como base (`packages/ui` para monorepo; `src/styles` para app unico Next.js/Vite/Remix). Se ambiguo, pergunte via `AskUserQuestion` onde gravar os arquivos do design system. Grave a resposta em `state.uiPackageDir` — o FINAL usa esse valor ao rodar `od-fetch-system.mjs`.
 
 Greenfield:
 
@@ -332,7 +333,7 @@ Roteamento padrao:
 - `requirements-clarity`: sempre aplicavel como lente de clareza.
 - Codex com effort `high`: adicional no BRAINSTORM_GERAL quando `hasBackend = true`.
 - AGY com modelo `gemini-3.1-pro-high`: adicional no BRAINSTORM_GERAL quando `hasFrontend = true`.
-- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG). **Escolha aqui o(s) system(s) curado(s)** que casam com o brief (via `od design-systems list` / REST) e **grave os id(s) em `state.designSystems` (array de strings)** — `buildArtifactList` le esse campo no FINAL para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
 
 Contrato:
 
@@ -424,7 +425,7 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
    - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`packages/ui/design-systems/<id>/`, uma entrada por id) — alem do role `design-system` (o `design-system.md`). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
-**Gate:** artefatos aplicaveis gerados, caminhos reportados e recap/handoff apresentados.
+**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados.
 
 ---
 

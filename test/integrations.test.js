@@ -25,6 +25,7 @@ import {
   openDesignBriefRouting,
   openDesignFetchPlan,
   openDesignDeliveryFor,
+  resolveUiPackageDir,
   initState,
   planArtifacts,
   buildArtifactList,
@@ -288,18 +289,24 @@ describe('Open Design descriptor', () => {
 
   it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
     // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
-    // NOTE: preview/ is a *directory* — actual files vary by system (colors.html, spacing.html,
-    // typography.html, …). Only 1 of ~152 curated systems ships preview/app.html.
+    // Directory entries (trailing '/') are copied recursively. assets/ and fonts/
+    // are required for brand fidelity; preview/ varies by system (~72 curated systems
+    // as of 2026; most ship preview/colors.html+typography.html+spacing.html, not app.html).
     expect(OPEN_DESIGN.systemArtifacts).toEqual([
+      'manifest.json',
       'USAGE.md',
       'DESIGN.md',
       'tokens.css',
       'components.html',
       'components.manifest.json',
+      'assets/',
+      'fonts/',
       'preview/',
     ]);
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
-    // File access must go through a verified path, never a fabricated REST endpoint.
+    // Canonical file-access path: od get-file, then MCP get_file, then cloned repo.
+    // The REST endpoint /api/design-systems/<id> returns metadata only, not raw file bodies.
+    expect(OPEN_DESIGN.commands.odGetFile).toContain('od get-file');
     expect(OPEN_DESIGN.commands.mcpGetFile).toContain('get_file');
     expect(OPEN_DESIGN.commands.clonedSystemsDir).toContain('design-systems/<id>');
   });
@@ -337,6 +344,10 @@ describe('Open Design descriptor', () => {
     expect(tokens.dest).toBe('packages/ui/design-systems/bmw/tokens.css');
     expect(tokens.required).toBe(true);
     expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
+    // Optional artifacts — present when the system ships them, never fatal if absent.
+    expect(bmw.files.find((f) => f.source === 'manifest.json').required).toBe(false);
+    expect(bmw.files.find((f) => f.source === 'fonts/').required).toBe(false);
+    expect(bmw.files.find((f) => f.source === 'assets/').required).toBe(false);
     expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(false);
   });
 
@@ -377,6 +388,19 @@ describe('Open Design descriptor', () => {
     const spec = openDesignDeliveryFor('spec');
     expect(spec.decisionsDoc).toBe('openspec/changes/<name>/design.md');
     expect(() => openDesignDeliveryFor('spec', 'x')).not.toThrow();
+  });
+
+  it('resolveUiPackageDir returns the right root based on architecture signals', () => {
+    expect(resolveUiPackageDir({ isMonorepo: true })).toBe('packages/ui');
+    expect(resolveUiPackageDir({ framework: 'nextjs' })).toBe('src/styles');
+    expect(resolveUiPackageDir({ framework: 'vite' })).toBe('src/styles');
+    expect(resolveUiPackageDir({ framework: 'remix' })).toBe('src/styles');
+    // Unknown or no signals: defaults to src/styles (ask user when ambiguous).
+    expect(resolveUiPackageDir({})).toBe('src/styles');
+    expect(resolveUiPackageDir()).toBe('src/styles');
+    // Monorepo takes precedence over framework.
+    expect(resolveUiPackageDir({ isMonorepo: true, framework: 'nextjs' })).toBe('packages/ui');
+    expect(() => resolveUiPackageDir(null)).not.toThrow();
   });
 });
 

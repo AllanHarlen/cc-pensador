@@ -61,19 +61,22 @@ Por ser opcional e condicional, a ausência do Open Design **nunca bloqueia** o 
 
 ## Parse e acionamento do Open Design
 
-> ⚠️ **O Open Design não gera um `DESIGN.md` a partir de um brief em prosa.** Não é isso que o produto faz. Ele **cura ~129 design systems** prontos (DESIGN.md de 9 seções), **importa** systems de fontes reais (GitHub, shadcn, projeto local) e usa esse DESIGN.md como camada de system-prompt para gerar protótipos HTML. Portanto o Pensador não pede ao Open Design para "inventar" um design system; ele **seleciona/importa** o DESIGN.md mais próximo do brief e o **consolida + adapta** em `design-system.md`.
+> ⚠️ **O Open Design não gera um `DESIGN.md` a partir de um brief em prosa.** Não é isso que o produto faz. Ele **cura ~72 design systems** prontos (DESIGN.md de 9 seções), **importa** systems de fontes reais (GitHub, shadcn, projeto local) e usa esse DESIGN.md como camada de system-prompt para gerar protótipos HTML. Portanto o Pensador não pede ao Open Design para "inventar" um design system; ele **seleciona/importa** o DESIGN.md mais próximo do brief e o **consolida + adapta** em `design-system.md`.
 
 Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do CLI `od` (caminho pnpm/local, que fornece o binário `od`) ou, no caminho Docker, pela **API REST do daemon** (os endpoints que o `od` encapsula):
 
 | Passo | CLI `od` (pnpm/local) | Equivalente Docker (API do daemon) |
 |---|---|---|
 | 1. Listar os systems curados | `od design-systems list --json` | `GET http://localhost:7456/api/design-systems` |
-| 2. (Opcional) Importar de uma marca/repo real citado no brief | `od design-systems import-github <url>` · `od design-systems import-shadcn <ref>` | `POST /api/design-systems/import/github` |
-| 3. Casar o brief (tom, marca, paleta, tipografia) com o system mais próximo | escolha do Pensador | escolha do Pensador |
-| 4. Seguir o `USAGE.md` do system e **baixar TODOS os artefatos verbatim** | `od design-systems show <id> --json` + `get_file` (MCP) por arquivo | `GET /api/design-systems/<id>` + MCP `get_file` / cópia do clone |
-| 5. Persistir os arquivos no repo-alvo | grava em `packages/ui/design-systems/<id>/` | idem |
-| 6. Derivar o `tokens.css` do projeto (composição rastreável, **nunca** objeto JS à mão) | base real do tema; `theme.ts` lê `var(--*)` | idem |
-| 7. `design-system.md` = **documento de decisões** (seleção, merge, overrides justificados, ponteiros) | referencia os arquivos; não os duplica | idem |
+| 2. **Apresentar top-3 candidates ao usuário** via `AskUserQuestion` (com o tom visual de cada system) | — | — |
+| 3. (Opcional) Importar de uma marca/repo real citado no brief | `od design-systems import-github <url>` · `od design-systems import-shadcn <ref>` | `POST /api/design-systems/import/github` |
+| 3a. ⚠️ **Import é async** | Após rodar o import, aguarde o daemon confirmar o slug antes de gravar em `state.designSystems`. Slug alucinado → exit 5 no FINAL. | idem |
+| 4. Casar o brief com o system confirmado pelo usuário | escolha validada | escolha validada |
+| 5. **Baixar TODOS os artefatos verbatim** — via `od get-file`, MCP `get_file` ou clone em disco | `od get-file design-systems/<id>/<file>` por arquivo | MCP `get_file` / cópia do clone (preferida) |
+| 5a. ⚠️ **`GET /api/design-systems/<id>` retorna só metadados** | O endpoint REST não serve `tokens.css` / `components.html` como bodies — use `od get-file` ou o clone | idem |
+| 6. Persistir os arquivos no repo-alvo | grava em `<uiPackageDir>/design-systems/<id>/` (state.uiPackageDir) | idem |
+| 7. Derivar o `tokens.css` do projeto (composição rastreável, **nunca** objeto JS à mão) | base real do tema; `theme.ts` lê `var(--*)` | idem |
+| 8. `design-system.md` = **documento de decisões** (seleção, merge, overrides justificados, ponteiros) | referencia os arquivos; não os duplica | idem |
 
 > ⚠️ **O bug que isto corrige.** Versões anteriores puxavam **só o `DESIGN.md`** (prosa) e o re-escreviam em `design-system.md`, descartando `tokens.css`, `components.html` e `preview/`. O agente de front-end nunca via os tokens reais → tema chapado, magic numbers, anti-padrões. O Open Design **não é fonte de inspiração textual; é um pipeline de artefatos de código.**
 
@@ -81,20 +84,23 @@ Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do 
 
 O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **baixar e persistir** todos, não resumir (`OPEN_DESIGN.systemArtifacts` / `openDesignFetchPlan()`):
 
-| Arquivo | Papel | Obrigatório |
+| Arquivo/Dir | Papel | Obrigatório |
 |---|---|---|
+| `manifest.json` | entrada machine-readable do system | — |
 | `USAGE.md` | router: como consumir o pacote (ler primeiro) | — |
 | `DESIGN.md` | intenção: 9 seções de prosa + anti-padrões | ✅ |
 | `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
 | `components.html` | fixtures: HTML/CSS real dos componentes + estados | — |
 | `components.manifest.json` | inventário de componentes | — |
+| `assets/` | brand assets (logos, ícones) | — |
+| `fonts/` | webfonts — **necessário para fidelidade tipográfica** | — |
 | `preview/` | diretório de sanity check visual para o gate de review | — |
 
-> ⚠️ **`preview/` varia por system.** Dos ~152 systems curados, só 1 traz `preview/app.html`. A maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`. O `od-fetch-system.mjs` copia o diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
+> ⚠️ **`preview/` e `fonts/` variam por system.** Dos ~72 systems curados, a maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; apenas alguns trazem `preview/app.html`. O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
 
-Destino no repo: `packages/ui/design-systems/<id>/` (constante `OPEN_DESIGN.systemsDir`).
+Destino no repo: `<state.uiPackageDir>/design-systems/<id>/` (derivado pelo Pensador em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`).
 
-> ⚠️ **Acesso aos arquivos — verificar empiricamente.** `GET /api/design-systems/<id>` pode devolver só metadados+`DESIGN.md`. Os arquivos brutos (`tokens.css`, `components.html`) vêm, em ordem de preferência: (1) MCP `get_file`; (2) cópia do clone Docker em `open-design/design-systems/<id>/`. **Não fabricar** um endpoint REST de arquivo sem confirmar o payload real do daemon.
+> ⚠️ **Acesso aos arquivos — ordem de preferência verificada.** (1) `od get-file design-systems/<id>/<file>` — via daemon, compila `tokens.css` sob demanda; (2) MCP `get_file` — mesmo daemon, nativo ao agente; (3) clone em disco `open-design/design-systems/<id>/` — mais rápido, sem rede, mas `tokens.css` pode não estar pré-compilado para systems DESIGN.md-only. `GET /api/design-systems/<id>` **não serve raw file bodies** (`tokens.css`, `components.html`) — retorna só metadados + DESIGN.md. Não fabricar endpoint REST de arquivo.
 
 O MCP do Open Design (`od mcp install <agent>`, depois `od mcp`) é o que conecta o servidor ao agente; ele expõe ferramentas como `list_projects`, `get_file`, `search_files` e `create_artifact`. O instalador deste repo (ver abaixo) tenta conectá-lo automaticamente.
 
@@ -114,7 +120,7 @@ As 8 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa 
 | `typography` | `parameter` | escala/família via `sections:[typography]` (override doc se conflita) |
 | `componentStates` | `input` | inventário de estados exigidos, **validado vs `components.html`** |
 | `responsiveness` | `parameter` | `section_spacing` / densidade |
-| `accessibility` | `constraint` | gate de validação (contraste WCAG AA) sobre o output |
+| `accessibility` | `constraint` | gate de contraste WCAG AA — **enforced como requisito normativo no modo Spec** (review gate); documentado no `design-system.md` no modo PRD (verificação humana no review) |
 | `microcopy` | `input` | `tagline` + copy das seções + CTAs |
 
 **Regra inviolável (do `skills-protocol.md` do Open Design):** *"never invent new tokens."* Resposta que **bate** com o system vira `input`/`parameter`. Resposta que **conflita** vira **override documentado** no `design-system.md` (com justificativa) — nunca um hex/raio/spacing solto no `theme.ts`. As regras de uso do system viajam junto para o agente de front-end e o review: *accent usado ≤ 2× por página (hero + CTA + links), sem inventar hex, sem sombra se Depth & Elevation = minimal.*

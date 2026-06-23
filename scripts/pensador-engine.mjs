@@ -258,6 +258,13 @@ export function initState(demanda) {
     // Output mode: 'prd' (default) or 'spec' (OpenSpec). When OpenSpec is
     // detected at preflight, INIT asks the user and may switch this to 'spec'.
     artifactMode: DEFAULT_ARTIFACT_MODE,
+    // Open Design: system ids chosen at BRAINSTORM_GERAL. buildArtifactList
+    // reads this to emit design-system-files entries for the handoff. Must be
+    // set by the LLM when hasFrontend and a system is selected; empty array
+    // means no verbatim files are planned (inline fallback or no OD).
+    designSystems: [],
+    // Root of the UI package where verbatim system files are persisted.
+    uiPackageDir: 'packages/ui',
   };
 }
 
@@ -924,32 +931,44 @@ export const OPEN_DESIGN = {
     mcpInstall: 'od mcp install claude',
     mcpConfigHelper: 'node scripts/od-mcp-config.mjs --config <.mcp.json> --daemon-url http://localhost:7456',
     apiDesignSystems: 'GET http://localhost:7456/api/design-systems',
-    apiDesignSystemById: 'GET http://localhost:7456/api/design-systems/<id>',
     /**
-     * The verbatim system files (tokens.css, components.html, …) are NOT prose —
-     * pull them as files, not as a summary. Verified file-access paths, in order
-     * of preference: MCP `get_file`, then the cloned repo's on-disk folder. Do NOT
-     * fabricate a REST file endpoint — confirm the `/api/design-systems/<id>`
-     * payload empirically before relying on it for raw file bodies.
+     * Canonical file-access verbs, in order of preference:
+     *   1. `od get-file design-systems/<id>/<file>` — CLI verb, routes through the
+     *      daemon which compiles tokens.css on demand (most reliable for all files).
+     *   2. MCP `get_file` tool — same daemon route, agent-native.
+     *   3. On-disk clone `open-design/design-systems/<id>/` — fastest, no network,
+     *      but requires a local clone; tokens.css may be absent for DESIGN.md-only
+     *      systems (the daemon compiles it; the clone may not have it pre-built).
+     *
+     * Do NOT fabricate a REST file endpoint — `GET /api/design-systems/<id>` returns
+     * only metadata + DESIGN.md, not raw file bodies for tokens.css/components.html.
      */
+    odGetFile: 'od get-file design-systems/<id>/<file>',
     mcpGetFile: 'get_file (Open Design MCP tool) — pulls a system file verbatim (tokens.css, components.html, …)',
     clonedSystemsDir: 'open-design/design-systems/<id>/  (filesystem source when no REST/MCP file access)',
   },
   /**
-   * The verbatim artifacts every curated/imported system ships, in the official
-   * USAGE.md read order (router → intent → tokens → fixtures → preview). The
-   * Pensador must fetch ALL of these — not just DESIGN.md — and persist them into
-   * the target repo so the front-end agent consumes tokens.css/components.html
+   * The verbatim artifacts every curated/imported system ships. Entries ending
+   * with '/' are directories copied recursively; entries without are plain files.
+   * The Pensador must fetch ALL of these — not just DESIGN.md — and persist them
+   * into the target repo so the front-end agent consumes tokens.css/components.html
    * DIRECTLY, never a prose re-write. `tokens.css` is the source of truth;
    * inventing tokens is forbidden by the Open Design skills protocol.
+   *
+   * Read order (agent consumption): manifest.json → USAGE.md → DESIGN.md →
+   * tokens.css (paste first) → components.html → components.manifest.json →
+   * assets/ → fonts/ (typography fidelity) → preview/ (visual sanity check).
    */
   systemArtifacts: [
-    'USAGE.md', // router: how to consume the package (read first)
-    'DESIGN.md', // intent: 9-section prose + anti-patterns
-    'tokens.css', // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
-    'components.html', // fixtures: real component HTML/CSS + states
+    'manifest.json',         // machine-readable entry point
+    'USAGE.md',              // router: how to consume the package (read first)
+    'DESIGN.md',             // intent: 9-section prose + anti-patterns
+    'tokens.css',            // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
+    'components.html',       // fixtures: real component HTML/CSS + states
     'components.manifest.json', // component inventory
-    'preview/',          // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
+    'assets/',               // optional brand assets directory
+    'fonts/',                // optional webfont files — required for typography fidelity
+    'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
   ],
   /** Where the verbatim system files are persisted in the target repo. */
   systemsDir: 'packages/ui/design-systems',
@@ -1044,7 +1063,9 @@ export function openDesignBriefRouting() {
  * skill/LLM layer (MCP `get_file` or the cloned repo) does the actual fetch.
  *
  * `tokens.css` and `DESIGN.md` are marked required (a system is unusable without
- * them); the rest are best-effort. Pure and total: same input → same output.
+ * them); the rest are best-effort. `od-fetch-system.mjs` attempts all three
+ * resolution paths (clone → od get-file → REST) before declaring required files
+ * missing. Pure and total: same input → same output.
  *
  * @param {string[]|null|undefined} systemIds  selected/imported system slugs
  * @param {string} [uiPackageDir='packages/ui']  the design-system package root
@@ -1101,6 +1122,27 @@ export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
       ? `${changeDir}/specs/ui-design-system/spec.md`
       : OPEN_DESIGN.designSystemFile,
   };
+}
+
+/**
+ * Suggests the UI package directory where Open Design verbatim system files
+ * should be persisted, based on architecture signals detected in ARCH/EXPLORE.
+ *
+ * The SKILL.md layer calls this in ARCH to seed `state.uiPackageDir` and
+ * presents the result to the user via AskUserQuestion when the signal is
+ * ambiguous. The engine default ('packages/ui') is the correct monorepo path;
+ * single-app projects typically use 'src/styles'. Pure and total.
+ *
+ * @param {{ isMonorepo?: boolean, framework?: string }} [signals]
+ * @returns {string}
+ */
+export function resolveUiPackageDir(signals = {}) {
+  const { isMonorepo, framework } = signals ?? {};
+  if (isMonorepo) return 'packages/ui';
+  if (framework === 'nextjs' || framework === 'next') return 'src/styles';
+  if (framework === 'vite' || framework === 'remix' || framework === 'nuxt') return 'src/styles';
+  // Unknown or single-app without detected framework: ask user (this value is the safe default).
+  return 'src/styles';
 }
 
 // ---------------------------------------------------------------------------
@@ -1556,6 +1598,8 @@ export function deserializeState(serialized) {
  * @property {Requirement[]} consolidated
  * @property {string|null} [featurePath] // .pensador/<slug-da-demanda>-vN - set after update-dir allocation
  * @property {'prd'|'spec'} [artifactMode] // output mode: 'prd' (default) or 'spec' (OpenSpec)
+ * @property {string[]} [designSystems]  // Open Design system ids chosen at BRAINSTORM_GERAL (hasFrontend)
+ * @property {string} [uiPackageDir]     // UI package root for verbatim system files (default 'packages/ui')
  */
 
 /**
@@ -1572,10 +1616,11 @@ export function deserializeState(serialized) {
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'comunication'|'userhistory'|'design-system'|'proposal'|'specs'|'design'|'tasks'} kind
- * @property {'prd.md'|'comunication_json.md'|'userhistory.md'|'design-system.md'|'proposal.md'|'specs/'|'design.md'|'tasks.md'} filename
+ * @property {'prd'|'comunication'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'} kind
+ * @property {string} filename
  * @property {string} path
  * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
+ * @property {boolean} [verbatim]     // true for design-system-files (tokens.css, components.html, …)
  */
 
 /**
