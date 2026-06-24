@@ -2,9 +2,9 @@
  * Unit tests for consolidate(state) and withConsolidated(state)
  *
  * Verifies the consolidation of answered questions from every
- * requirement-producing stage (EXPAND, CLARITY, BACKEND, UIUX, FRONTEND,
- * CODEX, AGY) into Requirement objects, and that withConsolidated stores the
- * result on state (the bridge the FINAL stage needs before planning artifacts).
+ * requirement-producing stage (EXPAND, BRAINSTORM_GERAL, CODEX, AGY) into
+ * Requirement objects, and that withConsolidated stores the result on state
+ * (the bridge the FINAL stage needs before planning artifacts).
  *
  * Requirements: 3.3, 4.3, 5.3, 7.3, 8.1, 8.3
  */
