@@ -34,7 +34,7 @@ Mapeamento determinístico em `pensador-engine.mjs`: `OPEN_DESIGN`, `designSyste
 - **FINAL (modo PRD, quando `hasFrontend`):** o Pensador aciona o Open Design com o brief consolidado, **baixa os artefatos verbatim do system** para o repo-alvo e grava o documento de decisões:
 
   ```text
-  packages/ui/design-systems/<id>/{USAGE,DESIGN}.md · tokens.css · components.html · …  (verbatim)
+  <featurePath>/design-systems/<id>/{USAGE,DESIGN}.md · tokens.css · components.html · …  (verbatim, dentro de .pensador/<slug>-vN/)
   <featurePath>/design-system.md                                                         (decisões + ponteiros)
   ```
 
@@ -74,7 +74,7 @@ Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do 
 | 4. Casar o brief com o system confirmado pelo usuário | escolha validada | escolha validada |
 | 5. **Baixar TODOS os artefatos verbatim** — via `od get-file`, MCP `get_file` ou clone em disco | `od get-file design-systems/<id>/<file>` por arquivo | MCP `get_file` / cópia do clone (preferida) |
 | 5a. ⚠️ **`GET /api/design-systems/<id>` retorna só metadados** | O endpoint REST não serve `tokens.css` / `components.html` como bodies — use `od get-file` ou o clone | idem |
-| 6. Persistir os arquivos no repo-alvo | grava em `<uiPackageDir>/design-systems/<id>/` (state.uiPackageDir) | idem |
+| 6. Persistir os arquivos na pasta da feature | grava em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`) | idem |
 | 7. Derivar o `tokens.css` do projeto (composição rastreável, **nunca** objeto JS à mão) | base real do tema; `theme.ts` lê `var(--*)` | idem |
 | 8. `design-system.md` = **documento de decisões** (seleção, merge, overrides justificados, ponteiros) | referencia os arquivos; não os duplica | idem |
 
@@ -98,7 +98,7 @@ O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **ba
 
 > ⚠️ **`preview/` e `fonts/` variam por system.** Dos ~72 systems curados, a maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; apenas alguns trazem `preview/app.html`. O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
 
-Destino no repo: `<state.uiPackageDir>/design-systems/<id>/` (derivado pelo Pensador em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`).
+Destino no repo: `<featurePath>/design-systems/<id>/` — dentro da pasta da feature (`.pensador/<slug>-vN/`), mantendo a saída do Pensador autocontida e coerente com o contrato de handoff (nenhum artefato na árvore de código real). O `state.uiPackageDir` (derivado em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`) **não** é o destino da cópia: é o **alvo de materialização** que o Orquestrador/Executor usa depois para mover os arquivos para `packages/ui`/`src/styles`. Ver `designSystemFilesRoot()` no engine.
 
 > ⚠️ **Acesso aos arquivos — ordem de preferência verificada.** (1) `od get-file design-systems/<id>/<file>` — via daemon, compila `tokens.css` sob demanda; (2) MCP `get_file` — mesmo daemon, nativo ao agente; (3) clone em disco `open-design/design-systems/<id>/` — mais rápido, sem rede, mas `tokens.css` pode não estar pré-compilado para systems DESIGN.md-only. `GET /api/design-systems/<id>` **não serve raw file bodies** (`tokens.css`, `components.html`) — retorna só metadados + DESIGN.md. Não fabricar endpoint REST de arquivo.
 
@@ -133,7 +133,7 @@ O Open Design é **ortogonal ao `artifactMode`**: roda sempre que `hasFrontend`,
 
 | Saída do Open Design | Modo PRD | Modo Spec (OpenSpec) |
 |---|---|---|
-| Arquivos verbatim do system (`tokens.css`, `components.html`, …) | `packages/ui/design-systems/<id>/` | **idem** (vão para o repo nos dois modos — não são geridos pelo OpenSpec) |
+| Arquivos verbatim do system (`tokens.css`, `components.html`, …) | `<featurePath>/design-systems/<id>/` | **idem** (dentro de `.pensador/<slug>-vN/` nos dois modos — não são geridos pelo OpenSpec; o Executor materializa em `packages/ui` depois) |
 | **Decisões** de design (seleção, merge, overrides justificados, ponteiros) | `design-system.md` (standalone) | seção **Decisions** do `openspec/changes/<nome>/design.md` |
 | **Requisitos** de UI do design system (estados, contraste AA, uso do accent) | `design-system.md` (schema de 9 seções) | capability delta-spec `openspec/changes/<nome>/specs/ui-design-system/spec.md` |
 
@@ -164,7 +164,7 @@ O accent MUST aparecer no máximo 2× por página (hero + CTA), além de links.
 
 ### Fluxo no FINAL (modo Spec)
 
-1. Baixa e persiste os arquivos verbatim do system em `packages/ui/design-systems/<id>/` (igual ao PRD).
+1. Baixa e persiste os arquivos verbatim do system em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD).
 2. Alimenta o `proposal.md` com a capability `ui-design-system` na seção **Capabilities**.
 3. Conduz `/openspec-ff-change <nome>` (ou `continue`) para gerar `design.md` (Decisions de design) e `specs/ui-design-system/spec.md` (requisitos + cenários).
 4. `/openspec-verify-change <nome>` valida — cenários com exatamente 4 `#` e todo requisito com ≥ 1 cenário.
@@ -242,5 +242,5 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 - `references/codebase-memory.md`: padrão de oferta de instalação via `AskUserQuestion`.
 - `references/feature-isolation.md` e `references/handoff-contract.md`: artefato `design-system.md` e role `design-system`.
 - `skills/prd/SKILL.md`: seção **Design System & UI/UX** do `Strict_PRD_Schema`.
-- `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `packages/ui/design-systems/<id>/`.
+- `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, via `--out-dir <featurePath>`).
 - `scripts/od-onboard-agents.mjs` + `scripts/onboard-open-design-agents.ps1|.sh`: onboarding dos agentes do host (claude/codex/antigravity) num daemon local — ver a seção **Onboarding de agentes** acima.

@@ -28,7 +28,15 @@
  *
  * Usage:
  *   node od-fetch-system.mjs --id <slug>[,<slug>] --repo <repoRoot>
- *        [--ui-dir packages/ui] [--clone-dir <path>] [--daemon-url <url>] [--token <bearer>]
+ *        [--out-dir <.pensador/<slug>-vN>] [--clone-dir <path>] [--daemon-url <url>] [--token <bearer>]
+ *
+ * --out-dir is the directory (relative to --repo) UNDER WHICH `design-systems/<id>/`
+ * is created. In the Pensador flow this is the FEATURE ROOT (`.pensador/<slug>-vN`)
+ * so the verbatim files stay inside the producer's artifact root — the Pensador
+ * never writes into the project's real source tree (packages/ui); the downstream
+ * Orchestrator/Executor materializes them there during implementation.
+ * `--feature-dir` is an alias; `--ui-dir` is the DEPRECATED legacy alias (kept so
+ * older callers don't break) and defaults to `packages/ui`.
  *
  * --clone-dir must point to the design-systems/ SUBDIRECTORY of the OD clone, not the
  * repo root. Default: ~/.open-design/design-systems (matches the Docker install layout).
@@ -66,7 +74,11 @@ const ids = String(arg("id", ""))
   .map((s) => s.trim())
   .filter(Boolean);
 const repoRoot = arg("repo", process.cwd());
-const uiDir = String(arg("ui-dir", "packages/ui")).replace(/\/+$/, "");
+// Destination base (relative to repoRoot) under which design-systems/<id>/ is
+// created. Precedence: --out-dir → --feature-dir → --ui-dir (deprecated) → packages/ui.
+const outDir = String(
+  arg("out-dir", arg("feature-dir", arg("ui-dir", "packages/ui")))
+).replace(/\/+$/, "");
 const cloneDir = arg(
   "clone-dir",
   process.env.OD_CLONE_DIR || join(homedir(), ".open-design", "design-systems")
@@ -230,7 +242,7 @@ const results = [];
 let hadFatal = false;
 
 for (const id of ids) {
-  const destDir = join(repoRoot, uiDir, "design-systems", id);
+  const destDir = join(repoRoot, outDir, "design-systems", id);
 
   // ── Step 1: on-disk clone (fastest, no network) ─────────────────────────
   const cloneResult = fromClone(id, destDir);
@@ -278,7 +290,7 @@ for (const id of ids) {
     id,
     ok,
     source: sources.join("+"),
-    destDir: join(uiDir, "design-systems", id),
+    destDir: join(outDir, "design-systems", id),
     copied: copiedArr,
     missingRequired: stillMissingRequired,
   });

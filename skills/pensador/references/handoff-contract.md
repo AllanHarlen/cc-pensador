@@ -95,7 +95,7 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 | `architecture` | `architecture.md` | quando houver ARCH |
 | `communication-contract` | `comunication_json.md` | quando `backendConfirmed` |
 | `design-system` | `design-system.md` | quando `hasFrontend` (documento de decisões via Open Design: seleção, merge, overrides, ponteiros) |
-| `design-system-files` | `packages/ui/design-systems/<id>/` | quando `hasFrontend` **e** um system foi selecionado — **uma entrada por `<id>` concreto** (de `state.designSystems`), com os arquivos verbatim (`tokens.css`, `components.html`, `preview/`, …). É o que `buildArtifactList` emite para o handoff carregar o **caminho real**, sem o consumidor precisar parsear a prosa do `design-system.md`. |
+| `design-system-files` | `design-systems/<id>/` | quando `hasFrontend` **e** um system foi selecionado — **uma entrada por `<id>` concreto** (de `state.designSystems`), relativa ao `artifactRoot` (`.pensador/<slug>-vN/`), com os arquivos verbatim (`tokens.css`, `components.html`, `preview/`, …). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) que o Executor usa ao mover os arquivos para a arvore de codigo real. É o que `buildArtifactList` emite para o handoff carregar o **caminho real**, sem o consumidor precisar parsear a prosa do `design-system.md`. |
 | `codebase-memory` | `codebase-memory.md` | opcional |
 | `shared-agents` | `shared-agents/` | opcional |
 

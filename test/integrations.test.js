@@ -21,6 +21,7 @@ import {
   openspecChangeDir,
   OPEN_DESIGN,
   designSystemArtifactPath,
+  designSystemFilesRoot,
   openDesignBriefPlan,
   openDesignBriefRouting,
   openDesignFetchPlan,
@@ -351,13 +352,26 @@ describe('Open Design descriptor', () => {
     expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(false);
   });
 
-  it('openDesignFetchPlan honors a custom ui package dir and is total on bad input', () => {
+  it('openDesignFetchPlan honors a custom root dir and is total on bad input', () => {
     const [ds] = openDesignFetchPlan(['vercel'], 'frontend/packages/ui/');
     expect(ds.destDir).toBe('frontend/packages/ui/design-systems/vercel/');
     expect(openDesignFetchPlan(null)).toEqual([]);
     expect(openDesignFetchPlan(undefined)).toEqual([]);
     expect(openDesignFetchPlan([null, '', 'bmw'])).toHaveLength(1);
     expect(() => openDesignFetchPlan('not-an-array')).not.toThrow();
+  });
+
+  it('designSystemFilesRoot roots verbatim files under the feature dir (never the project source tree)', () => {
+    // Real feature path → verbatim files live inside .pensador/<slug>-vN/.
+    expect(designSystemFilesRoot('.pensador/login-social-v1')).toBe('.pensador/login-social-v1');
+    // Trailing slash normalized.
+    expect(designSystemFilesRoot('.pensador/checkout-v2/')).toBe('.pensador/checkout-v2');
+    // Fallback mirrors designSystemArtifactPath when featurePath is unset.
+    expect(designSystemFilesRoot(null)).toBe('.pensador/atualizacao-v1');
+    expect(designSystemFilesRoot(undefined)).toBe('.pensador/atualizacao-v1');
+    // Composed with openDesignFetchPlan the destination stays inside the feature root.
+    const [ds] = openDesignFetchPlan(['agentic'], designSystemFilesRoot('.pensador/login-social-v1'));
+    expect(ds.destDir).toBe('.pensador/login-social-v1/design-systems/agentic/');
   });
 
   it('openDesignDeliveryFor: PRD mode writes a standalone design-system.md', () => {

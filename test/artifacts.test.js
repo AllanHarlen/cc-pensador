@@ -337,30 +337,50 @@ describe('buildArtifactList(state)', () => {
       const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['agentic'] };
       const dsf = buildArtifactList(state).filter((a) => a.kind === 'design-system-files');
       expect(dsf).toHaveLength(1);
-      expect(dsf[0].path).toBe('packages/ui/design-systems/agentic/');
+      // Persisted under the feature root (featurePath is null here → fallback).
+      expect(dsf[0].path).toBe('.pensador/atualizacao-v1/design-systems/agentic/');
       expect(dsf[0].verbatim).toBe(true);
+      // uiPackageDir is only the downstream materialization hint, not the path.
+      expect(dsf[0].materializeInto).toBe('packages/ui/design-systems/agentic/');
+    });
+
+    it('roots verbatim files under the concrete featurePath', () => {
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/login-social-v1',
+        designSystems: ['agentic'],
+      };
+      const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
+      expect(dsf.path).toBe('.pensador/login-social-v1/design-systems/agentic/');
     });
 
     it('supports a merge of multiple systems', () => {
-      const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['bmw', 'clean'] };
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/login-social-v1',
+        designSystems: ['bmw', 'clean'],
+      };
       const paths = buildArtifactList(state)
         .filter((a) => a.kind === 'design-system-files')
         .map((a) => a.path);
       expect(paths).toEqual([
-        'packages/ui/design-systems/bmw/',
-        'packages/ui/design-systems/clean/',
+        '.pensador/login-social-v1/design-systems/bmw/',
+        '.pensador/login-social-v1/design-systems/clean/',
       ]);
     });
 
-    it('honors a custom uiPackageDir and fires in spec mode too', () => {
+    it('records a custom uiPackageDir as materializeInto and fires in spec mode too', () => {
       const state = {
         ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/checkout-v2',
         artifactMode: 'spec',
         designSystems: ['vercel'],
         uiPackageDir: 'frontend/packages/ui',
       };
       const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
-      expect(dsf.path).toBe('frontend/packages/ui/design-systems/vercel/');
+      // Persisted inside the feature root regardless of the UI package target.
+      expect(dsf.path).toBe('.pensador/checkout-v2/design-systems/vercel/');
+      expect(dsf.materializeInto).toBe('frontend/packages/ui/design-systems/vercel/');
     });
 
     it('is gated on the final stage and on hasFrontend', () => {

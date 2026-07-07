@@ -263,7 +263,10 @@ export function initState(demanda) {
     // set by the LLM when hasFrontend and a system is selected; empty array
     // means no verbatim files are planned (inline fallback or no OD).
     designSystems: [],
-    // Root of the UI package where verbatim system files are persisted.
+    // Target UI package where the executor will MATERIALIZE the verbatim system
+    // files during implementation (packages/ui monorepo / src/styles single-app).
+    // The Pensador itself persists the files under <featurePath>/design-systems/
+    // (see designSystemFilesRoot) — this is only the downstream materialization hint.
     uiPackageDir: 'packages/ui',
   };
 }
@@ -970,7 +973,9 @@ export const OPEN_DESIGN = {
     'fonts/',                // optional webfont files — required for typography fidelity
     'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
   ],
-  /** Where the verbatim system files are persisted in the target repo. */
+  /** Eventual UI-package location the executor MATERIALIZES the verbatim files
+   *  into during implementation. The Pensador itself persists them under
+   *  <featurePath>/design-systems/<id>/ (see designSystemFilesRoot). */
   systemsDir: 'packages/ui/design-systems',
   /**
    * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every
@@ -1002,6 +1007,25 @@ export const OPEN_DESIGN = {
 export function designSystemArtifactPath(featurePath) {
   const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
   return `${base}${OPEN_DESIGN.designSystemFile}`;
+}
+
+/**
+ * Root directory (relative to the repo) under which the Open Design VERBATIM
+ * system files are persisted by the Pensador. Per the handoff contract, every
+ * Pensador artifact lives under the feature root `.pensador/<slug>-vN/` — the
+ * producer never writes into the project's real source tree. So the verbatim
+ * files land in `<featurePath>/design-systems/<id>/`, NOT in the eventual UI
+ * package (`packages/ui`); the downstream Orchestrator/Executor materializes
+ * them into `state.uiPackageDir` during implementation.
+ *
+ * Falls back to `.pensador/atualizacao-v1` when featurePath is unset, mirroring
+ * designSystemArtifactPath. Pure and total: same input → same output.
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function designSystemFilesRoot(featurePath) {
+  return String(featurePath || '.pensador/atualizacao-v1').replace(/\/+$/, '');
 }
 
 /**
@@ -1067,13 +1091,19 @@ export function openDesignBriefRouting() {
  * resolution paths (clone → od get-file → REST) before declaring required files
  * missing. Pure and total: same input → same output.
  *
+ * The `rootDir` is the directory under which `design-systems/<id>/` is created.
+ * In the Pensador flow this is the FEATURE ROOT (`.pensador/<slug>-vN/`, via
+ * designSystemFilesRoot) so the verbatim files stay inside the producer's
+ * artifact root — NOT the eventual UI package. The legacy default remains
+ * `packages/ui` only for direct/standalone callers.
+ *
  * @param {string[]|null|undefined} systemIds  selected/imported system slugs
- * @param {string} [uiPackageDir='packages/ui']  the design-system package root
+ * @param {string} [rootDir='packages/ui']  base dir under which design-systems/<id>/ lands
  * @returns {{ id: string, destDir: string, files: { source: string, dest: string, required: boolean }[] }[]}
  */
-export function openDesignFetchPlan(systemIds, uiPackageDir = 'packages/ui') {
+export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
   const ids = Array.isArray(systemIds) ? systemIds.filter(Boolean) : [];
-  const base = `${String(uiPackageDir).replace(/\/+$/, '')}/design-systems`;
+  const base = `${String(rootDir).replace(/\/+$/, '')}/design-systems`;
   const required = new Set(['tokens.css', 'DESIGN.md']);
   return ids.map((id) => ({
     id,
@@ -1089,8 +1119,11 @@ export function openDesignFetchPlan(systemIds, uiPackageDir = 'packages/ui') {
 /**
  * Open Design applies whenever the demand has a front-end — in BOTH artifact
  * modes. The verbatim system files (tokens.css, components.html, …) are always
- * persisted to the repo (`systemsDir`), mode-independent. What changes per mode
- * is WHERE the design decisions and the design-system requirements are written:
+ * persisted by the Pensador under the FEATURE ROOT
+ * (`<featurePath>/design-systems/<id>/`, see designSystemFilesRoot),
+ * mode-independent; `systemsDir` here is the eventual UI-package target the
+ * executor materializes into. What changes per mode is WHERE the design
+ * decisions and the design-system requirements are written:
  *
  *  - PRD mode  → a standalone `design-system.md` (decisions + 9-section schema).
  *  - Spec mode → folded into the OpenSpec change: decisions go into `design.md`
@@ -1111,7 +1144,7 @@ export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
   const changeDir = `openspec/changes/${changeName}`;
   return {
     mode: spec ? 'spec' : 'prd',
-    // Verbatim system files land in the repo in BOTH modes.
+    // Eventual UI-package target the executor materializes into (both modes).
     systemsDir: OPEN_DESIGN.systemsDir,
     // A standalone design-system.md exists only in PRD mode.
     standaloneArtifact: !spec,
@@ -1389,25 +1422,32 @@ export function buildArtifactList(state) {
     });
   }
 
-  // Verbatim Open Design system files persisted in the repo (tokens.css,
-  // components.html, preview/, …). Emitting them here — keyed by the CONCRETE
-  // system id(s) chosen at BRAINSTORM_GERAL (state.designSystems) — lets the
-  // handoff carry the real path so the consumer (orchestrator) does not have to
-  // parse design-system.md prose to find them. Fires in BOTH modes when the
-  // demand has a front-end AND a system was selected; gated on FINAL/DONE via
-  // the empty-plan short-circuit above (planArtifacts is all-false otherwise).
+  // Verbatim Open Design system files persisted by the Pensador. Per the handoff
+  // contract, every producer artifact lives under the feature root — the Pensador
+  // never writes into the project's real source tree. So the files land in
+  // `<featurePath>/design-systems/<id>/` (designSystemFilesRoot), keyed by the
+  // CONCRETE system id(s) chosen at BRAINSTORM_GERAL (state.designSystems). This
+  // makes the design-system-files path genuinely relative to artifactRoot, so the
+  // handoff carries the real path without the consumer parsing design-system.md
+  // prose. The downstream Orchestrator/Executor materializes them into
+  // state.uiPackageDir (packages/ui / src/styles) during implementation. Fires in
+  // BOTH modes when the demand has a front-end AND a system was selected; gated on
+  // FINAL/DONE via the empty-plan short-circuit above.
   const isFinalStage = plan.prd || plan.proposal || plan.designSystem || plan.userhistory;
   const { hasFrontend } = classifyProject(state.consolidated);
   const selectedSystems = Array.isArray(state.designSystems)
     ? state.designSystems.filter(Boolean)
     : [];
   if (isFinalStage && hasFrontend && selectedSystems.length > 0) {
-    for (const entry of openDesignFetchPlan(selectedSystems, state.uiPackageDir || 'packages/ui')) {
+    const materializeRoot = String(state.uiPackageDir || 'packages/ui').replace(/\/+$/, '');
+    for (const entry of openDesignFetchPlan(selectedSystems, designSystemFilesRoot(state.featurePath))) {
       artifacts.push({
         kind: 'design-system-files',
         filename: `design-systems/${entry.id}/`,
         path: entry.destDir,
         verbatim: true,
+        // The eventual UI package the executor materializes these into.
+        materializeInto: `${materializeRoot}/design-systems/${entry.id}/`,
       });
     }
   }

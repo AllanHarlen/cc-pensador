@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.8.5] — 2026-07-07
+
+### Artefatos verbatim do Open Design agora ficam dentro de `.pensador/<slug>-vN/`
+
+Correção de integração Pensador ↔ Open Design: os arquivos verbatim do system (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …) eram gravados em `packages/ui/design-systems/<id>/` na **raiz do projeto**, fora de `.pensador/`. Isso violava o contrato de handoff (§2 "nenhum artefato na raiz do projeto; o produtor nunca escreve na raiz de outro estágio"), o isolamento por feature ("todo caminho deriva de `featurePath`") e a regra §3 ("`artifacts[].path` é relativo a `artifactRoot`"). Resultado observado: nada aterrissava em `.pensador/`.
+
+- **Destino realocado para a pasta da feature:** os arquivos verbatim agora vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`), mantendo a saída do Pensador autocontida. Novo helper puro `designSystemFilesRoot(featurePath)` no engine; `buildArtifactList` passa a raiz da feature para `openDesignFetchPlan()`.
+- **`state.uiPackageDir` vira alvo de materialização:** deixa de ser o destino da cópia do Pensador e passa a ser o local (`packages/ui`/`src/styles`) onde o Executor materializa os arquivos na implementação. Cada entrada `design-system-files` do handoff carrega o novo campo `materializeInto`.
+- **`od-fetch-system.mjs`:** novo parâmetro `--out-dir` (alias `--feature-dir`; `--ui-dir` mantido como alias legado) que enraíza a cópia sob a pasta da feature. `SKILL.md` FINAL passa a invocar com `--out-dir <featurePath>`.
+- **Docs sincronizados:** `open-design.md`, `handoff-contract.md` (role `design-system-files` relativo ao `artifactRoot` + `materializeInto`), `feature-isolation.md` (layout + roles válidos), `openspec.md`, `SKILL.md` e ambos os READMEs.
+- **Sincronização de versão:** `package.json` (2.8.3) e `plugin.json` (2.8.4) unificados em **2.8.5**. Testes: `artifacts.test.js` e `integrations.test.js` atualizados (+2 casos cobrindo `designSystemFilesRoot` e o enraizamento por `featurePath`).
+
 ## [2.8.3] — 2026-06-23
 
 ### Handoff carrega o `<id>` concreto do system (fecha o elo e2e)

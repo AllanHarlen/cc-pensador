@@ -64,6 +64,7 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(só no modo PRD)*
 - `comunication_json.md` — Contrato de comunicação/API em JSON. *(modo PRD, quando houver back-end)*
 - `design-system.md` — Sistema de design brand-grade (DESIGN.md: paleta, tipografia, espaçamento, componentes, motion, voz), gerado via Open Design a partir do brief de design parseado. *(modo PRD, quando houver front-end; fallback inline se o Open Design não estiver disponível)*
+- `design-systems/<id>/` — Arquivos verbatim do system Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), copiados por `scripts/od-fetch-system.mjs` para dentro da pasta da feature. *(nos dois modos, quando houver front-end e um system selecionado; o Executor os materializa em `packages/ui`/`src/styles` na implementação)*
 - `codebase-memory.md` — Snapshot da exploração do Code Base Memory. *(sempre, em `<featurePath>/`)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
 - `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orchestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
@@ -86,7 +87,8 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo
     ├── prd.md                     ← artefatos finais
     ├── userhistory.md
     ├── comunication_json.md
-    └── design-system.md           ← quando há front-end (via Open Design)
+    ├── design-system.md           ← quando há front-end (via Open Design)
+    └── design-systems/<id>/       ← arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
 `<slug>` é o nome curto da demanda recebida normalizado (minúsculas, sem acentos, hifenizado); `-vN` é a versão local da mesma demanda (`v1` na primeira execução, depois `v2`, `v3`, ...). Fallback `atualizacao-v1`. No `INIT`, se houver checkpoint v2 incompleto, o Pensador oferece retomada via `AskUserQuestion`.

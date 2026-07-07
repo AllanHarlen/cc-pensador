@@ -106,7 +106,7 @@ Fluxo expandido (recomendado para mudanças relevantes):
 
 No modo Spec, `userhistory.md` e `comunication_json.md` **não se aplicam** — o entregável é o change set OpenSpec.
 
-**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set (`openDesignDeliveryFor` no engine): os arquivos verbatim do system (`tokens.css`, `components.html`, …) vão para `packages/ui/design-systems/<id>/` no repo (igual ao PRD); as **decisões** de design entram na seção *Decisions* do `design.md`; e os **requisitos** de UI viram a capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenários). Ver `references/open-design.md` › **Modo Spec**.
+**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set (`openDesignDeliveryFor` no engine): os arquivos verbatim do system (`tokens.css`, `components.html`, …) vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD; o Executor os materializa em `packages/ui` depois); as **decisões** de design entram na seção *Decisions* do `design.md`; e os **requisitos** de UI viram a capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenários). Ver `references/open-design.md` › **Modo Spec**.
 
 ---
 

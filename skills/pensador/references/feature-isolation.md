@@ -23,6 +23,8 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     userhistory.md
     comunication_json.md
     design-system.md
+    design-systems/
+      <id>/                     # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
   carrinho-checkout-v1/
     ...
 ```
@@ -145,6 +147,7 @@ Arquivos:
 - `userhistory.md`: modo PRD (nao se aplica no modo Spec).
 - `comunication_json.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
 - `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`); DESIGN.md gerado via Open Design (fallback inline). Nao se aplica no modo Spec.
+- `design-systems/<id>/`: arquivos verbatim do Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), quando `hasFrontend` e um system foi selecionado — nos dois modos. Ficam dentro da pasta da feature; o Executor os materializa depois em `packages/ui`/`src/styles` (`state.uiPackageDir`).
 
 Alem dos artefatos finais, `<featurePath>/` contem dois arquivos de trabalho: `codebase-memory.md` (snapshot da exploracao do Code Base Memory, gravado no EXPLORE) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.
@@ -165,7 +168,7 @@ Regras:
 
 1. `stage: "pensador"`, `upstream: null` (primeiro estagio da cadeia).
 2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
-3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `codebase-memory`, `shared-agents`.
+3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `design-system-files`, `codebase-memory`, `shared-agents`.
 4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
 5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orchestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
 

@@ -152,6 +152,7 @@ All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUser
 - `userhistory.md` — User journey in sequential steps. *(PRD mode only)*
 - `comunication_json.md` — Communication/API contract in JSON. *(PRD mode, when backend exists)*
 - `design-system.md` — Brand-grade design system (DESIGN.md: palette, typography, spacing, components, motion, voice), produced via Open Design from a parsed design brief. *(PRD mode, when front-end exists; inline fallback if Open Design is unavailable)*
+- `design-systems/<id>/` — Verbatim Open Design system files (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), fetched by `scripts/od-fetch-system.mjs` into the feature folder. *(both modes, when front-end exists and a system was selected; the Executor materializes them into `packages/ui`/`src/styles` during implementation)*
 - `codebase-memory.md` — Code Base Memory exploration snapshot. *(always, in `<featurePath>/`)*
 - `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*
 - `handoff.json` — Handoff manifest for `/cc-orchestrador-subagents:orchestrador` (artifact discovery anchor; see `references/handoff-contract.md`). *(always)*

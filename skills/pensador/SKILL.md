@@ -24,7 +24,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
-| `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (tokens.css, components.html, preview/, …) para `packages/ui/design-systems/<id>/` |
+| `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (tokens.css, components.html, preview/, …) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`) |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes ocultas e correlacao por slug |
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |
@@ -83,9 +83,10 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   userhistory.md
   comunication_json.md
   design-system.md
+  design-systems/<id>/          # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
-> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` (DESIGN.md gerado via Open Design) so e gravado no modo PRD quando a demanda tem front-end (`hasFrontend`).
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` (DESIGN.md gerado via Open Design) so e gravado no modo PRD quando a demanda tem front-end (`hasFrontend`). Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
 
 Regras:
 
@@ -264,7 +265,7 @@ Projeto existente:
 - Complemente com `Read`, `Glob` e `Grep` para detalhes que o grafo nao cobrir (config, padroes locais, persistencia, UI).
 - Nao execute alteracoes no codigo.
 - Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`.
-- **Derive `uiPackageDir`** quando `hasFrontend`: inspecione se o repo e um monorepo (`pnpm-workspace.yaml`, `packages/` ou `apps/` presentes) ou um app unico. Use `resolveUiPackageDir({ isMonorepo, framework })` do engine como base (`packages/ui` para monorepo; `src/styles` para app unico Next.js/Vite/Remix). Se ambiguo, pergunte via `AskUserQuestion` onde gravar os arquivos do design system. Grave a resposta em `state.uiPackageDir` — o FINAL usa esse valor ao rodar `od-fetch-system.mjs`.
+- **Derive `uiPackageDir`** quando `hasFrontend`: inspecione se o repo e um monorepo (`pnpm-workspace.yaml`, `packages/` ou `apps/` presentes) ou um app unico. Use `resolveUiPackageDir({ isMonorepo, framework })` do engine como base (`packages/ui` para monorepo; `src/styles` para app unico Next.js/Vite/Remix). Se ambiguo, pergunte via `AskUserQuestion`. Grave a resposta em `state.uiPackageDir` — esse valor NAO e o destino da copia do Pensador; e o **alvo de materializacao** que o Orquestrador/Executor usa depois. O Pensador sempre persiste os arquivos verbatim dentro da pasta da feature (`<featurePath>/design-systems/<id>/`), nunca na arvore de codigo real.
 
 Greenfield:
 
@@ -409,20 +410,20 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 3. Planeje artefatos conforme `artifactMode`:
    - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end; `design-system.md` quando ha front-end (`hasFrontend`), todos em `<featurePath>/`.
    - Modo Spec (OpenSpec): o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md` e `comunication_json.md` nao se aplicam. **Excecao — Open Design continua valendo quando `hasFrontend`:** nao gera `design-system.md` standalone, mas roda do mesmo jeito (arquivos verbatim no repo + decisoes no `design.md` + capability `specs/ui-design-system/`). Ver passo 5.
-   - Em **ambos** os modos, quando `hasFrontend`, os arquivos verbatim do Open Design vao para `packages/ui/design-systems/<id>/` (passo 5).
+   - Em **ambos** os modos, quando `hasFrontend`, os arquivos verbatim do Open Design vao para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, passo 5). O Orquestrador/Executor os materializa depois em `state.uiPackageDir` (`packages/ui`/`src/styles`).
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
 5. Gere os artefatos:
    - **Design system (Open Design), quando `hasFrontend` — nos DOIS modos):** o Open Design e um **pipeline de arquivos**, nao prosa. NUNCA puxe so o `DESIGN.md` para re-escrever. Para cada system escolhido no BRAINSTORM_GERAL, **baixe e persista os arquivos verbatim** rodando:
 
      ```bash
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/od-fetch-system.mjs" --id <id>[,<id>] --repo <repoRoot> --ui-dir <packages/ui> [--token $OD_API_TOKEN]
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/od-fetch-system.mjs" --id <id>[,<id>] --repo <repoRoot> --out-dir <featurePath> [--token $OD_API_TOKEN]
      ```
 
-     Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/` em `<ui-dir>/design-systems/<id>/` (ver `openDesignFetchPlan()`). Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
+     Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/` em `<featurePath>/design-systems/<id>/` — ou seja, dentro de `.pensador/<slug>-vN/`, mantendo a saida do Pensador autocontida (ver `openDesignFetchPlan()` + `designSystemFilesRoot()`). Passe `--out-dir` com o `featurePath` da execucao (ex.: `.pensador/login-social-v1`). Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
    - **Modo PRD:** o `design-system.md` vira **documento de decisoes** (selecao do system, merge, overrides justificados) que **referencia** os arquivos verbatim — nao duplica tokens. Os demais artefatos saem dos templates.
-   - **Modo Spec:** dobre o design no change set (`openDesignDeliveryFor('spec', <nome>)`): decisoes na secao *Decisions* do `design.md`; requisitos de UI na capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenarios `#### Scenario:`). Os arquivos verbatim continuam indo para `packages/ui/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+   - **Modo Spec:** dobre o design no change set (`openDesignDeliveryFor('spec', <nome>)`): decisoes na secao *Decisions* do `design.md`; requisitos de UI na capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenarios `#### Scenario:`). Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
    - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
-   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`packages/ui/design-systems/<id>/`, uma entrada por id) — alem do role `design-system` (o `design-system.md`). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
+   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id) — alem do role `design-system` (o `design-system.md`). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados.
