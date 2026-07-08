@@ -1,11 +1,11 @@
 ---
 name: frontend-design
-description: Lente de design de front-end do estágio BRAINSTORM_GERAL do Pensador. Levanta lacunas de componentização, design system/tokens, responsividade, layout/grid, padrões de interação e estados de componente, como perguntas para o usuário. Relevante quando a demanda tem front-end. Alimenta o brief de design do Open Design.
+description: Lente primária de design de front-end do estágio BRAINSTORM_GERAL do Pensador, atuando com o Open Design. Levanta lacunas de componentização, design system/tokens, responsividade, layout/grid, padrões de interação e estados de componente, como perguntas para o usuário. Relevante quando a demanda tem front-end. Alimenta o brief de design do Open Design.
 ---
 
-# frontend-design — Lente de Design de Front-End
+# frontend-design — Lente Primária de Design de Front-End
 
-Skill de brainstorm do Pensador (lente de design do estágio **BRAINSTORM_GERAL**, relevante quando `hasFrontend`). Complementa a UIUX olhando o **como** construir a interface: estrutura, sistema de design e implementação visual. Alimenta **Arquitetura** (stack/estrutura de front), a seção **Design System & UI/UX** e os **Requisitos Funcionais** de interface.
+Skill de brainstorm do Pensador (lente **primária de design** do estágio **BRAINSTORM_GERAL**, relevante quando `hasFrontend`). Junto com `ui-ux-pro-max`, forma o par de lentes primárias que alimentam o **Open Design**; o AGY (`cc-antigravity-plugin:antigravity-agent`, `gemini-3.1-pro-high`) roda como lente de refinamento (`role: refine`). Complementa a UIUX olhando o **como** construir a interface: estrutura, sistema de design e implementação visual. Alimenta **Arquitetura** (stack/estrutura de front), a seção **Design System & UI/UX** e os **Requisitos Funcionais** de interface. Mapeamento em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.design.lenses`.
 
 > Conteúdo upstream (mcp.directory id 1) pode enriquecer esta skill. Baixe com:
 > `curl -L -o skill.zip "https://mcp.directory/api/skills/download/1" && unzip -o skill.zip -d skills/frontend-design && rm skill.zip`

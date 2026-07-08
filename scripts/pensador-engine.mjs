@@ -66,26 +66,47 @@ export const REQUIREMENT_STAGES = ['EXPAND', 'BRAINSTORM_GERAL', 'CODEX', 'AGY']
 export const STAGE_DELEGATION = {
   BRAINSTORM_GERAL: {
     kind: 'parallel',
+    // Each domain now exposes a PRIMARY lens plus an ordered `lenses` array.
+    // v2.6 promotion:
+    //   - backend: the `backend-development` skill is the PRIMARY lens (a
+    //     deterministic engineering checklist that ALWAYS runs when hasBackend),
+    //     with Codex kept as the `refine` lens on top of it.
+    //   - design: `ui-ux-pro-max` + `frontend-design` are PRIMARY lenses that
+    //     feed the Open Design engine (`open-design`, role `design-engine`), with
+    //     AGY kept as the `refine` lens. The old `uiux` key is now `design`.
+    // The domain-level `ref`/`kind`/`origin` mirror the PRIMARY lens so callers
+    // that only read the primary still work; `lenses` carries the full pipeline.
     domains: {
       requirements: {
         kind: 'skill',
         ref: 'requirements-clarity',
         origin: 'requirements-clarity',
         relevantWhen: 'always',
+        lenses: [
+          { kind: 'skill', ref: 'requirements-clarity', origin: 'requirements-clarity', role: 'primary' },
+        ],
       },
       backend: {
-        kind: 'subagent',
-        ref: 'codex:codex-rescue',
-        origin: 'codex',
-        param: '--effort high',
+        kind: 'skill',
+        ref: 'backend-development',
+        origin: 'backend-development',
         relevantWhen: 'hasBackend',
+        lenses: [
+          { kind: 'skill', ref: 'backend-development', origin: 'backend-development', role: 'primary' },
+          { kind: 'subagent', ref: 'codex:codex-rescue', origin: 'codex', param: '--effort high', role: 'refine', relevantWhen: 'hasBackend' },
+        ],
       },
-      uiux: {
-        kind: 'subagent',
-        ref: 'cc-antigravity-plugin:antigravity-agent',
-        origin: 'agy',
-        param: '--model gemini-3.1-pro-high',
+      design: {
+        kind: 'skill',
+        ref: 'ui-ux-pro-max',
+        origin: 'ui-ux-pro-max',
         relevantWhen: 'hasFrontend',
+        lenses: [
+          { kind: 'skill', ref: 'ui-ux-pro-max', origin: 'ui-ux-pro-max', role: 'primary' },
+          { kind: 'skill', ref: 'frontend-design', origin: 'frontend-design', role: 'primary' },
+          { kind: 'tool', ref: 'open-design', origin: 'open-design', role: 'design-engine', relevantWhen: 'hasFrontend' },
+          { kind: 'subagent', ref: 'cc-antigravity-plugin:antigravity-agent', origin: 'agy', param: '--model gemini-3.1-pro-high', role: 'refine', relevantWhen: 'hasFrontend' },
+        ],
       },
     },
   },
@@ -217,7 +238,7 @@ export function allocateFeatureDir(existingFeatureDirs = [], options = {}) {
 /**
  * Builds a path inside an update directory.
  *
- * Final artifacts (prd.md, userhistory.md, comunication_json.md) live directly
+ * Final artifacts (prd.md, userhistory.md, communication.md) live directly
  * in the update directory — only sibling working dirs like `shared-agents` go
  * through here.
  *
@@ -268,6 +289,11 @@ export function initState(demanda) {
     // The Pensador itself persists the files under <featurePath>/design-systems/
     // (see designSystemFilesRoot) — this is only the downstream materialization hint.
     uiPackageDir: 'packages/ui',
+    // API/communication contract style detected in ARCH. Selects the
+    // machine-readable contract format (openapi.yaml / schema.graphql /
+    // service.proto / asyncapi.yaml) that is the SOURCE OF TRUTH when hasBackend.
+    // communication.md is the human-readable view derived from it.
+    apiStyle: DEFAULT_API_STYLE,
   };
 }
 
@@ -396,7 +422,7 @@ export function consolidate(state) {
  * This is the bridge the FINAL stage MUST use before planning artifacts:
  * `planArtifacts`/`buildArtifactList` read `state.consolidated`, which is empty
  * until this is called. (Fixes the prior wiring gap where consolidate() was
- * computed but never stored, leaving comunication_json never planned.)
+ * computed but never stored, leaving communication never planned.)
  *
  * @param {StageState} state
  * @returns {StageState}
@@ -739,7 +765,7 @@ export function codebaseMemoryExplorationPlan(options = {}) {
  * orthogonal to the execution mode (--modo) and to the domain lenses.
  *
  *   - `prd` (default): the classic Pensador flow. PRD_BASE drafts a base PRD and
- *     FINAL emits prd.md (+ userhistory.md, + comunication_json.md when backend).
+ *     FINAL emits prd.md (+ userhistory.md, + communication.md when backend).
  *   - `spec`: OpenSpec mode (https://github.com/Fission-AI/OpenSpec). Offered
  *     ONLY when preflight detects OpenSpec; chosen by the user via AskUserQuestion
  *     in INIT. The PRD_BASE stage is repurposed into a structured OpenSpec base
@@ -1118,22 +1144,27 @@ export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
 
 /**
  * Open Design applies whenever the demand has a front-end — in BOTH artifact
- * modes. The verbatim system files (tokens.css, components.html, …) are always
- * persisted by the Pensador under the FEATURE ROOT
- * (`<featurePath>/design-systems/<id>/`, see designSystemFilesRoot),
- * mode-independent; `systemsDir` here is the eventual UI-package target the
- * executor materializes into. What changes per mode is WHERE the design
- * decisions and the design-system requirements are written:
+ * modes. The verbatim system files (tokens.css, DESIGN.md, components.html, …)
+ * are always persisted by the Pensador under the FEATURE ROOT
+ * (`<featurePath>/design-systems/<id>/`, see designSystemFilesRoot); `systemsDir`
+ * here is the eventual UI-package target the executor materializes into.
  *
- *  - PRD mode  → a standalone `design-system.md` (decisions + 9-section schema).
+ * This is the Open-Design-in-use delivery descriptor: when a system is fetched,
+ * its verbatim DESIGN.md IS the design document, so the Pensador emits NO standalone
+ * design-system.md (in either mode). What changes per mode is only WHERE the design
+ * decisions and the design-system requirements are recorded:
+ *
+ *  - PRD mode  → decisions/requirements live in the verbatim DESIGN.md (plus the
+ *    design-system-files handoff entry carrying the concrete <id>).
  *  - Spec mode → folded into the OpenSpec change: decisions go into `design.md`
  *    (Decisions section) and the UI design-system requirements become a delta
  *    spec capability `specs/ui-design-system/spec.md` (normative SHALL/Scenario
  *    form: use tokens.css, never invent tokens, accent ≤ 2×, WCAG AA). The
  *    Pensador does NOT hand-write these — it feeds the `openspec-*` commands.
  *
- * This is why `planArtifacts` keeps `designSystem: false` in spec mode: there is
- * no standalone file, but Open Design still runs. Pure and total.
+ * The standalone `design-system.md` exists ONLY on the inline fallback path
+ * (Open Design unavailable / declined) — see planArtifacts, which gates
+ * `designSystem` on `hasFrontend && !usesOpenDesign`. Pure and total.
  *
  * @param {'prd'|'spec'|undefined} artifactMode
  * @param {string} [changeName='<name>']  the OpenSpec change folder name
@@ -1142,18 +1173,86 @@ export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
 export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
   const spec = resolveArtifactMode(artifactMode) === 'spec';
   const changeDir = `openspec/changes/${changeName}`;
+  // The verbatim DESIGN.md that ships inside every fetched system — relative to
+  // the artifactRoot, matching the design-system-files handoff path convention.
+  const verbatimDesignDoc = 'design-systems/<id>/DESIGN.md';
   return {
     mode: spec ? 'spec' : 'prd',
     // Eventual UI-package target the executor materializes into (both modes).
     systemsDir: OPEN_DESIGN.systemsDir,
-    // A standalone design-system.md exists only in PRD mode.
-    standaloneArtifact: !spec,
-    // Where the design DECISIONS (selection, merge, justified overrides) are written.
-    decisionsDoc: spec ? `${changeDir}/design.md` : OPEN_DESIGN.designSystemFile,
+    // When Open Design is used, its verbatim DESIGN.md IS the design document —
+    // the Pensador never writes a redundant standalone design-system.md (this
+    // function only describes the Open-Design-in-use delivery). The inline
+    // design-system.md exists solely on the fallback path (no system selected).
+    standaloneArtifact: false,
+    // Where the design DECISIONS live. PRD mode → the verbatim DESIGN.md (+ the
+    // design-system-files handoff entry carrying the concrete <id>). Spec mode →
+    // the OpenSpec change's design.md Decisions section.
+    decisionsDoc: spec ? `${changeDir}/design.md` : verbatimDesignDoc,
     // Where the UI design-system REQUIREMENTS live.
     requirementsDoc: spec
       ? `${changeDir}/specs/ui-design-system/spec.md`
-      : OPEN_DESIGN.designSystemFile,
+      : verbatimDesignDoc,
+  };
+}
+
+/**
+ * Spec-mode contract binding the OpenSpec change files to the Open Design design
+ * system. This closes a real gap: in spec mode the change set is scaffolded under
+ * `openspec/changes/<name>/` while the verbatim system files are persisted by the
+ * Pensador under `<featurePath>/design-systems/<id>/` — two DIFFERENT trees. With
+ * no explicit contract, the generated `design.md`/`ui-design-system` spec would
+ * have no reliable pointer to the real tokens, and the executor would not know
+ * where to source them from. This descriptor gives the LLM the exact, concrete
+ * paths every OpenSpec artifact MUST reference.
+ *
+ * Path roles per system:
+ *   - `verbatimDir` / `tokens` / `designMd` / `components`: the SOURCE the Pensador
+ *     produced, under the feature root (handoff `design-system-files`). The
+ *     `design.md` Decisions section cites these so the executor knows the origin.
+ *   - `materializeInto` / `materializedTokens`: the RUNTIME target the executor
+ *     copies into. The `ui-design-system` spec requirements cite `materializedTokens`
+ *     because the spec describes the final code's consumption path.
+ *
+ * Pure and total: same input → same output, never throws, no I/O.
+ *
+ * @param {string|null|undefined} featurePath
+ * @param {string[]|null|undefined} systemIds  the concrete system ids (state.designSystems)
+ * @param {string} [uiPackageDir='packages/ui']  the runtime UI-package target
+ * @returns {{
+ *   changeName: string, changeDir: string, designDoc: string,
+ *   capabilityName: string, capabilitySpec: string,
+ *   systems: { id: string, verbatimDir: string, tokens: string, designMd: string,
+ *     components: string, materializeInto: string, materializedTokens: string }[]
+ * }}
+ */
+export function openDesignSpecContract(featurePath, systemIds, uiPackageDir = 'packages/ui') {
+  const changeName = openspecChangeName(featurePath);
+  const changeDir = openspecChangeDir(featurePath);
+  const root = designSystemFilesRoot(featurePath);
+  const uiRoot = String(uiPackageDir || 'packages/ui').replace(/\/+$/, '');
+  const ids = Array.isArray(systemIds) ? systemIds.filter(Boolean) : [];
+  return {
+    changeName,
+    changeDir,
+    // Design DECISIONS: which system, why, overrides, and the source/target paths.
+    designDoc: `${changeDir}/design.md`,
+    // UI design-system REQUIREMENTS as a delta-spec capability.
+    capabilityName: 'ui-design-system',
+    capabilitySpec: `${changeDir}/specs/ui-design-system/spec.md`,
+    systems: ids.map((id) => {
+      const src = `${root}/design-systems/${id}`;
+      const dst = `${uiRoot}/design-systems/${id}`;
+      return {
+        id,
+        verbatimDir: `${src}/`,
+        tokens: `${src}/tokens.css`,
+        designMd: `${src}/DESIGN.md`,
+        components: `${src}/components.html`,
+        materializeInto: `${dst}/`,
+        materializedTokens: `${dst}/tokens.css`,
+      };
+    }),
   };
 }
 
@@ -1187,7 +1286,7 @@ export function resolveUiPackageDir(signals = {}) {
  * Deterministic and total: same input → same result, never throws.
  *
  * NOTE: this is a keyword heuristic to *signal* relevance of the BACKEND /
- * UIUX / FRONTEND brainstorm stages and to gate the comunication_json artifact.
+ * UIUX / FRONTEND brainstorm stages and to gate the communication artifact.
  * It is intentionally conservative; the Pensador confirms project nature with
  * the user (via AskUserQuestion) when the signal is ambiguous.
  *
@@ -1249,6 +1348,143 @@ export function codexParticipates(signals = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// API/communication contract (Spec-Driven Development) — machine-readable
+// source of truth + derived human-readable view.
+// ---------------------------------------------------------------------------
+
+/**
+ * SDD principle applied to the front↔back (or back↔consumer) boundary: the
+ * SOURCE OF TRUTH is a machine-readable contract that can drive mocks
+ * (Prism), contract tests (Schemathesis/Pact) and codegen — NOT prose. The
+ * Markdown `communication.md` becomes a human-readable VIEW derived from it.
+ *
+ * The concrete contract format follows the API style detected in ARCH
+ * (state.apiStyle). Each entry pins the machine-readable file, the spec family,
+ * and the validation/mock tooling directive carried in the handoff so the
+ * downstream Executor can enforce "the spec is law" in CI.
+ */
+export const API_CONTRACT_FORMATS = {
+  rest: {
+    style: 'rest',
+    spec: 'openapi',
+    file: 'openapi.yaml',
+    label: 'OpenAPI 3.1 (REST/JSON)',
+    mock: 'prism mock openapi.yaml',
+    validate: 'schemathesis run openapi.yaml',
+  },
+  graphql: {
+    style: 'graphql',
+    spec: 'graphql-sdl',
+    file: 'schema.graphql',
+    label: 'GraphQL SDL',
+    mock: 'graphql-faker schema.graphql',
+    validate: 'graphql-inspector validate schema.graphql',
+  },
+  grpc: {
+    style: 'grpc',
+    spec: 'protobuf',
+    file: 'service.proto',
+    label: 'Protocol Buffers (gRPC)',
+    mock: 'grpcmock service.proto',
+    validate: 'buf lint service.proto',
+  },
+  events: {
+    style: 'events',
+    spec: 'asyncapi',
+    file: 'asyncapi.yaml',
+    label: 'AsyncAPI 3 (eventos/filas/webhooks)',
+    mock: 'microcks-cli asyncapi.yaml',
+    validate: 'asyncapi validate asyncapi.yaml',
+  },
+};
+
+/** Default API style when ARCH has not (yet) detected a more specific one. */
+export const DEFAULT_API_STYLE = 'rest';
+
+/**
+ * Normalizes an API-style key into a concrete contract format descriptor.
+ * Unknown / nullish → the default (rest → OpenAPI). Pure and total.
+ *
+ * @param {string|null|undefined} apiStyle
+ * @returns {typeof API_CONTRACT_FORMATS['rest']}
+ */
+export function resolveContractFormat(apiStyle) {
+  const key = Object.prototype.hasOwnProperty.call(API_CONTRACT_FORMATS, apiStyle)
+    ? apiStyle
+    : DEFAULT_API_STYLE;
+  return API_CONTRACT_FORMATS[key];
+}
+
+/**
+ * Builds the path of the machine-readable contract artifact inside the update
+ * directory. This is a FINAL artifact (source of truth) written whenever the
+ * demand has a back-end in PRD mode. Pure and total.
+ *
+ * @param {string|null|undefined} featurePath
+ * @param {string|null|undefined} apiStyle
+ * @returns {string}
+ */
+export function contractArtifactPath(featurePath, apiStyle) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${resolveContractFormat(apiStyle).file}`;
+}
+
+/**
+ * Returns the mock + validation directive for a given API style, carried in the
+ * handoff `api-contract` role so the Executor can spin up a mock server (enabling
+ * the parallel front/back contract-first workflow) and validate the code against
+ * the contract in CI ("the spec is law"). Pure and total.
+ *
+ * @param {string|null|undefined} apiStyle
+ * @returns {{ spec: string, mock: string, validate: string }}
+ */
+export function contractValidationPlan(apiStyle) {
+  const fmt = resolveContractFormat(apiStyle);
+  return { spec: fmt.spec, mock: fmt.mock, validate: fmt.validate };
+}
+
+/**
+ * Glob patterns the Pensador scans in EXPLORE/ARCH to DISCOVER an existing API
+ * contract in a brownfield project, so a new feature EXTENDS the current contract
+ * instead of re-describing it in prose (cohesion between existing front and back).
+ * The discovered baseline is recorded in codebase-memory.md / architecture.md.
+ *
+ * @returns {string[]}
+ */
+export function contractDiscoveryGlobs() {
+  return [
+    '**/openapi*.{yaml,yml,json}',
+    '**/swagger*.{yaml,yml,json}',
+    '**/*.graphql',
+    '**/schema.gql',
+    '**/*.proto',
+    '**/asyncapi*.{yaml,yml,json}',
+    '**/schema.prisma',
+  ];
+}
+
+/**
+ * Classifies how a feature affects an existing API contract, so the FINAL/EXPAND
+ * breaking-change gate can treat a break as a deliberate architectural decision
+ * (SDD: "breaking changes are serious, not quick edits"). Pure and total.
+ *
+ *   - 'none'     → no existing contract is touched (new contract, or no back-end).
+ *   - 'additive' → only new endpoints/fields/optional params are added.
+ *   - 'breaking' → something is removed/renamed, or a type/required constraint
+ *                  changes on an existing operation.
+ *
+ * @param {{ touchesExistingContract?: boolean, removesOrRenames?: boolean, changesTypeOrRequired?: boolean }} [signals]
+ * @returns {'none'|'additive'|'breaking'}
+ */
+export function classifyContractChange(signals = {}) {
+  if (signals?.touchesExistingContract !== true) return 'none';
+  if (signals?.removesOrRenames === true || signals?.changesTypeOrRequired === true) {
+    return 'breaking';
+  }
+  return 'additive';
+}
+
+// ---------------------------------------------------------------------------
 // Artifact planning
 // ---------------------------------------------------------------------------
 
@@ -1256,12 +1492,12 @@ export function codexParticipates(signals = {}) {
  * Plans which artifacts should be generated.
  * Returns an empty plan when not in FINAL or DONE stage (gate enforcement).
  *
- * In PRD mode (default) it plans prd.md + userhistory.md (+ comunication_json.md
+ * In PRD mode (default) it plans prd.md + userhistory.md (+ communication.md
  * when back-end). In spec mode (artifactMode === 'spec', OpenSpec) it plans ONLY
- * the change set (proposal/design/tasks/specs) — userhistory and comunication do
+ * the change set (proposal/design/tasks/specs) — userhistory and communication do
  * not apply.
  *
- * The comunication_json artifact documents the API/communication contract
+ * The communication artifact documents the API/communication contract
  * (endpoints, request/response schemas, error codes). That contract is valuable
  * whenever a back-end exists — both for a fullstack front↔back boundary and for a
  * back-end-only API consumed by external clients — so it is gated on hasBackend,
@@ -1275,7 +1511,8 @@ export function planArtifacts(state) {
   const empty = {
     prd: false,
     userhistory: false,
-    comunication: false,
+    communication: false,
+    apiContract: false,
     designSystem: false,
     proposal: false,
     specs: false,
@@ -1288,14 +1525,23 @@ export function planArtifacts(state) {
 
   const spec = resolveArtifactMode(state.artifactMode) === 'spec';
   const { hasBackend, hasFrontend } = classifyProject(state.consolidated);
+  // When Open Design is used (≥1 system selected in BRAINSTORM_GERAL), its
+  // verbatim files already include a DESIGN.md — so the Pensador does NOT emit a
+  // redundant standalone design-system.md. The standalone doc is written ONLY as
+  // the inline fallback (Open Design unavailable / declined → no system selected).
+  const usesOpenDesign =
+    Array.isArray(state.designSystems) && state.designSystems.filter(Boolean).length > 0;
 
   if (spec) {
     // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
-    // openspec-* commands). userhistory.md and comunication_json.md do not apply.
-    // Open Design STILL runs when hasFrontend (see openDesignDeliveryFor): the
-    // verbatim system files go to the repo, decisions fold into design.md, and
-    // the UI requirements become a `ui-design-system` delta spec — so there is
-    // no standalone design-system.md here (designSystem: false), by design.
+    // openspec-* commands). userhistory.md and communication.md do not apply.
+    // The API contract is folded into the change (design.md + specs/), so no
+    // standalone machine-readable contract is emitted here either (apiContract:
+    // false), mirroring how design is folded in. Open Design STILL runs when
+    // hasFrontend (see openDesignDeliveryFor): the verbatim system files go to
+    // the repo, decisions fold into design.md, and the UI requirements become a
+    // `ui-design-system` delta spec — so there is no standalone design-system.md
+    // here (designSystem: false), by design.
     return {
       prd: false,
       proposal: true,
@@ -1303,7 +1549,8 @@ export function planArtifacts(state) {
       design: true,
       tasks: true,
       userhistory: false,
-      comunication: false,
+      communication: false,
+      apiContract: false,
       designSystem: false,
     };
   }
@@ -1315,20 +1562,27 @@ export function planArtifacts(state) {
     design: false,
     tasks: false,
     userhistory: true,
-    comunication: hasBackend,
-    // The design-system artifact (DESIGN.md, produced via Open Design) is planned
-    // whenever the demand has a front-end — that is the layer the bare functional
-    // PRD leaves unspecified.
-    designSystem: hasFrontend,
+    // The machine-readable contract (openapi.yaml / schema.graphql / service.proto
+    // / asyncapi.yaml) is the SOURCE OF TRUTH whenever a back-end exists — both
+    // for a fullstack front↔back boundary and for a back-end-only API. It is
+    // gated on hasBackend, like communication.
+    apiContract: hasBackend,
+    // communication.md is the human-readable VIEW derived from the contract.
+    communication: hasBackend,
+    // The standalone design-system.md is planned only when the demand has a
+    // front-end AND Open Design was NOT used — i.e. the inline fallback path.
+    // When Open Design is used, its verbatim DESIGN.md (in design-systems/<id>/)
+    // IS the design document, so no redundant standalone doc is emitted.
+    designSystem: hasFrontend && !usesOpenDesign,
   };
 }
 
 /**
  * Builds the list of Artifact objects to be generated.
- * In PRD mode includes prd + userhistory (+ comunication when back-end). In spec
+ * In PRD mode includes prd + userhistory (+ communication when back-end). In spec
  * mode (OpenSpec) it returns ONLY the change set (proposal/design/tasks/specs)
  * under openspec/changes/<name>/, scaffolded by the openspec-* commands — no
- * prd/userhistory/comunication. Every artifact has a filename consistent with its
+ * prd/userhistory/communication. Every artifact has a filename consistent with its
  * kind and a non-empty path.
  *
  * @param {StageState} state
@@ -1405,12 +1659,28 @@ export function buildArtifactList(state) {
     });
   }
 
-  if (plan.comunication) {
+  // Machine-readable API contract — the SOURCE OF TRUTH for the front↔back (or
+  // back↔consumer) boundary. Emitted before communication so the derived view
+  // follows its source. Format follows state.apiStyle (openapi.yaml by default).
+  if (plan.apiContract) {
+    const fmt = resolveContractFormat(state.apiStyle);
     artifacts.push({
-      kind: 'comunication',
-      // Deliberate spelling — matches the user-requested filename, do NOT "fix" to "communication".
-      filename: 'comunication_json.md',
-      path: `${basePath}comunication_json.md`,
+      kind: 'api-contract',
+      filename: fmt.file,
+      path: `${basePath}${fmt.file}`,
+      spec: fmt.spec,
+      // Mock + validation directive for the parallel workflow and CI enforcement.
+      validation: contractValidationPlan(state.apiStyle),
+    });
+  }
+
+  if (plan.communication) {
+    artifacts.push({
+      kind: 'communication',
+      filename: 'communication.md',
+      path: `${basePath}communication.md`,
+      // Human-readable VIEW derived from the machine-readable api-contract above.
+      derivedFrom: resolveContractFormat(state.apiStyle).file,
     });
   }
 
@@ -1640,13 +1910,15 @@ export function deserializeState(serialized) {
  * @property {'prd'|'spec'} [artifactMode] // output mode: 'prd' (default) or 'spec' (OpenSpec)
  * @property {string[]} [designSystems]  // Open Design system ids chosen at BRAINSTORM_GERAL (hasFrontend)
  * @property {string} [uiPackageDir]     // UI package root for verbatim system files (default 'packages/ui')
+ * @property {'rest'|'graphql'|'grpc'|'events'} [apiStyle] // API style detected in ARCH → machine-readable contract format
  */
 
 /**
  * @typedef {Object} ArtifactPlan
  * @property {boolean} prd
  * @property {boolean} userhistory
- * @property {boolean} comunication
+ * @property {boolean} communication
+ * @property {boolean} [apiContract] // machine-readable contract (openapi.yaml/…) when hasBackend, PRD mode
  * @property {boolean} [designSystem] // design-system.md (Open Design) when hasFrontend, PRD mode
  * @property {boolean} [proposal]  // OpenSpec (spec mode)
  * @property {boolean} [specs]     // OpenSpec (spec mode)
@@ -1656,11 +1928,14 @@ export function deserializeState(serialized) {
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'comunication'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'} kind
+ * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'} kind
  * @property {string} filename
  * @property {string} path
  * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
  * @property {boolean} [verbatim]     // true for design-system-files (tokens.css, components.html, …)
+ * @property {string} [spec]          // contract spec family for api-contract (openapi/graphql-sdl/protobuf/asyncapi)
+ * @property {{ spec: string, mock: string, validate: string }} [validation] // mock+validate directive for api-contract
+ * @property {string} [derivedFrom]   // for communication: the machine-readable contract file it is a view of
  */
 
 /**

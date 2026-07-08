@@ -1,13 +1,29 @@
 # Comunicação de Back-End — {{NOME_DO_PROJETO}}
 
-> **Instrução para o LLM:** Este template é gerado **sempre que o projeto tem back-end**
-> (quando `classifyProject(requisitosConsolidados).hasBackend === true`) — seja fullstack
-> (contrato front↔back) ou back-end-only (contrato de API para consumidores externos).
-> Documente aqui os contratos de comunicação JSON entre front-end e back-end:
-> endpoints REST (ou equivalente), schemas de request/response e códigos de erro.
+> **Instrução para o LLM:** Este documento é a **visão legível para humanos** do contrato de comunicação.
+> A **fonte da verdade** (Spec-Driven Development) é o **contrato máquina-legível** gerado no mesmo diretório:
+> `openapi.yaml` (REST), `schema.graphql` (GraphQL), `service.proto` (gRPC) ou `asyncapi.yaml` (eventos/filas),
+> conforme o estilo de API detectado em ARCH (`state.apiStyle`). Este `communication.md` é **derivado** dele —
+> nunca a origem. Se os dois divergirem, o contrato máquina-legível prevalece; regenere esta visão a partir dele.
+> Gere-o **sempre que o projeto tem back-end** (`classifyProject(requisitosConsolidados).hasBackend === true`) — seja
+> fullstack (contrato front↔back) ou back-end-only (contrato de API para consumidores externos).
+> O contrato máquina-legível é o que habilita mock server (Prism/etc.), testes de contrato (Schemathesis/Pact) e codegen;
+> este `.md` serve à leitura humana e ao alinhamento de nomenclatura com o `prd.md` (IDs RF-XX, glossário).
 > Use os requisitos funcionais do `prd.md` como fonte de verdade para os recursos e operações.
-> Mantenha consistência de nomenclatura com o `prd.md` (IDs RF-XX, terminologia do glossário).
+> Em projeto brownfield, **estenda** o contrato existente (descoberto no EXPLORE) — mudanças que quebram o contrato
+> devem ter sido aprovadas no gate de breaking change (EXPAND/FINAL) e versionadas.
 > Remova este bloco de instrução antes de entregar o artefato ao usuário.
+
+---
+
+## Contrato máquina-legível (fonte da verdade)
+
+> **Instrução:** Aponte o arquivo de contrato gerado neste diretório e o ferramental de validação/mock.
+
+- **Arquivo fonte:** `{{ARQUIVO_CONTRATO}}` (ex.: `openapi.yaml`)
+- **Spec:** {{SPEC}} (OpenAPI 3.1 / GraphQL SDL / Protobuf / AsyncAPI 3)
+- **Mock server (fluxo paralelo front/back):** `{{COMANDO_MOCK}}` (ex.: `prism mock openapi.yaml`)
+- **Validação de contrato (CI):** `{{COMANDO_VALIDACAO}}` (ex.: `schemathesis run openapi.yaml`)
 
 ---
 

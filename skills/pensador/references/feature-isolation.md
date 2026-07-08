@@ -21,15 +21,15 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
       agent.response.md
     prd.md
     userhistory.md
-    comunication_json.md
-    design-system.md
+    communication.md
+    design-system.md              # so no fallback (front-end sem Open Design)
     design-systems/
       <id>/                     # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
   carrinho-checkout-v1/
     ...
 ```
 
-O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE. No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`comunication_json.md` nao se aplicam.
+O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE. No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`communication.md` nao se aplicam.
 
 ---
 
@@ -145,15 +145,15 @@ Arquivos:
 
 - `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado pelos comandos `openspec-*`), fora de `.pensador/`.
 - `userhistory.md`: modo PRD (nao se aplica no modo Spec).
-- `comunication_json.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
-- `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`); DESIGN.md gerado via Open Design (fallback inline). Nao se aplica no modo Spec.
+- `communication.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
+- `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`) **e o Open Design NAO foi usado** (fallback inline das 9 secoes). Quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Nao se aplica no modo Spec.
 - `design-systems/<id>/`: arquivos verbatim do Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), quando `hasFrontend` e um system foi selecionado — nos dois modos. Ficam dentro da pasta da feature; o Executor os materializa depois em `packages/ui`/`src/styles` (`state.uiPackageDir`).
 
 Alem dos artefatos finais, `<featurePath>/` contem dois arquivos de trabalho: `codebase-memory.md` (snapshot da exploracao do Code Base Memory, gravado no EXPLORE) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.
 - `userhistory.md`: sempre.
-- `comunication_json.md`: somente quando ha back-end confirmado.
-- `design-system.md`: somente quando ha front-end.
+- `communication.md`: somente quando ha back-end confirmado.
+- `design-system.md`: somente quando ha front-end **e o Open Design nao foi usado** (fallback inline).
 - `handoff.json`: sempre (manifesto de handoff; veja secao abaixo).
 
 Antes de sobrescrever qualquer artefato existente, confirme via `AskUserQuestion`.
@@ -190,8 +190,8 @@ Exemplo minimo:
     { "role": "prd", "path": "prd.md", "required": true, "description": "PRD consolidado" },
     { "role": "userhistory", "path": "userhistory.md", "required": true, "description": "Historias de usuario" },
     { "role": "architecture", "path": "architecture.md", "required": false, "description": "Arquitetura alvo" },
-    { "role": "communication-contract", "path": "comunication_json.md", "required": false, "description": "Contratos front-back" },
-    { "role": "design-system", "path": "design-system.md", "required": false, "description": "Design system (DESIGN.md) via Open Design" }
+    { "role": "communication-contract", "path": "communication.md", "required": false, "description": "Contratos front-back" },
+    { "role": "design-system", "path": "design-system.md", "required": false, "description": "Design system inline (fallback, sem Open Design)" }
   ],
   "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orchestrador", "instructions": "Ingerir os artefatos e implementar o plano." }
 }

@@ -102,7 +102,7 @@ Install: `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-
 Pensador optionally integrates **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. When preflight detects OpenSpec (the `openspec` CLI on PATH or an `openspec/` directory), **INIT** asks via `AskUserQuestion` whether to generate a **PRD** (default) or a structured **Spec**.
 
 - Choosing **Spec** repurposes the `PRD_BASE` stage to drive the **`openspec-*` commands** (`/openspec-new-change`, `/openspec-ff-change`, …), which scaffold the change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) under `openspec/changes/<name>/`. Pensador never hand-writes these files. Every later stage then reasons over the spec.
-- Spec mode delivers **only** the OpenSpec change set — `userhistory.md` and `comunication_json.md` do not apply.
+- Spec mode delivers **only** the OpenSpec change set — `userhistory.md` and `communication.md` do not apply.
 - `STAGE_ORDER` is unchanged — `PRD_BASE` keeps its id and only its behavior/artifacts differ (orthogonal `artifactMode`).
 - FINAL runs `/openspec-verify-change` and points the handoff at `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
 - If the `openspec-*` commands are unavailable when Spec is chosen, Pensador asks (via `AskUserQuestion`) whether to fall back to PRD mode or abort — it does not build the structure manually. The legacy `/opsx:*` prefix is deprecated.
@@ -150,8 +150,8 @@ All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUser
 - `prd.md` — Final consolidated PRD, structured per Strict PRD Schema. *(PRD mode)*
 - `openspec/changes/<name>/` — OpenSpec change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`), scaffolded by the `openspec-*` commands. *(spec mode)*
 - `userhistory.md` — User journey in sequential steps. *(PRD mode only)*
-- `comunication_json.md` — Communication/API contract in JSON. *(PRD mode, when backend exists)*
-- `design-system.md` — Brand-grade design system (DESIGN.md: palette, typography, spacing, components, motion, voice), produced via Open Design from a parsed design brief. *(PRD mode, when front-end exists; inline fallback if Open Design is unavailable)*
+- `communication.md` — Communication/API contract in JSON. *(PRD mode, when backend exists)*
+- `design-system.md` — Brand-grade design system (DESIGN.md schema), written inline **only as a fallback** when Open Design is unavailable. When Open Design is used, its verbatim `DESIGN.md` (in `design-systems/<id>/`) is the design document, so no redundant standalone file is produced. *(PRD mode, when front-end exists)*
 - `design-systems/<id>/` — Verbatim Open Design system files (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), fetched by `scripts/od-fetch-system.mjs` into the feature folder. *(both modes, when front-end exists and a system was selected; the Executor materializes them into `packages/ui`/`src/styles` during implementation)*
 - `codebase-memory.md` — Code Base Memory exploration snapshot. *(always, in `<featurePath>/`)*
 - `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*

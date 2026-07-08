@@ -50,7 +50,7 @@ Opção A (recomendada quando o time já usa OpenSpec): Spec estruturada (OpenSp
 Impacto: o PRD_BASE aciona os comandos openspec-* e monta o change set em openspec/changes/<nome>/.
 
 Opção B: PRD
-Impacto: fluxo clássico do Pensador; gera prd.md + userhistory.md (+ comunication_json.md se houver back-end) (+ design-system.md se houver front-end).
+Impacto: fluxo clássico do Pensador; gera prd.md + userhistory.md (+ communication.md se houver back-end) (+ design-system.md se houver front-end).
 ```
 
 A escolha é registrada em `artifactMode` com `withArtifactMode(state, escolha)` (`'prd'` ou `'spec'`). O `artifactMode` é **ortogonal** ao modo de execução (`--modo`) e às lentes de domínio.
@@ -104,9 +104,41 @@ Fluxo expandido (recomendado para mudanças relevantes):
 - O `BRAINSTORM_GERAL`, `CODEX` e `AGY` revisam a spec em busca de lacunas e refinam os artefatos do change set.
 - O `FINAL` valida e fecha a spec.
 
-No modo Spec, `userhistory.md` e `comunication_json.md` **não se aplicam** — o entregável é o change set OpenSpec.
+No modo Spec, `userhistory.md` e `communication.md` **não se aplicam** — o entregável é o change set OpenSpec.
 
-**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set (`openDesignDeliveryFor` no engine): os arquivos verbatim do system (`tokens.css`, `components.html`, …) vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD; o Executor os materializa em `packages/ui` depois); as **decisões** de design entram na seção *Decisions* do `design.md`; e os **requisitos** de UI viram a capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenários). Ver `references/open-design.md` › **Modo Spec**.
+**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set. Os arquivos verbatim do system (`tokens.css`, `DESIGN.md`, `components.html`, …) vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD; o Executor os materializa em `packages/ui` depois). Como o change set (`openspec/changes/<nome>/`) e os arquivos do design system (`.pensador/<nome>/design-systems/<id>/`) vivem em **árvores diferentes**, existe um contrato explícito que liga um ao outro — ver abaixo.
+
+### Contrato Spec ↔ Open Design (`openDesignSpecContract()`)
+
+`openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)` é a fonte da verdade determinística dos caminhos que os arquivos do OpenSpec **DEVEM** referenciar. Sem ele, os arquivos gerados não teriam ponteiro confiável para os tokens reais e o Executor não saberia de onde copiá-los. O contrato entrega, por system escolhido:
+
+| Campo | Papel | Quem referencia |
+|---|---|---|
+| `verbatimDir` / `tokens` / `designMd` / `components` | **origem** produzida pelo Pensador (raiz da feature, role `design-system-files` do handoff) | seção *Decisions* do `design.md` (registra a origem para o Executor copiar) |
+| `materializeInto` / `materializedTokens` | **alvo de runtime** onde o Executor materializa (`packages/ui`/`src/styles`) | requisitos da capability `ui-design-system` (a spec descreve o caminho de consumo do código final) |
+| `designDoc` | `openspec/changes/<nome>/design.md` | — |
+| `capabilitySpec` | `openspec/changes/<nome>/specs/ui-design-system/spec.md` | — |
+
+O Pensador alimenta os comandos `openspec-*` de modo que:
+
+1. **`design.md` › Decisions** registra o(s) `<id>` escolhido(s), a **origem verbatim** (`verbatimDir`) e o **alvo de materialização** (`materializeInto`) — mais os overrides justificados. Ex.: *"Design system `agentic` (Open Design). Origem: `.pensador/<nome>/design-systems/agentic/`. Materializar em: `packages/ui/design-systems/agentic/`. Override: accent_hue ajustado para a cor de marca (justificativa …)."*
+2. **`specs/ui-design-system/spec.md`** vira requisito normativo que cita o `materializedTokens` como fonte de estilo:
+
+   ```markdown
+   ## ADDED Requirements
+
+   ### Requirement: Tokens são a fonte de verdade do estilo
+   O front-end MUST consumir `packages/ui/design-systems/<id>/tokens.css` como base de
+   estilo e NÃO MUST inventar valores de cor/raio/espaçamento fora dos tokens.
+
+   #### Scenario: Cor de marca aplicada
+   - **WHEN** um componente precisa da cor primária
+   - **THEN** usa a custom property do `tokens.css` (ex.: `var(--color-accent)`), nunca um hex literal
+   ```
+
+3. O `proposal.md` lista a capability `ui-design-system` na seção **Capabilities**.
+
+Assim `/openspec-verify-change` valida os cenários (exatamente 4 `#`, todo requisito com ≥ 1 cenário) e a referência ao design system fica rastreável do change set até os arquivos verbatim. Ver `references/open-design.md` › **Modo Spec** e `references/handoff-contract.md` (role `design-system-files`).
 
 ---
 

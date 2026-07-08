@@ -62,8 +62,8 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `prd.md` — PRD final consolidado, estruturado conforme o Strict PRD Schema. *(modo PRD)*
 - `openspec/changes/<name>/` — change set OpenSpec (`proposal.md`, `design.md`, `tasks.md`, `specs/`), montado pelos comandos `openspec-*`. *(modo Spec)*
 - `userhistory.md` — Jornada do usuário em passos sequenciais. *(só no modo PRD)*
-- `comunication_json.md` — Contrato de comunicação/API em JSON. *(modo PRD, quando houver back-end)*
-- `design-system.md` — Sistema de design brand-grade (DESIGN.md: paleta, tipografia, espaçamento, componentes, motion, voz), gerado via Open Design a partir do brief de design parseado. *(modo PRD, quando houver front-end; fallback inline se o Open Design não estiver disponível)*
+- `communication.md` — Contrato de comunicação/API em JSON. *(modo PRD, quando houver back-end)*
+- `design-system.md` — Sistema de design brand-grade (schema DESIGN.md), escrito inline **apenas como fallback** quando o Open Design não está disponível. Quando o Open Design é usado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) é o documento de design e nenhum arquivo standalone redundante é gerado. *(modo PRD, quando houver front-end)*
 - `design-systems/<id>/` — Arquivos verbatim do system Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), copiados por `scripts/od-fetch-system.mjs` para dentro da pasta da feature. *(nos dois modos, quando houver front-end e um system selecionado; o Executor os materializa em `packages/ui`/`src/styles` na implementação)*
 - `codebase-memory.md` — Snapshot da exploração do Code Base Memory. *(sempre, em `<featurePath>/`)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
@@ -86,8 +86,8 @@ Cada execução do Pensador cria (ou retoma) um diretório isolado, nomeado pelo
     │   └── agy.response.md
     ├── prd.md                     ← artefatos finais
     ├── userhistory.md
-    ├── comunication_json.md
-    ├── design-system.md           ← quando há front-end (via Open Design)
+    ├── communication.md
+    ├── design-system.md           ← só no fallback (front-end sem Open Design)
     └── design-systems/<id>/       ← arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
@@ -187,7 +187,7 @@ Instalação: `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-me
 O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. Quando o preflight detecta o OpenSpec (CLI `openspec` no PATH ou diretório `openspec/`), o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
 
 - Escolhendo **Spec**, o estágio `PRD_BASE` passa a escalar os **comandos `openspec-*`** (`/openspec-new-change`, `/openspec-ff-change`, …), que montam o change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) em `openspec/changes/<name>/`. O Pensador nunca escreve esses arquivos manualmente. Todas as fases seguintes raciocinam sobre a spec.
-- O modo Spec entrega **apenas** o change set OpenSpec — `userhistory.md` e `comunication_json.md` não se aplicam.
+- O modo Spec entrega **apenas** o change set OpenSpec — `userhistory.md` e `communication.md` não se aplicam.
 - A `STAGE_ORDER` não muda — `PRD_BASE` mantém o id e só seu comportamento/artefatos diferem (`artifactMode` ortogonal).
 - O FINAL roda `/openspec-verify-change` e orienta o handoff para `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
 - Se os comandos `openspec-*` estiverem indisponíveis quando Spec for escolhido, o Pensador pergunta (via `AskUserQuestion`) se deve cair para o modo PRD ou abortar — não monta a estrutura manualmente. O prefixo legado `/opsx:*` está descontinuado.
@@ -270,7 +270,7 @@ cc-pensador/
 │  │  │  ├─ open-design.md               # Open Design (MCP/CLI) opcional: brief de design → design-system.md
 │  │  │  ├─ openspec.md                  # OpenSpec opcional: escolha PRD vs Spec no INIT
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
-│  │  └─ assets/                         # templates: prd · userhistory · comunication_json
+│  │  └─ assets/                         # templates: prd · userhistory · communication
 │  ├─ prd/SKILL.md           # Skill_PRD_Base: Strict PRD Schema + entrevista de descoberta
 │  ├─ requirements-clarity/SKILL.md
 │  ├─ backend-development/SKILL.md

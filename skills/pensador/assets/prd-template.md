@@ -170,9 +170,15 @@
 
 ## 11. Contratos de API & Integrações
 
-> **Instrução:** Endpoints com método, payloads de request/response e códigos de erro. Liste integrações externas. Quando houver back-end, alinhe com `comunication_json.md`.
+> **Instrução:** A **fonte da verdade** dos contratos é o artefato máquina-legível (`openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml`, conforme `state.apiStyle`), gerado no diretório da feature quando há back-end. Esta seção **referencia** esse contrato e o `communication.md` (visão legível) — não os duplica. Liste aqui a visão geral (estilo de API, arquivo fonte) e as integrações externas; os endpoints detalhados vivem no contrato máquina-legível.
 
-### Endpoints
+### Contrato (fonte da verdade)
+
+- **Estilo de API:** {{ESTILO_API}} (REST/OpenAPI · GraphQL · gRPC · AsyncAPI)
+- **Arquivo fonte:** `{{ARQUIVO_CONTRATO}}` (máquina-legível)
+- **Visão legível:** `communication.md`
+
+### Endpoints (resumo — detalhe no contrato máquina-legível)
 
 | Método | Rota | Request | Response | Erros |
 |---|---|---|---|---|
@@ -223,7 +229,7 @@
 
 ## 15. Arquitetura
 
-> **Instrução:** Componentes, integrações e decisões técnicas. Se for Projeto_Fullstack, descreva a separação front-end/back-end e os contratos (detalhados em `comunication_json.md`).
+> **Instrução:** Componentes, integrações e decisões técnicas. Se for Projeto_Fullstack, descreva a separação front-end/back-end e os contratos (detalhados em `communication.md`).
 
 ### Stack Tecnológica
 

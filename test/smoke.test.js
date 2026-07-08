@@ -67,8 +67,22 @@ describe('Pensador Engine — smoke', () => {
   it('maps each brainstorm/refinement stage to a delegation target', () => {
     expect(STAGE_DELEGATION.BRAINSTORM_GERAL.kind).toBe('parallel');
     expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.requirements.ref).toBe('requirements-clarity');
-    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.backend.ref).toBe('codex:codex-rescue');
-    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.uiux.ref).toBe('cc-antigravity-plugin:antigravity-agent');
+    // v2.6: backend-development is the PRIMARY backend lens; Codex is the refine lens.
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.backend.ref).toBe('backend-development');
+    expect(
+      STAGE_DELEGATION.BRAINSTORM_GERAL.domains.backend.lenses.map((l) => l.ref)
+    ).toEqual(['backend-development', 'codex:codex-rescue']);
+    // v2.6: ui-ux-pro-max + frontend-design are PRIMARY design lenses feeding
+    // Open Design; AGY is the refine lens. The old `uiux` key is now `design`.
+    expect(STAGE_DELEGATION.BRAINSTORM_GERAL.domains.design.ref).toBe('ui-ux-pro-max');
+    expect(
+      STAGE_DELEGATION.BRAINSTORM_GERAL.domains.design.lenses.map((l) => l.ref)
+    ).toEqual([
+      'ui-ux-pro-max',
+      'frontend-design',
+      'open-design',
+      'cc-antigravity-plugin:antigravity-agent',
+    ]);
     expect(STAGE_DELEGATION.CODEX.ref).toBe('codex:codex-rescue');
     expect(STAGE_DELEGATION.AGY.ref).toBe('cc-antigravity-plugin:antigravity-agent');
   });

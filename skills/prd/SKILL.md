@@ -150,7 +150,7 @@ Estas regras aplicam-se tanto ao `PRD_Base` (estágio PRD_BASE) quanto ao `prd.m
 
 - O `prd.md` final reflete as respostas registradas nos estágios de trabalho (EXPAND, BRAINSTORM_GERAL, CODEX e AGY).
 - Requisitos derivados de lacunas identificadas pelo Codex ou pelo AGY são incorporados nas seções pertinentes do `Strict_PRD_Schema`.
-- A seção **Design System & UI/UX** referencia o artefato `design-system.md` (gerado via Open Design quando há front-end); a seção **Contratos de API & Integrações** referencia o `comunication_json.md` quando há back-end.
+- A seção **Design System & UI/UX** referencia os arquivos verbatim do Open Design em `design-systems/<id>/` (o `DESIGN.md` é o documento de design) ou, no fallback sem Open Design, o `design-system.md` inline; a seção **Contratos de API & Integrações** referencia o contrato máquina-legível (fonte da verdade) e o `communication.md` (visão derivada) quando há back-end.
 
 ---
 

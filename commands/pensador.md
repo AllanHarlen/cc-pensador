@@ -14,7 +14,7 @@ Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre onze esta
 4. **ARCH** - Analise do projeto (reaproveita o indice do Code Base Memory + `Read`/`Glob`/`Grep`); em greenfield, entrevista o usuario; grava `architecture.md`.
 5. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
 6. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
-7. **BRAINSTORM_GERAL** - Orquestracao por dominio: `requirements-clarity`, Codex `effort high` se `hasBackend`, AGY `gemini-3.1-pro-high` se `hasFrontend`, e Open Design (brief de design -> `design-system.md`) se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
+7. **BRAINSTORM_GERAL** - Orquestracao por dominio com lentes primarias (skills deterministas) + refino: `requirements-clarity` (sempre); `backend-development` primaria + Codex `effort high` (refino) se `hasBackend`; `ui-ux-pro-max` + `frontend-design` primarias + AGY `gemini-3.1-pro-high` (refino) e Open Design (brief de design -> arquivos verbatim) se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
 8. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`; nao participa em atividade especifica de front-end (`hasFrontend` sem `hasBackend`).
 9. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
 10. **FINAL** - Consolidacao, artefatos, recap final e handoff.
@@ -122,13 +122,15 @@ Artefatos e estado devem ficar sob:
   shared-agents/
   prd.md
   userhistory.md
-  comunication_json.md
+  openapi.yaml
+  communication.md
   design-system.md
 ```
 
-> No modo Spec (OpenSpec), o entregavel e o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), criado pelos comandos `openspec-*`; `prd.md`, `userhistory.md`, `comunication_json.md` e `design-system.md` nao se aplicam.
+> `openapi.yaml` e o exemplo REST do **contrato maquina-legivel** (fonte da verdade); conforme `state.apiStyle` pode ser `schema.graphql`, `service.proto` ou `asyncapi.yaml`. O `communication.md` e a visao legivel derivada dele.
+> No modo Spec (OpenSpec), o entregavel e o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), criado pelos comandos `openspec-*`; `prd.md`, `userhistory.md`, contrato maquina-legivel standalone, `communication.md` e `design-system.md` nao se aplicam.
 
-No estagio FINAL, grave tambem o manifesto de handoff `handoff.json` na raiz de `<featurePath>/`, conforme `skills/pensador/references/handoff-contract.md`. Ele e a ancora de descoberta que o `/cc-orchestrador-subagents:orchestrador` usa para ingerir o PRD/Spec. Liste em `artifacts[]` cada arquivo final gerado com seu `role` (`prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `design-system-files`, `codebase-memory`, `shared-agents`) e marque `status: "DONE"` apenas quando todos os gates fecharem.
+No estagio FINAL, grave tambem o manifesto de handoff `handoff.json` na raiz de `<featurePath>/`, conforme `skills/pensador/references/handoff-contract.md`. Ele e a ancora de descoberta que o `/cc-orchestrador-subagents:orchestrador` usa para ingerir o PRD/Spec. Liste em `artifacts[]` cada arquivo final gerado com seu `role` (`prd`, `userhistory`, `architecture`, `api-contract`, `communication-contract`, `design-system`, `design-system-files`, `codebase-memory`, `shared-agents`) e marque `status: "DONE"` apenas quando todos os gates fecharem.
 
 ### Passo 5 - Reportar ao usuario
 
@@ -136,8 +138,8 @@ Ao concluir FINAL, informe:
 
 - Caminho de `prd.md` (modo PRD) ou do change set `openspec/changes/<nome>/` (modo Spec).
 - Caminho de `userhistory.md` (modo PRD).
-- Caminho de `comunication_json.md`, se houver back-end confirmado (modo PRD).
-- Caminho de `design-system.md`, se houver front-end (modo PRD; DESIGN.md gerado via Open Design ou inline).
+- Caminho do contrato maquina-legivel (`openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml`) e de `communication.md` (visao derivada), se houver back-end confirmado (modo PRD).
+- Caminho dos arquivos do design system, se houver front-end (modo PRD): quando o Open Design foi usado, `design-systems/<id>/` (arquivos verbatim, incl. `DESIGN.md`); no fallback (sem Open Design), o `design-system.md` inline.
 - Caminho de `codebase-memory.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
 - Recap final e handoff. No modo Spec, oriente `/openspec-verify-change`, `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.

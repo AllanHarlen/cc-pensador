@@ -93,8 +93,9 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 | `prd` | `prd.md` | sim |
 | `userhistory` | `userhistory.md` | sim |
 | `architecture` | `architecture.md` | quando houver ARCH |
-| `communication-contract` | `comunication_json.md` | quando `backendConfirmed` |
-| `design-system` | `design-system.md` | quando `hasFrontend` (documento de decisões via Open Design: seleção, merge, overrides, ponteiros) |
+| `api-contract` | `openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml` | quando `backendConfirmed` — **fonte da verdade** maquina-legivel (formato por `state.apiStyle`). Carrega `validation` (`{ spec, mock, validate }`) para o Executor subir mock (fluxo paralelo front/back) e validar o codigo contra o contrato no CI ("a spec e lei"). |
+| `communication-contract` | `communication.md` | quando `backendConfirmed` — **visao legivel derivada** do `api-contract` (`derivedFrom` aponta o arquivo fonte). Nao e a fonte da verdade. |
+| `design-system` | `design-system.md` | **somente no fallback** (front-end sem Open Design) — DESIGN.md inline das 9 seções. Quando o Open Design é usado, o `DESIGN.md` verbatim (role `design-system-files`) substitui este doc. |
 | `design-system-files` | `design-systems/<id>/` | quando `hasFrontend` **e** um system foi selecionado — **uma entrada por `<id>` concreto** (de `state.designSystems`), relativa ao `artifactRoot` (`.pensador/<slug>-vN/`), com os arquivos verbatim (`tokens.css`, `components.html`, `preview/`, …). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) que o Executor usa ao mover os arquivos para a arvore de codigo real. É o que `buildArtifactList` emite para o handoff carregar o **caminho real**, sem o consumidor precisar parsear a prosa do `design-system.md`. |
 | `codebase-memory` | `codebase-memory.md` | opcional |
 | `shared-agents` | `shared-agents/` | opcional |
@@ -133,7 +134,7 @@ O consumidor nunca adivinha caminhos: descobre tudo via `handoff.json`. Se o `ha
 1. Procure `.pensador/*/handoff.json`. Para multiplos `slug`, confirme com o usuario qual demanda implementar.
 2. Para o mesmo `slug` com varias versoes `-vN`, **use a maior versao** (mais recente). Confirme via `AskUserQuestion` se houver duvida.
 3. Sem `handoff.json`: leia `.pensador/<slug>-vN/.pensador-progress.json` (`checkpointVersion: 2`) e o array `artifacts`.
-4. Ingira na ordem: `prd` → `userhistory` → `architecture` → `communication-contract` → `design-system`. Use o `communication-contract` como base dos contratos API/UI da Fase 8 e o `design-system` como contrato visual (tokens, tipografia, estados) do front-end.
+4. Ingira na ordem: `prd` → `userhistory` → `architecture` → `api-contract` → `communication-contract` → `design-system`. Use o `api-contract` (maquina-legivel) como **fonte da verdade** dos contratos API/UI da Fase 8 — suba o mock a partir dele e valide contra ele no CI (campo `validation`); o `communication-contract` e a visao legivel. Use o `design-system` como contrato visual (tokens, tipografia, estados) do front-end.
 
 ### Executor ingere Orchestrador
 1. Procure `.orchestration/<slug>/handoff.json`.

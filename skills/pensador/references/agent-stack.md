@@ -46,14 +46,16 @@ O motor `claude` (padrao) nao delega: o Claude Code redige inline. Detalhes de p
 <featurePath>/shared-agents/context-pack.md
 ```
 
-Roteamento:
+Roteamento (lentes primarias sao skills deterministas; Codex/AGY sao lentes de refinamento; Open Design e o motor de design):
 
-| Dominio | Participante | Condicao | Saida esperada |
-|---|---|---|---|
-| Clareza de requisitos | `requirements-clarity` | sempre | `requirements-clarity.response.md` |
-| Backend/tecnico | Codex | `hasBackend = true` | `codex.response.md` |
-| Frontend/produto | AGY | `hasFrontend = true` | `agy.response.md` |
-| Design system | Open Design (`od`) | `hasFrontend = true` | brief de design parseado -> `design-system.md` (no FINAL) |
+| Dominio | Lente primaria | Refino/Motor | Condicao | Saida esperada |
+|---|---|---|---|---|
+| Clareza de requisitos | `requirements-clarity` | — | sempre | `requirements-clarity.response.md` |
+| Backend/tecnico | `backend-development` (skill) | Codex `effort high` | `hasBackend = true` | `backend-development.response.md` + `codex.response.md` |
+| UX/Frontend | `ui-ux-pro-max` + `frontend-design` (skills) | AGY `gemini-3.1-pro-high` | `hasFrontend = true` | `ui-ux-pro-max.response.md` + `frontend-design.response.md` + `agy.response.md` |
+| Design system | Open Design (`od`) | — | `hasFrontend = true` | brief de design parseado -> arquivos verbatim `design-systems/<id>/` (no FINAL) |
+
+As lentes primarias (`backend-development`, `ui-ux-pro-max`, `frontend-design`) rodam sempre que o dominio e relevante, produzindo um checklist determinista. Codex e AGY refinam por cima delas. Mapeamento em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.*.lenses`.
 
 O Pensador consolida as respostas em:
 
@@ -71,8 +73,11 @@ Esse arquivo e a fonte de perguntas candidatas do BRAINSTORM_GERAL.
 |---|---|---|---|
 | `context-pack.md` | Pensador | Skills e subagentes | Demanda, PRD Base, arquitetura, EXPAND, complexidade, dominios e instrucoes |
 | `requirements-clarity.response.md` | Skill `requirements-clarity` | Pensador | Ambiguidades, criterios de aceite, escopo e perguntas candidatas |
-| `codex.response.md` | Codex | Pensador | Lacunas tecnicas, riscos de backend, contratos, dados e seguranca |
-| `agy.response.md` | AGY | Pensador | Lacunas de produto/frontend, jornadas, telas, cenarios e riscos |
+| `backend-development.response.md` | Skill `backend-development` (lente primaria) | Pensador | Checklist de dados, APIs, contratos, seguranca, consistencia, observabilidade |
+| `ui-ux-pro-max.response.md` | Skill `ui-ux-pro-max` (lente primaria) | Pensador | Fluxos, estados de tela, acessibilidade, hierarquia, microcopy |
+| `frontend-design.response.md` | Skill `frontend-design` (lente primaria) | Pensador | Componentizacao, design system, tokens, responsividade, layout |
+| `codex.response.md` | Codex (refino) | Pensador | Lacunas tecnicas, riscos de backend, contratos, dados e seguranca |
+| `agy.response.md` | AGY (refino) | Pensador | Lacunas de produto/frontend, jornadas, telas, cenarios e riscos |
 | `agent.response.md` | Pensador | Pensador/FINAL | Consolidado com autoria, dominio, severidade, deduplicacao e perguntas aprovadas |
 
 Formato recomendado para respostas:
@@ -111,7 +116,7 @@ Regra: nunca comunique `extrahigh` ao Codex. Use `effort high`.
 
 ### No BRAINSTORM_GERAL
 
-Codex roda quando `hasBackend = true`. O prompt deve pedir analise tecnica focada em dados, API, contratos, seguranca, consistencia, observabilidade, integracoes e riscos de implementacao. A resposta deve ser gravada em `shared-agents/codex.response.md`.
+Codex roda quando `hasBackend = true`, como **lente de refinamento por cima da lente primaria `backend-development`**. O prompt deve pedir analise tecnica focada em dados, API, contratos, seguranca, consistencia, observabilidade, integracoes e riscos de implementacao, aprofundando o checklist ja levantado pela lente primaria. A resposta deve ser gravada em `shared-agents/codex.response.md`.
 
 ### No CODEX
 
@@ -131,7 +136,7 @@ Regra: comunique o modelo no prompt e registre o valor. Se o plugin rejeitar o i
 
 ### No BRAINSTORM_GERAL
 
-AGY roda quando `hasFrontend = true`. O prompt deve pedir analise de experiencia, produto, jornadas, telas, estados, cenarios de uso e riscos de decisao. A resposta deve ser gravada em `shared-agents/agy.response.md`.
+AGY roda quando `hasFrontend = true`, como **lente de refinamento por cima das lentes primarias `ui-ux-pro-max` e `frontend-design`**. O prompt deve pedir analise de experiencia, produto, jornadas, telas, estados, cenarios de uso e riscos de decisao. A resposta deve ser gravada em `shared-agents/agy.response.md`.
 
 ### No AGY
 

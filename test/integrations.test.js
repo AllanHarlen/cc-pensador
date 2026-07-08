@@ -26,7 +26,15 @@ import {
   openDesignBriefRouting,
   openDesignFetchPlan,
   openDesignDeliveryFor,
+  openDesignSpecContract,
   resolveUiPackageDir,
+  API_CONTRACT_FORMATS,
+  DEFAULT_API_STYLE,
+  resolveContractFormat,
+  contractArtifactPath,
+  contractValidationPlan,
+  contractDiscoveryGlobs,
+  classifyContractChange,
   initState,
   planArtifacts,
   buildArtifactList,
@@ -158,7 +166,7 @@ const backendReq = { id: 'b1', source: 'expand', text: 'REST API with a database
 const frontendReq = { id: 'f1', source: 'expand', text: 'A React frontend UI component' };
 
 describe('planArtifacts in spec mode', () => {
-  it('delivers only the OpenSpec change set (no prd/userhistory/comunication)', () => {
+  it('delivers only the OpenSpec change set (no prd/userhistory/communication)', () => {
     const plan = planArtifacts(finalState('spec', [frontendReq]));
     expect(plan.prd).toBe(false);
     expect(plan.proposal).toBe(true);
@@ -166,21 +174,21 @@ describe('planArtifacts in spec mode', () => {
     expect(plan.design).toBe(true);
     expect(plan.tasks).toBe(true);
     expect(plan.userhistory).toBe(false);
-    expect(plan.comunication).toBe(false);
+    expect(plan.communication).toBe(false);
   });
 
-  it('drops comunication even when a back-end is present (spec mode)', () => {
+  it('drops communication even when a back-end is present (spec mode)', () => {
     const plan = planArtifacts(finalState('spec', [backendReq]));
-    expect(plan.comunication).toBe(false);
+    expect(plan.communication).toBe(false);
     expect(plan.userhistory).toBe(false);
   });
 
-  it('keeps prd mode unchanged (prd + userhistory + comunication on backend)', () => {
+  it('keeps prd mode unchanged (prd + userhistory + communication on backend)', () => {
     const plan = planArtifacts(finalState('prd', [backendReq]));
     expect(plan.prd).toBe(true);
     expect(plan.proposal).toBe(false);
     expect(plan.userhistory).toBe(true);
-    expect(plan.comunication).toBe(true);
+    expect(plan.communication).toBe(true);
   });
 
   it('returns an empty plan outside FINAL/DONE regardless of mode', () => {
@@ -191,12 +199,12 @@ describe('planArtifacts in spec mode', () => {
 });
 
 describe('buildArtifactList in spec mode', () => {
-  it('emits only proposal/design/tasks/specs (no prd/userhistory/comunication)', () => {
+  it('emits only proposal/design/tasks/specs (no prd/userhistory/communication)', () => {
     const kinds = buildArtifactList(finalState('spec', [backendReq])).map((a) => a.kind);
     expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks', 'specs']));
     expect(kinds).not.toContain('prd');
     expect(kinds).not.toContain('userhistory');
-    expect(kinds).not.toContain('comunication');
+    expect(kinds).not.toContain('communication');
     expect(kinds).toHaveLength(4);
   });
 
@@ -374,12 +382,13 @@ describe('Open Design descriptor', () => {
     expect(ds.destDir).toBe('.pensador/login-social-v1/design-systems/agentic/');
   });
 
-  it('openDesignDeliveryFor: PRD mode writes a standalone design-system.md', () => {
+  it('openDesignDeliveryFor: PRD mode uses the verbatim DESIGN.md (no standalone doc)', () => {
     const d = openDesignDeliveryFor('prd');
     expect(d.mode).toBe('prd');
-    expect(d.standaloneArtifact).toBe(true);
-    expect(d.decisionsDoc).toBe('design-system.md');
-    expect(d.requirementsDoc).toBe('design-system.md');
+    // Open Design in use → its verbatim DESIGN.md is the design document.
+    expect(d.standaloneArtifact).toBe(false);
+    expect(d.decisionsDoc).toBe('design-systems/<id>/DESIGN.md');
+    expect(d.requirementsDoc).toBe('design-systems/<id>/DESIGN.md');
     // Verbatim files land in the repo regardless of mode.
     expect(d.systemsDir).toBe('packages/ui/design-systems');
   });
@@ -394,6 +403,42 @@ describe('Open Design descriptor', () => {
     );
     // Verbatim system files still go to the repo, mode-independent.
     expect(d.systemsDir).toBe('packages/ui/design-systems');
+  });
+
+  it('openDesignSpecContract binds the OpenSpec change files to the concrete design system paths', () => {
+    const c = openDesignSpecContract('.pensador/login-social-v1', ['agentic']);
+    expect(c.changeName).toBe('login-social-v1');
+    expect(c.changeDir).toBe('openspec/changes/login-social-v1');
+    expect(c.designDoc).toBe('openspec/changes/login-social-v1/design.md');
+    expect(c.capabilityName).toBe('ui-design-system');
+    expect(c.capabilitySpec).toBe(
+      'openspec/changes/login-social-v1/specs/ui-design-system/spec.md'
+    );
+    expect(c.systems).toHaveLength(1);
+    const s = c.systems[0];
+    expect(s.id).toBe('agentic');
+    // SOURCE the Pensador produced (feature root), cited by design.md Decisions.
+    expect(s.verbatimDir).toBe('.pensador/login-social-v1/design-systems/agentic/');
+    expect(s.tokens).toBe('.pensador/login-social-v1/design-systems/agentic/tokens.css');
+    expect(s.designMd).toBe('.pensador/login-social-v1/design-systems/agentic/DESIGN.md');
+    expect(s.components).toBe('.pensador/login-social-v1/design-systems/agentic/components.html');
+    // RUNTIME target the executor materializes into, cited by the ui-design-system spec.
+    expect(s.materializeInto).toBe('packages/ui/design-systems/agentic/');
+    expect(s.materializedTokens).toBe('packages/ui/design-systems/agentic/tokens.css');
+  });
+
+  it('openDesignSpecContract honors a custom UI package dir, supports multiple systems, and is total', () => {
+    const c = openDesignSpecContract('.pensador/checkout-v2', ['bmw', 'clean'], 'frontend/packages/ui/');
+    expect(c.systems.map((s) => s.id)).toEqual(['bmw', 'clean']);
+    expect(c.systems[0].materializedTokens).toBe('frontend/packages/ui/design-systems/bmw/tokens.css');
+    expect(c.systems[1].verbatimDir).toBe('.pensador/checkout-v2/design-systems/clean/');
+    // No systems selected → empty list, still a valid contract with the change paths.
+    const empty = openDesignSpecContract('.pensador/checkout-v2', []);
+    expect(empty.systems).toEqual([]);
+    expect(empty.capabilitySpec).toBe('openspec/changes/checkout-v2/specs/ui-design-system/spec.md');
+    // Total on bad input (null featurePath → fallback change name / feature root).
+    expect(() => openDesignSpecContract(null, null)).not.toThrow();
+    expect(openDesignSpecContract(null, null).changeName).toBe('atualizacao-v1');
   });
 
   it('openDesignDeliveryFor defaults the change name and the mode, and never throws', () => {
@@ -424,6 +469,15 @@ describe('design-system artifact planning (PRD mode, front-end gated)', () => {
     expect(plan.designSystem).toBe(true);
   });
 
+  it('does NOT plan a standalone design-system when Open Design is used (verbatim DESIGN.md covers it)', () => {
+    const state = { ...finalState('prd', [frontendReq]), designSystems: ['agentic'] };
+    expect(planArtifacts(state).designSystem).toBe(false);
+    const kinds = buildArtifactList({ ...state, featurePath: '.pensador/loja-v1' }).map((a) => a.kind);
+    // No redundant standalone doc, but the verbatim files (incl. DESIGN.md) are emitted.
+    expect(kinds).not.toContain('design-system');
+    expect(kinds).toContain('design-system-files');
+  });
+
   it('does NOT plan design-system for a back-end-only demand', () => {
     const plan = planArtifacts(finalState('prd', [backendReq]));
     expect(plan.designSystem).toBe(false);
@@ -442,8 +496,81 @@ describe('design-system artifact planning (PRD mode, front-end gated)', () => {
     expect(ds.path).toBe('.pensador/locadora-v1/design-system.md');
   });
 
-  it('fullstack demand emits prd + userhistory + comunication + design-system', () => {
+  it('fullstack demand emits prd + userhistory + api-contract + communication + design-system', () => {
     const kinds = buildArtifactList(finalState('prd', [backendReq, frontendReq])).map((a) => a.kind);
-    expect(kinds).toEqual(['prd', 'userhistory', 'comunication', 'design-system']);
+    expect(kinds).toEqual(['prd', 'userhistory', 'api-contract', 'communication', 'design-system']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API/communication contract (SDD: machine-readable source of truth)
+// ---------------------------------------------------------------------------
+
+describe('API contract (Spec-Driven Development)', () => {
+  it('defaults the API style to rest → OpenAPI', () => {
+    expect(DEFAULT_API_STYLE).toBe('rest');
+    expect(initState('x').apiStyle).toBe('rest');
+    expect(resolveContractFormat(undefined).file).toBe('openapi.yaml');
+  });
+
+  it('exposes a machine-readable format per API style with mock + validate tooling', () => {
+    expect(API_CONTRACT_FORMATS.rest.file).toBe('openapi.yaml');
+    expect(API_CONTRACT_FORMATS.graphql.file).toBe('schema.graphql');
+    expect(API_CONTRACT_FORMATS.grpc.file).toBe('service.proto');
+    expect(API_CONTRACT_FORMATS.events.file).toBe('asyncapi.yaml');
+    for (const fmt of Object.values(API_CONTRACT_FORMATS)) {
+      expect(typeof fmt.mock).toBe('string');
+      expect(typeof fmt.validate).toBe('string');
+      expect(fmt.mock.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('resolveContractFormat normalizes unknown/nullish to rest', () => {
+    expect(resolveContractFormat('graphql').spec).toBe('graphql-sdl');
+    expect(resolveContractFormat('bogus').spec).toBe('openapi');
+    expect(resolveContractFormat(null).spec).toBe('openapi');
+  });
+
+  it('contractArtifactPath writes the contract inside the update directory per style', () => {
+    expect(contractArtifactPath('.pensador/loja-v1', 'rest')).toBe('.pensador/loja-v1/openapi.yaml');
+    expect(contractArtifactPath('.pensador/loja-v1', 'graphql')).toBe('.pensador/loja-v1/schema.graphql');
+    expect(contractArtifactPath(null, 'events')).toBe('.pensador/atualizacao-v1/asyncapi.yaml');
+  });
+
+  it('contractValidationPlan carries the mock + validate directive for the handoff', () => {
+    const plan = contractValidationPlan('rest');
+    expect(plan.spec).toBe('openapi');
+    expect(plan.mock).toContain('prism');
+    expect(plan.validate).toContain('schemathesis');
+    expect(() => contractValidationPlan(undefined)).not.toThrow();
+  });
+
+  it('contractDiscoveryGlobs covers the common existing-contract file shapes', () => {
+    const globs = contractDiscoveryGlobs();
+    expect(globs.some((g) => g.includes('openapi'))).toBe(true);
+    expect(globs.some((g) => g.includes('.graphql'))).toBe(true);
+    expect(globs.some((g) => g.includes('.proto'))).toBe(true);
+    expect(globs.some((g) => g.includes('asyncapi'))).toBe(true);
+    expect(globs.some((g) => g.includes('schema.prisma'))).toBe(true);
+  });
+
+  it('classifyContractChange gates additive vs breaking vs none', () => {
+    expect(classifyContractChange()).toBe('none');
+    expect(classifyContractChange({ touchesExistingContract: false })).toBe('none');
+    expect(classifyContractChange({ touchesExistingContract: true })).toBe('additive');
+    expect(
+      classifyContractChange({ touchesExistingContract: true, removesOrRenames: true })
+    ).toBe('breaking');
+    expect(
+      classifyContractChange({ touchesExistingContract: true, changesTypeOrRequired: true })
+    ).toBe('breaking');
+    expect(() => classifyContractChange(null)).not.toThrow();
+  });
+
+  it('planArtifacts plans the machine-readable contract whenever hasBackend (PRD mode)', () => {
+    expect(planArtifacts(finalState('prd', [backendReq])).apiContract).toBe(true);
+    expect(planArtifacts(finalState('prd', [frontendReq])).apiContract).toBe(false);
+    // Folded into the change set in spec mode — no standalone contract artifact.
+    expect(planArtifacts(finalState('spec', [backendReq])).apiContract).toBe(false);
   });
 });

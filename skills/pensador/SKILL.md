@@ -30,7 +30,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/askuserquestion-protocol.md` | Canal unico de dialogo, previews, recap final e handoff |
 | `skills/pensador/assets/prd-template.md` | Template do artefato `prd.md` |
 | `skills/pensador/assets/userhistory-template.md` | Template do artefato `userhistory.md` |
-| `skills/pensador/assets/comunication_json-template.md` | Template do artefato `comunication_json.md` quando ha back-end |
+| `skills/pensador/assets/communication-template.md` | Template da visao legivel `communication.md` (derivada do contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml`, fonte da verdade sob SDD) quando ha back-end |
 
 ---
 
@@ -75,18 +75,22 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   architecture.md
   shared-agents/
     context-pack.md
+    backend-development.response.md
+    ui-ux-pro-max.response.md
+    frontend-design.response.md
     codex.response.md
     agy.response.md
     requirements-clarity.response.md
     agent.response.md
   prd.md
   userhistory.md
-  comunication_json.md
+  openapi.yaml               # contrato maquina-legivel (fonte da verdade) — ou schema.graphql / service.proto / asyncapi.yaml
+  communication.md       # visao legivel derivada do contrato maquina-legivel
   design-system.md
   design-systems/<id>/          # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
-> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` (DESIGN.md gerado via Open Design) so e gravado no modo PRD quando a demanda tem front-end (`hasFrontend`). Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` so e gravado no modo PRD quando ha front-end **e o Open Design NAO foi usado** (fallback inline) — quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
 
 Regras:
 
@@ -156,7 +160,8 @@ INIT
 
 EXPLORE
   Explora o projeto com Code Base Memory (index_repository, get_architecture,
-  search_graph, trace_path) e grava <featurePath>/codebase-memory.md.
+  search_graph, trace_path) e grava <featurePath>/codebase-memory.md. Descobre
+  contrato de API existente (contractDiscoveryGlobs) como baseline em brownfield.
   Fallback para Read/Glob/Grep se indisponivel.
 
 PRD_BASE
@@ -165,19 +170,22 @@ PRD_BASE
 
 ARCH
   Analisa projeto existente via Code Base Memory (indice criado no EXPLORE) e Read/Glob/Grep.
+  Detecta state.apiStyle (rest/graphql/grpc/events) quando hasBackend.
   Em greenfield, entrevista o usuario. Grava <featurePath>/architecture.md.
 
 EXPAND
-  Amplia requisitos candidatos do proprio Pensador.
+  Amplia requisitos candidatos do proprio Pensador. Aplica o gate de breaking
+  change (classifyContractChange) quando a feature toca contrato existente.
 
 COMPLEXITY
   Executa detectComplexity() com sinais domainCount, hasBackend,
   hasBroadScopeKeywords e isGreenfield. Sugere modo Lite ou Completo.
 
 BRAINSTORM_GERAL
-  Orquestra em paralelo requirements-clarity, Codex high se hasBackend e AGY
-  gemini-3.1-pro-high se hasFrontend. Quando hasFrontend, parseia o brief de
-  design para o Open Design (gera design-system.md no FINAL). Usa
+  Orquestra em paralelo as lentes primarias requirements-clarity, backend-development
+  (se hasBackend) e ui-ux-pro-max + frontend-design (se hasFrontend), com Codex high e
+  AGY gemini-3.1-pro-high como refino. Quando hasFrontend, parseia o brief de
+  design para o Open Design (materializa o system verbatim no FINAL). Usa
   context-pack.md e agent.response.md. Aplica fallback por dominio.
 
 CODEX
@@ -188,7 +196,8 @@ AGY
   Lacunas remanescentes de produto com AGY usando gemini-3.1-pro-high.
 
 FINAL
-  Consolida, confirma back-end, gera artefatos (incl. design-system.md quando
+  Consolida, confirma back-end, gera artefatos (incl. contrato maquina-legivel
+  openapi.yaml/schema.graphql/… quando hasBackend, e design-system.md quando
   hasFrontend) e apresenta recap final/handoff.
 
 DONE
@@ -218,7 +227,7 @@ DONE
 
 1. Confira `integrations.codebaseMemory.available` do preflight.
 2. Disponivel: rode a sequencia de ferramentas do MCP `codebase-memory-mcp` na ordem `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (acrescente `detect_changes` quando for um fix sobre codigo existente).
-3. Grave o resumo em `<featurePath>/codebase-memory.md`: panorama de arquitetura, simbolos e arquivos afetados, cadeias de chamada relevantes, raio de impacto (em fixes) e lacunas/incertezas.
+3. Grave o resumo em `<featurePath>/codebase-memory.md`: panorama de arquitetura, simbolos e arquivos afetados, cadeias de chamada relevantes, raio de impacto (em fixes) e lacunas/incertezas. **Em brownfield, descubra o contrato de API existente** via `contractDiscoveryGlobs()` (`**/openapi*.{yaml,yml,json}`, `**/*.graphql`, `**/*.proto`, `**/asyncapi*.{yaml,yml}`, `**/schema.prisma`) e registre o caminho e o estilo como baseline — a nova feature deve **estender** esse contrato, nao redescreve-lo.
 4. Indisponivel (`available = false`): pergunte via `AskUserQuestion` se o usuario deseja **instalar o servidor agora** (opcao recomendada) ou seguir sem ele:
    - **Opcao A — Instalar:** execute o instalador da plataforma (`install.sh` no Linux/macOS; `install.ps1` no Windows via PowerShell) usando `Bash`, aguarde conclusao, oriente o usuario a reconectar o MCP (ou reiniciar o agente) e retome o EXPLORE com o servidor disponivel. Veja os comandos exatos em `references/codebase-memory.md`.
    - **Opcao B — Seguir sem:** explore com `Read`/`Glob`/`Grep` e registre a decisao no `codebase-memory.md`.
@@ -265,6 +274,7 @@ Projeto existente:
 - Complemente com `Read`, `Glob` e `Grep` para detalhes que o grafo nao cobrir (config, padroes locais, persistencia, UI).
 - Nao execute alteracoes no codigo.
 - Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`.
+- **Derive `state.apiStyle`** quando `hasBackend`: detecte se o contrato e REST (`rest` → `openapi.yaml`), GraphQL (`graphql` → `schema.graphql`), gRPC (`grpc` → `service.proto`) ou orientado a eventos/filas/webhooks (`events` → `asyncapi.yaml`). Reaproveite o baseline de contrato descoberto no EXPLORE. Se ambiguo, pergunte via `AskUserQuestion`. Esse valor seleciona o formato do contrato maquina-legivel no FINAL (`resolveContractFormat(state.apiStyle)`).
 - **Derive `uiPackageDir`** quando `hasFrontend`: inspecione se o repo e um monorepo (`pnpm-workspace.yaml`, `packages/` ou `apps/` presentes) ou um app unico. Use `resolveUiPackageDir({ isMonorepo, framework })` do engine como base (`packages/ui` para monorepo; `src/styles` para app unico Next.js/Vite/Remix). Se ambiguo, pergunte via `AskUserQuestion`. Grave a resposta em `state.uiPackageDir` — esse valor NAO e o destino da copia do Pensador; e o **alvo de materializacao** que o Orquestrador/Executor usa depois. O Pensador sempre persiste os arquivos verbatim dentro da pasta da feature (`<featurePath>/design-systems/<id>/`), nunca na arvore de codigo real.
 
 Greenfield:
@@ -286,8 +296,9 @@ Saida obrigatoria:
 **Objetivo:** ampliar a demanda com requisitos candidatos nao previstos no enunciado.
 
 1. Revise o `PRD_Base`, `architecture.md`, secoes `"TBD"`, funcionalidades implicitas, fluxos alternativos, integracoes, seguranca, erros, desempenho, acessibilidade, persistencia e mobile.
-2. Converta candidatos importantes em perguntas com `origin = 'pensador'`, `stage = 'EXPAND'`.
-3. Apresente via `AskUserQuestion`, agrupando apenas perguntas relacionadas de mesma origem e estagio.
+2. **Gate de breaking change (brownfield):** se a feature toca o contrato de API existente descoberto no EXPLORE, classifique via `classifyContractChange({ touchesExistingContract, removesOrRenames, changesTypeOrRequired })`. Se o resultado for `breaking`, converta em pergunta explicita `AskUserQuestion` antes de consolidar — quebra de contrato e decisao arquitetural deliberada e versionada, nunca ajuste implicito. Mudancas `additive` seguem normalmente.
+3. Converta candidatos importantes em perguntas com `origin = 'pensador'`, `stage = 'EXPAND'`.
+4. Apresente via `AskUserQuestion`, agrupando apenas perguntas relacionadas de mesma origem e estagio.
 
 **Gate:** todas as perguntas de EXPAND respondidas ou diferidas.
 
@@ -329,12 +340,14 @@ Entradas:
 
 Antes de delegar, grave `<featurePath>/shared-agents/context-pack.md` com contexto suficiente para todos os participantes.
 
-Roteamento padrao:
+Roteamento padrao (lentes primarias sao skills deterministas; Codex/AGY refinam; Open Design e o motor de design):
 
-- `requirements-clarity`: sempre aplicavel como lente de clareza.
-- Codex com effort `high`: adicional no BRAINSTORM_GERAL quando `hasBackend = true`.
-- AGY com modelo `gemini-3.1-pro-high`: adicional no BRAINSTORM_GERAL quando `hasFrontend = true`.
-- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+- `requirements-clarity` (lente primaria): sempre aplicavel como lente de clareza.
+- `backend-development` (lente primaria): roda sempre que `hasBackend = true`, produzindo o checklist determinista de dados/APIs/contratos/seguranca que alimenta o **contrato maquina-legivel**. Codex com effort `high` roda **por cima dela** como lente de refinamento (`role: refine`) quando `hasBackend = true`.
+- `ui-ux-pro-max` + `frontend-design` (lentes primarias): rodam sempre que `hasFrontend = true` e alimentam o Open Design. AGY com modelo `gemini-3.1-pro-high` roda **por cima delas** como lente de refinamento (`role: refine`) quando `hasFrontend = true`.
+- **Open Design (motor de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+
+Mapeamento deterministico em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.*.lenses` (`pensador-engine.mjs`).
 
 Contrato:
 
@@ -408,8 +421,8 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 1. Aplique `withConsolidated(state)`.
 2. Confirme com o usuario via `AskUserQuestion` se ha back-end/API/contrato de comunicacao. Mostre a heuristica como sugestao e deixe a resposta do usuario prevalecer.
 3. Planeje artefatos conforme `artifactMode`:
-   - Modo PRD: `prd.md` e `userhistory.md` sempre; `comunication_json.md` quando ha back-end; `design-system.md` quando ha front-end (`hasFrontend`), todos em `<featurePath>/`.
-   - Modo Spec (OpenSpec): o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md` e `comunication_json.md` nao se aplicam. **Excecao — Open Design continua valendo quando `hasFrontend`:** nao gera `design-system.md` standalone, mas roda do mesmo jeito (arquivos verbatim no repo + decisoes no `design.md` + capability `specs/ui-design-system/`). Ver passo 5.
+   - Modo PRD: `prd.md` e `userhistory.md` sempre; quando ha back-end, o **contrato maquina-legivel** (`openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml`, por `resolveContractFormat(state.apiStyle)`) como **fonte da verdade** E o `communication.md` como visao legivel derivada; `design-system.md` **somente quando ha front-end (`hasFrontend`) E o Open Design NAO foi usado** (fallback inline, nenhum system selecionado) — todos em `<featurePath>/`. Quando um system do Open Design foi selecionado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) e o documento de design; **nao** gere `design-system.md` redundante. O `api-contract` viaja no `handoff.json` com o campo `validation` (`{ spec, mock, validate }`) para habilitar mock server e validacao de contrato no Executor.
+   - Modo Spec (OpenSpec): o change set em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`); `userhistory.md`, `communication.md` e o contrato maquina-legivel standalone nao se aplicam — o contrato de API e dobrado no change (design.md + specs). **Excecao — Open Design continua valendo quando `hasFrontend`:** nao gera `design-system.md` standalone, mas roda do mesmo jeito (arquivos verbatim no repo + decisoes no `design.md` + capability `specs/ui-design-system/`). Ver passo 5.
    - Em **ambos** os modos, quando `hasFrontend`, os arquivos verbatim do Open Design vao para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, passo 5). O Orquestrador/Executor os materializa depois em `state.uiPackageDir` (`packages/ui`/`src/styles`).
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
 5. Gere os artefatos:
@@ -420,10 +433,10 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
      ```
 
      Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/` em `<featurePath>/design-systems/<id>/` — ou seja, dentro de `.pensador/<slug>-vN/`, mantendo a saida do Pensador autocontida (ver `openDesignFetchPlan()` + `designSystemFilesRoot()`). Passe `--out-dir` com o `featurePath` da execucao (ex.: `.pensador/login-social-v1`). Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
-   - **Modo PRD:** o `design-system.md` vira **documento de decisoes** (selecao do system, merge, overrides justificados) que **referencia** os arquivos verbatim — nao duplica tokens. Os demais artefatos saem dos templates.
-   - **Modo Spec:** dobre o design no change set (`openDesignDeliveryFor('spec', <nome>)`): decisoes na secao *Decisions* do `design.md`; requisitos de UI na capability delta-spec `specs/ui-design-system/spec.md` (requisitos `SHALL` + cenarios `#### Scenario:`). Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+   - **Modo PRD:** quando o Open Design foi usado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) **e** o documento de design — **nao gere `design-system.md` standalone** (evita duplicacao). As decisoes de selecao/merge/overrides ja viajam no `handoff.json` (role `design-system-files` com o `<id>`). O `design-system.md` inline so e escrito no **fallback** (Open Design indisponivel/recusado): nesse caso preenche as 9 secoes do schema `DESIGN.md` a partir do brief. Os demais artefatos saem dos templates.
+   - **Modo Spec:** dobre o design no change set usando o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)`. Ele entrega os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar: (a) na secao *Decisions* do `design.md`, registre o(s) `<id>`, a origem verbatim (`verbatimDir`) e o alvo de materializacao (`materializeInto`) + overrides justificados; (b) na capability delta-spec `specs/ui-design-system/spec.md`, escreva requisitos `SHALL` + cenarios `#### Scenario:` que citam `materializedTokens` (ex.: `packages/ui/design-systems/<id>/tokens.css`) como fonte de estilo. Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs). Contrato completo em `references/openspec.md` › **Contrato Spec ↔ Open Design**.
    - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
-   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id) — alem do role `design-system` (o `design-system.md`). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
+   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados.
@@ -456,9 +469,12 @@ Estado terminal. O fluxo esta encerrado.
 
 | Estagio | Tipo | Alvo | Condicao | Saida |
 |---|---|---|---|---|
-| `BRAINSTORM_GERAL` | skill | `requirements-clarity` | sempre | `shared-agents/requirements-clarity.response.md` |
-| `BRAINSTORM_GERAL` | subagente | `codex:codex-rescue` | `hasBackend` | `shared-agents/codex.response.md` |
-| `BRAINSTORM_GERAL` | subagente | `cc-antigravity-plugin:antigravity-agent` | `hasFrontend` | `shared-agents/agy.response.md` |
-| `BRAINSTORM_GERAL`/`FINAL` | MCP/CLI | Open Design (`od`) | `hasFrontend` | `design-system.md` (brief parseado; fallback inline) |
+| `BRAINSTORM_GERAL` | skill (primaria) | `requirements-clarity` | sempre | `shared-agents/requirements-clarity.response.md` |
+| `BRAINSTORM_GERAL` | skill (primaria) | `backend-development` | `hasBackend` | `shared-agents/backend-development.response.md` |
+| `BRAINSTORM_GERAL` | subagente (refino) | `codex:codex-rescue` | `hasBackend` | `shared-agents/codex.response.md` |
+| `BRAINSTORM_GERAL` | skill (primaria) | `ui-ux-pro-max` | `hasFrontend` | `shared-agents/ui-ux-pro-max.response.md` |
+| `BRAINSTORM_GERAL` | skill (primaria) | `frontend-design` | `hasFrontend` | `shared-agents/frontend-design.response.md` |
+| `BRAINSTORM_GERAL` | subagente (refino) | `cc-antigravity-plugin:antigravity-agent` | `hasFrontend` | `shared-agents/agy.response.md` |
+| `BRAINSTORM_GERAL`/`FINAL` | MCP/CLI (motor) | Open Design (`od`) | `hasFrontend` | arquivos verbatim em `design-systems/<id>/` (inclui `DESIGN.md`); `design-system.md` so no fallback inline |
 | `CODEX` | subagente | `codex:codex-rescue` | nao especifico de front-end (`hasBackend` ou nao `hasFrontend`) | perguntas tecnicas finais |
 | `AGY` | subagente | `cc-antigravity-plugin:antigravity-agent` | sempre | perguntas de produto finais |

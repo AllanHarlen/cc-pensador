@@ -65,7 +65,7 @@ Inclua previews quando a decisao mudar o que sera produzido.
 Exemplos:
 
 - COMPLEXITY: mostrar diferenca entre Lite e Completo.
-- Confirmacao de back-end: mostrar se `comunication_json.md` sera gerado.
+- Confirmacao de back-end: mostrar se `communication.md` sera gerado.
 - Brief de design (front-end): mostrar que `design-system.md` sera gerado via Open Design (ou inline) e a oferta de instalacao quando indisponivel.
 - Sobrescrita: mostrar caminho do arquivo existente.
 - Handoff: mostrar artefatos finais e proximos passos.
@@ -127,7 +127,7 @@ O handoff e a orientacao final para quem vai implementar ou revisar o PRD. Ele d
 - `shared-agents/agent.response.md`.
 - Decisoes que precisam validacao humana antes de implementar.
 
-Se houver back-end confirmado, mencionar `comunication_json.md`. Se nao houver, registrar que o artefato nao se aplica. Se houver front-end, mencionar `design-system.md` (gerado via Open Design ou inline); se nao houver, registrar que nao se aplica.
+Se houver back-end confirmado, mencionar `communication.md`. Se nao houver, registrar que o artefato nao se aplica. Se houver front-end, mencionar `design-system.md` (gerado via Open Design ou inline); se nao houver, registrar que nao se aplica.
 
 ---
 
