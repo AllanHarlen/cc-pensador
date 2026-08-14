@@ -40,6 +40,7 @@ Funil v2: **iniciar/retomar** -> **explorar (Code Base Memory)** -> **PRD/Spec b
 
 - Disponivel (`integrations.codebaseMemory.available = true`): rodar o MCP `codebase-memory-mcp` na ordem `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (mais `detect_changes` em fixes).
 - Gravar `<featurePath>/codebase-memory.md` com panorama de arquitetura, simbolos/arquivos afetados, cadeias de chamada relevantes, raio de impacto (fixes) e lacunas.
+- **Descoberta de contrato existente (brownfield):** buscar contratos de API ja versionados no repo via `contractDiscoveryGlobs()` (`**/openapi*.{yaml,yml,json}`, `**/*.graphql`, `**/*.proto`, `**/asyncapi*.{yaml,yml}`, `**/schema.prisma`). Se encontrar, registrar o caminho e o estilo no `codebase-memory.md` como **baseline** — a nova feature deve estender esse contrato, nao redescreve-lo em prosa (coesao front/back).
 - Indisponivel (`integrations.codebaseMemory.available = false`): perguntar via `AskUserQuestion` se o usuario deseja **instalar o servidor agora**:
   - **Opcao A — Instalar (recomendada):** Claude executa o instalador da plataforma (`install.sh` no Linux/macOS; `install.ps1` no Windows via PowerShell) com `Bash`, aguarda conclusao, orienta o usuario a reconectar o MCP e retoma o EXPLORE com o servidor disponivel.
   - **Opcao B — Seguir sem:** usar `Read`/`Glob`/`Grep` e registrar a decisao no `codebase-memory.md`.
@@ -83,6 +84,7 @@ Reaproveite o indice do Code Base Memory criado no EXPLORE (`get_architecture`, 
 - Stack, framework, linguagem e gerenciador de pacotes.
 - Estrutura de pastas, entrypoints e padroes locais.
 - Front-end, back-end, persistencia, jobs, integracoes e autenticacao.
+- **Estilo de API (`state.apiStyle`)** quando `hasBackend`: detectar se o contrato e REST (→ `openapi.yaml`), GraphQL (→ `schema.graphql`), gRPC (→ `service.proto`) ou orientado a eventos/filas (→ `asyncapi.yaml`). Reaproveitar o baseline de contrato descoberto no EXPLORE. Se ambiguo, perguntar via `AskUserQuestion`. Esse valor seleciona o formato do contrato maquina-legivel no FINAL (`resolveContractFormat()`).
 - Artefatos relevantes ja existentes.
 - Riscos, convencoes e lacunas tecnicas.
 
@@ -114,8 +116,9 @@ Grave `<featurePath>/architecture.md` com:
 
 1. Revisar demanda, PRD Base e `architecture.md`.
 2. Identificar requisitos implicitos, fluxos alternativos, RNFs, integracoes, seguranca, erros, acessibilidade e persistencia.
-3. Converter lacunas importantes em perguntas `origin = 'pensador'`, `stage = 'EXPAND'`.
-4. Apresentar via `AskUserQuestion`, com opcao recomendada quando aplicavel.
+3. **Gate de breaking change (quando ha contrato existente):** se a feature toca um contrato de API descoberto no EXPLORE, classificar via `classifyContractChange()` como `additive` ou `breaking`. Uma mudanca `breaking` (remove/renomeia operacao, muda tipo ou obrigatoriedade) vira pergunta explicita `AskUserQuestion` — quebra de contrato e decisao arquitetural deliberada, com versionamento, nao ajuste rapido.
+4. Converter lacunas importantes em perguntas `origin = 'pensador'`, `stage = 'EXPAND'`.
+5. Apresentar via `AskUserQuestion`, com opcao recomendada quando aplicavel.
 
 **Gate:** todas as perguntas respondidas ou diferidas.
 
@@ -166,12 +169,14 @@ O arquivo deve conter demanda, PRD Base, `architecture.md`, respostas de EXPAND,
 
 ### Roteamento
 
-| Participante | Quando roda | Papel |
-|---|---|---|
-| `requirements-clarity` | sempre | Clareza, ambiguidades, aceite, escopo |
-| Codex `effort high` | `hasBackend` | Dados, APIs, seguranca, contratos, riscos tecnicos |
-| AGY `gemini-3.1-pro-high` | `hasFrontend` | Experiencia, produto, jornadas, telas, cenarios |
-| Open Design (`od`) | `hasFrontend` | Brief de design (tom, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) -> `design-system.md` no FINAL. Veja `references/open-design.md`. |
+| Participante | Papel | Quando roda | Foco |
+|---|---|---|---|
+| `requirements-clarity` | lente primaria | sempre | Clareza, ambiguidades, aceite, escopo |
+| `backend-development` | lente primaria | `hasBackend` | Dados, APIs, contratos, seguranca (alimenta o contrato maquina-legivel) |
+| Codex `effort high` | refino | `hasBackend` | Aprofunda riscos tecnicos sobre a lente primaria |
+| `ui-ux-pro-max` + `frontend-design` | lentes primarias | `hasFrontend` | UX, estados de tela, componentizacao, design system (alimentam o Open Design) |
+| AGY `gemini-3.1-pro-high` | refino | `hasFrontend` | Experiencia, produto, jornadas, cenarios |
+| Open Design (`od`) | motor de design | `hasFrontend` | Brief de design (tom, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) -> arquivos verbatim no FINAL. Veja `references/open-design.md`. |
 
 Em modo Lite, limite a quantidade de perguntas por dominio e favoreca `"TBD"` para lacunas menores. Em modo Completo, aprofunde dominios de maior risco.
 
@@ -243,8 +248,8 @@ Se um participante falhar:
 1. Aplicar `withConsolidated(state)`.
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao (so no modo PRD; no modo Spec nao se aplica).
 3. Gerar artefatos conforme `artifactMode`:
-   - Modo PRD: `prd.md` + `userhistory.md` (+ `comunication_json.md` quando ha back-end) (+ `design-system.md` quando ha front-end) em `<featurePath>/`.
-   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs).
+   - Modo PRD: `prd.md` + `userhistory.md` (+ contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml` **e** `communication.md` quando ha back-end) (+ `design-system.md` quando ha front-end **e** o Open Design NAO foi usado — fallback inline) em `<featurePath>/`. O contrato maquina-legivel e a **fonte da verdade**; o `communication.md` e a visao legivel derivada. Quando um system do Open Design foi selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design — nao gere `design-system.md` redundante.
+   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs). O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
 5. Apresentar recap final e handoff. No modo Spec, orientar com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este move pastas: so apos confirmacao do usuario).
 
@@ -252,8 +257,10 @@ Se um participante falhar:
 |---|---|
 | `prd.md` | Modo PRD |
 | `userhistory.md` | Modo PRD |
-| `comunication_json.md` | Modo PRD, quando ha back-end confirmado |
-| `design-system.md` | Modo PRD, quando ha front-end (gerado via Open Design; fallback inline) |
+| `openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml` (contrato maquina-legivel, fonte da verdade) | Modo PRD, quando ha back-end confirmado (formato por `state.apiStyle`) |
+| `communication.md` (visao legivel derivada do contrato) | Modo PRD, quando ha back-end confirmado |
+| `design-system.md` | Modo PRD, quando ha front-end **e** o Open Design NAO foi usado (fallback inline). Com um system selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` substitui este doc. |
+| `design-systems/<id>/` (arquivos verbatim: `tokens.css`, `DESIGN.md`, `components.html`, …) | Modo PRD e Spec, quando ha front-end **e** um system do Open Design foi selecionado |
 | `openspec/changes/<nome>/` (`proposal.md` · `design.md` · `tasks.md` · `specs/`) | Modo Spec (via comandos `openspec-*`) |
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados, recap final e handoff entregues.

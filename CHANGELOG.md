@@ -12,6 +12,65 @@ Uma auditoria de ponta a ponta (código-fonte dos dois plugins + verificação r
 - **Credenciais de seed/demo agora fazem parte do PRD.** Nova pergunta na entrevista de descoberta (`skills/prd/SKILL.md`) e novo campo no template (`prd-template.md` seção 13, Observabilidade & Operação): quando há dados de demonstração via seed/migrations, credenciais conhecidas por papel/role devem ser documentadas — nunca apenas um hash sem plaintext. Sem isso, a verificação E2E autenticada do Orquestrador (Fase 9.5) fica bloqueada, como aconteceu na entrega real auditada.
 - **Contagem de design systems curados corrigida (~72 → ~150).** `references/open-design.md` e o comentário em `test/integrations.test.js` afirmavam "~72 design systems" — confirmado via clone local em disco: são ~150 (151 excluindo `_schema`), e apenas 1 (`default`) traz `preview/app.html`. O número estava desalinhado do próprio `cc-orchestrador-subagents`, que já usava "~152" em changelogs anteriores.
 - **222 testes verdes** (`npm test`) após todas as mudanças; `openDesignBriefPlan`/`openDesignBriefRouting` com cobertura atualizada para a nova dimensão.
+## [2.9.0] — 2026-07-08
+
+### Lentes primárias por domínio + contrato máquina-legível como fonte da verdade (SDD)
+
+Duas mudanças de metodologia no BRAINSTORM_GERAL e na geração de contratos, alinhando o Pensador a Spec-Driven Development.
+
+**Lentes de domínio promovidas a primárias.** Antes, o trabalho de back-end e de UX/front era delegado só a Codex e AGY; as skills `backend-development`/`ui-ux-pro-max`/`frontend-design` eram fallback semi-órfão.
+
+- **`STAGE_DELEGATION.BRAINSTORM_GERAL` (engine):** cada domínio agora expõe uma lente **primária** (skill determinista) + lentes de **refino/motor**. `backend-development` é a lente primária de back-end (roda sempre que `hasBackend`), com Codex `effort high` como `refine`. `ui-ux-pro-max` + `frontend-design` são as lentes primárias de design (rodam quando `hasFrontend`) alimentando o **Open Design** (motor, `role: design-engine`), com AGY como `refine`. O domínio `uiux` foi renomeado para `design` e cada domínio ganhou um array `lenses`.
+- **Frontmatter corrigido:** `backend-development` ("estágio BACKEND" → BRAINSTORM_GERAL, agora "primária") e `requirements-clarity` ("estágio CLARITY" → BRAINSTORM_GERAL). `frontend-design`/`ui-ux-pro-max` marcadas como primárias atuando com o Open Design.
+
+**Contrato de API máquina-legível como fonte da verdade.** O antigo `comunication_json.md` (prosa + JSON) foi **renomeado para `communication.md`** e deixou de ser a fonte: agora é a **visão legível derivada** de um contrato máquina-legível (`openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml`), selecionado por `state.apiStyle` detectado em ARCH.
+
+- **Novo no engine:** `API_CONTRACT_FORMATS`, `DEFAULT_API_STYLE`, `resolveContractFormat()`, `contractArtifactPath()`, `contractValidationPlan()` (mock + validação para o handoff), `contractDiscoveryGlobs()` (descoberta de contrato existente em brownfield no EXPLORE) e `classifyContractChange()` (gate de breaking change no EXPAND/FINAL). `initState` ganha `apiStyle: 'rest'`.
+- **`planArtifacts`/`buildArtifactList`:** modo PRD com back-end emite o artefato `api-contract` (fonte da verdade) antes do `communication` (visão derivada, com `derivedFrom`). Contagens: back-end-only → 4 artefatos; fullstack → 5. No modo Spec o contrato é dobrado no change set (sem artefato standalone).
+- **Handoff:** novo role `api-contract` (com `validation: { spec, mock, validate }`); `communication-contract` marcado como visão derivada; ordem de ingestão atualizada.
+- **Fluxos brownfield:** EXPLORE descobre contrato existente como baseline; a nova feature o estende; quebras passam pelo gate de breaking change versionado.
+
+**Rename `comunication_json.md` → `communication.md`.** Corrigida a grafia e a extensão do artefato (era Markdown chamado "json"). O `kind`/campo do plano passou de `comunication` para `communication`; o template `comunication_json-template.md` virou `communication-template.md`. O role de handoff `communication-contract` (já grafado corretamente) é inalterado.
+
+**Correção da suíte de testes.** Removido o shebang `#!/usr/bin/env node` de `scripts/od-onboard-agents.mjs`: o loader do vitest avaliava o `#!` como token inválido, impedindo a coleta de `test/onboard-agents.test.js`. O script é sempre invocado via `node <arquivo>`, então o shebang era desnecessário. A suíte agora coleta e passa.
+
+**Docs sincronizados:** `SKILL.md` (isolamento, EXPLORE/ARCH/EXPAND/BRAINSTORM/FINAL, tabelas de delegação), `references/{skill-stack,agent-stack,stages,handoff-contract}.md`, templates `communication` e `prd` (§11), READMEs.
+
+- **Versão:** `package.json`/`plugin.json` → **2.9.0**. Testes: 238 passam em 9 suites (contrato de API, novas contagens de artefato, estrutura de lentes primárias, rename e suíte onboard-agents restaurada).
+
+## [2.8.7] — 2026-07-08
+
+### Contrato Spec ↔ Open Design: os arquivos do OpenSpec referenciam o design system
+
+No modo Spec, o change set (`openspec/changes/<nome>/`) e os arquivos do design system (`.pensador/<nome>/design-systems/<id>/`) vivem em árvores diferentes, sem um vínculo explícito. Novo contrato determinístico liga um ao outro.
+
+- **Novo `openDesignSpecContract(featurePath, systemIds, uiPackageDir)` (engine):** função pura que entrega, por system escolhido, os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar — a **origem verbatim** (`verbatimDir`/`tokens`/`designMd`/`components`, sob a raiz da feature) citada no `design.md` › *Decisions*, e o **alvo de runtime** (`materializeInto`/`materializedTokens`, em `packages/ui`) citado nos requisitos da capability `ui-design-system`. Também expõe `designDoc` e `capabilitySpec`.
+- **Docs:** `references/openspec.md` ganha a seção **Contrato Spec ↔ Open Design** (tabela de campos + templates de `design.md` Decisions e do requisito `ui-design-system` que cita `tokens.css`); `SKILL.md` FINAL (modo Spec) e `references/open-design.md` (fluxo FINAL) passam a instruir o uso do contrato.
+- **Versão:** `package.json`/`plugin.json` → **2.8.7**. Testes: +2 casos cobrindo `openDesignSpecContract` (paths de origem/alvo, múltiplos systems, `uiPackageDir` custom, totalidade).
+
+## [2.8.6] — 2026-07-08
+
+### Sem `design-system.md` redundante quando o Open Design é usado
+
+Quando um system do Open Design é selecionado, seus arquivos verbatim já incluem um `DESIGN.md` — então gerar um `design-system.md` standalone era duplicação. Agora o `DESIGN.md` verbatim (em `design-systems/<id>/`) é o documento de design; o `design-system.md` só é escrito no **fallback inline** (Open Design indisponível/recusado).
+
+- **`planArtifacts` (engine):** `designSystem` agora é `hasFrontend && !usesOpenDesign` (modo PRD). Com ≥1 system em `state.designSystems`, nenhum `design-system.md` é emitido — só o role `design-system-files` (verbatim, inclui `DESIGN.md`). No modo Spec o comportamento é inalterado (`designSystem: false`).
+- **`openDesignDeliveryFor` (engine):** `standaloneArtifact` agora é `false` (o descritor cobre a entrega com Open Design em uso); `decisionsDoc`/`requirementsDoc` no modo PRD apontam para o `DESIGN.md` verbatim (`design-systems/<id>/DESIGN.md`).
+- **Handoff:** o role `design-system` (o `design-system.md`) só aparece no fallback inline; overrides justificados passam a ser registrados na seção *Decisions* do `design.md` (Spec) ou como nota no resumo do `handoff.json` (PRD).
+- **Docs sincronizados:** `SKILL.md` (FINAL passos 3/5, diagrama, tabela de delegação), `open-design.md`, `handoff-contract.md`, `feature-isolation.md` e ambos os READMEs.
+- **Versão:** `package.json`/`plugin.json` → **2.8.6**. Testes: +2 casos cobrindo a supressão do `design-system.md` quando o Open Design é usado; `openDesignDeliveryFor` PRD atualizado.
+
+## [2.8.5] — 2026-07-07
+
+### Artefatos verbatim do Open Design agora ficam dentro de `.pensador/<slug>-vN/`
+
+Correção de integração Pensador ↔ Open Design: os arquivos verbatim do system (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …) eram gravados em `packages/ui/design-systems/<id>/` na **raiz do projeto**, fora de `.pensador/`. Isso violava o contrato de handoff (§2 "nenhum artefato na raiz do projeto; o produtor nunca escreve na raiz de outro estágio"), o isolamento por feature ("todo caminho deriva de `featurePath`") e a regra §3 ("`artifacts[].path` é relativo a `artifactRoot`"). Resultado observado: nada aterrissava em `.pensador/`.
+
+- **Destino realocado para a pasta da feature:** os arquivos verbatim agora vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`), mantendo a saída do Pensador autocontida. Novo helper puro `designSystemFilesRoot(featurePath)` no engine; `buildArtifactList` passa a raiz da feature para `openDesignFetchPlan()`.
+- **`state.uiPackageDir` vira alvo de materialização:** deixa de ser o destino da cópia do Pensador e passa a ser o local (`packages/ui`/`src/styles`) onde o Executor materializa os arquivos na implementação. Cada entrada `design-system-files` do handoff carrega o novo campo `materializeInto`.
+- **`od-fetch-system.mjs`:** novo parâmetro `--out-dir` (alias `--feature-dir`; `--ui-dir` mantido como alias legado) que enraíza a cópia sob a pasta da feature. `SKILL.md` FINAL passa a invocar com `--out-dir <featurePath>`.
+- **Docs sincronizados:** `open-design.md`, `handoff-contract.md` (role `design-system-files` relativo ao `artifactRoot` + `materializeInto`), `feature-isolation.md` (layout + roles válidos), `openspec.md`, `SKILL.md` e ambos os READMEs.
+- **Sincronização de versão:** `package.json` (2.8.3) e `plugin.json` (2.8.4) unificados em **2.8.5**. Testes: `artifacts.test.js` e `integrations.test.js` atualizados (+2 casos cobrindo `designSystemFilesRoot` e o enraizamento por `featurePath`).
 
 ## [2.8.3] — 2026-06-23
 

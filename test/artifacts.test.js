@@ -134,7 +134,7 @@ describe('planArtifacts(state)', () => {
         const plan = planArtifacts(stateAt(stage, [backendReq(), frontendReq()]));
         expect(plan.prd).toBe(false);
         expect(plan.userhistory).toBe(false);
-        expect(plan.comunication).toBe(false);
+        expect(plan.communication).toBe(false);
       });
     }
   });
@@ -152,35 +152,35 @@ describe('planArtifacts(state)', () => {
       expect(plan.userhistory).toBe(true);
     });
 
-    it('sets comunication = true when a back-end is present (fullstack, FINAL)', () => {
+    it('sets communication = true when a back-end is present (fullstack, FINAL)', () => {
       const fullstack = planArtifacts(stateAt('FINAL', [backendReq(), frontendReq()]));
-      expect(fullstack.comunication).toBe(true);
+      expect(fullstack.communication).toBe(true);
 
       const noBackend = planArtifacts(stateAt('FINAL', [otherReq()]));
-      expect(noBackend.comunication).toBe(false);
+      expect(noBackend.communication).toBe(false);
     });
 
-    it('sets comunication = true when a back-end is present (fullstack, DONE)', () => {
+    it('sets communication = true when a back-end is present (fullstack, DONE)', () => {
       const fullstack = planArtifacts(stateAt('DONE', [backendReq(), frontendReq()]));
-      expect(fullstack.comunication).toBe(true);
+      expect(fullstack.communication).toBe(true);
 
       const noBackend = planArtifacts(stateAt('DONE', []));
-      expect(noBackend.comunication).toBe(false);
+      expect(noBackend.communication).toBe(false);
     });
 
-    it('sets comunication = true for a back-end-only project (no front-end)', () => {
+    it('sets communication = true for a back-end-only project (no front-end)', () => {
       const plan = planArtifacts(stateAt('FINAL', [backendReq()]));
-      expect(plan.comunication).toBe(true);
+      expect(plan.communication).toBe(true);
     });
 
-    it('sets comunication = false for a front-end-only project (no back-end)', () => {
+    it('sets communication = false for a front-end-only project (no back-end)', () => {
       const plan = planArtifacts(stateAt('FINAL', [frontendReq()]));
-      expect(plan.comunication).toBe(false);
+      expect(plan.communication).toBe(false);
     });
 
-    it('sets comunication = false when no requirements are present (empty consolidated)', () => {
+    it('sets communication = false when no requirements are present (empty consolidated)', () => {
       const plan = planArtifacts(stateAt('FINAL', []));
-      expect(plan.comunication).toBe(false);
+      expect(plan.communication).toBe(false);
     });
   });
 });
@@ -221,34 +221,34 @@ describe('buildArtifactList(state)', () => {
     });
   });
 
-  describe('comunication artifact conditional on back-end presence', () => {
-    it('includes comunication when a back-end is present (fullstack)', () => {
+  describe('communication artifact conditional on back-end presence', () => {
+    it('includes communication when a back-end is present (fullstack)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
-      const com = artifacts.find((a) => a.kind === 'comunication');
+      const com = artifacts.find((a) => a.kind === 'communication');
       expect(com).toBeDefined();
     });
 
-    it('includes comunication for a back-end-only project (no front-end)', () => {
+    it('includes communication for a back-end-only project (no front-end)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
-      const com = artifacts.find((a) => a.kind === 'comunication');
+      const com = artifacts.find((a) => a.kind === 'communication');
       expect(com).toBeDefined();
     });
 
-    it('excludes comunication when there is no back-end (front-end only)', () => {
+    it('excludes communication when there is no back-end (front-end only)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
-      const com = artifacts.find((a) => a.kind === 'comunication');
+      const com = artifacts.find((a) => a.kind === 'communication');
       expect(com).toBeUndefined();
     });
 
-    it('excludes comunication when there is no back-end (other/CLI)', () => {
+    it('excludes communication when there is no back-end (other/CLI)', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
-      const com = artifacts.find((a) => a.kind === 'comunication');
+      const com = artifacts.find((a) => a.kind === 'communication');
       expect(com).toBeUndefined();
     });
 
-    it('excludes comunication when consolidated is empty', () => {
+    it('excludes communication when consolidated is empty', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', []));
-      const com = artifacts.find((a) => a.kind === 'comunication');
+      const com = artifacts.find((a) => a.kind === 'communication');
       expect(com).toBeUndefined();
     });
   });
@@ -266,10 +266,34 @@ describe('buildArtifactList(state)', () => {
       expect(uh.filename).toBe('userhistory.md');
     });
 
-    it('comunication artifact has filename "comunication_json.md"', () => {
+    it('communication artifact has filename "communication.md"', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
-      const com = artifacts.find((a) => a.kind === 'comunication');
-      expect(com.filename).toBe('comunication_json.md');
+      const com = artifacts.find((a) => a.kind === 'communication');
+      expect(com.filename).toBe('communication.md');
+    });
+
+    it('api-contract artifact is the machine-readable source of truth (openapi.yaml by default)', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
+      const contract = artifacts.find((a) => a.kind === 'api-contract');
+      expect(contract).toBeDefined();
+      expect(contract.filename).toBe('openapi.yaml');
+      expect(contract.spec).toBe('openapi');
+      expect(contract.validation.mock).toContain('prism');
+      // The human-readable communication view points back at the contract.
+      const com = artifacts.find((a) => a.kind === 'communication');
+      expect(com.derivedFrom).toBe('openapi.yaml');
+    });
+
+    it('api-contract follows the detected apiStyle (graphql → schema.graphql)', () => {
+      const state = { ...stateAt('FINAL', [backendReq()]), apiStyle: 'graphql' };
+      const contract = buildArtifactList(state).find((a) => a.kind === 'api-contract');
+      expect(contract.filename).toBe('schema.graphql');
+      expect(contract.spec).toBe('graphql-sdl');
+    });
+
+    it('excludes api-contract when there is no back-end', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
+      expect(artifacts.some((a) => a.kind === 'api-contract')).toBe(false);
     });
   });
 
@@ -311,14 +335,25 @@ describe('buildArtifactList(state)', () => {
       expect(artifacts).toHaveLength(2);
     });
 
-    it('returns 4 artifacts (prd + userhistory + comunication + design-system) for a fullstack project in FINAL', () => {
+    it('returns 5 artifacts (prd + userhistory + api-contract + communication + design-system) for a fullstack project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
-      expect(artifacts).toHaveLength(4);
+      expect(artifacts.map((a) => a.kind)).toEqual([
+        'prd',
+        'userhistory',
+        'api-contract',
+        'communication',
+        'design-system',
+      ]);
     });
 
-    it('returns 3 artifacts (prd + userhistory + comunication) for a back-end-only project in FINAL', () => {
+    it('returns 4 artifacts (prd + userhistory + api-contract + communication) for a back-end-only project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
-      expect(artifacts).toHaveLength(3);
+      expect(artifacts.map((a) => a.kind)).toEqual([
+        'prd',
+        'userhistory',
+        'api-contract',
+        'communication',
+      ]);
     });
 
     it('returns 3 artifacts (prd + userhistory + design-system) for a front-end-only project in FINAL', () => {
@@ -337,30 +372,50 @@ describe('buildArtifactList(state)', () => {
       const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['agentic'] };
       const dsf = buildArtifactList(state).filter((a) => a.kind === 'design-system-files');
       expect(dsf).toHaveLength(1);
-      expect(dsf[0].path).toBe('packages/ui/design-systems/agentic/');
+      // Persisted under the feature root (featurePath is null here → fallback).
+      expect(dsf[0].path).toBe('.pensador/atualizacao-v1/design-systems/agentic/');
       expect(dsf[0].verbatim).toBe(true);
+      // uiPackageDir is only the downstream materialization hint, not the path.
+      expect(dsf[0].materializeInto).toBe('packages/ui/design-systems/agentic/');
+    });
+
+    it('roots verbatim files under the concrete featurePath', () => {
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/login-social-v1',
+        designSystems: ['agentic'],
+      };
+      const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
+      expect(dsf.path).toBe('.pensador/login-social-v1/design-systems/agentic/');
     });
 
     it('supports a merge of multiple systems', () => {
-      const state = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['bmw', 'clean'] };
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/login-social-v1',
+        designSystems: ['bmw', 'clean'],
+      };
       const paths = buildArtifactList(state)
         .filter((a) => a.kind === 'design-system-files')
         .map((a) => a.path);
       expect(paths).toEqual([
-        'packages/ui/design-systems/bmw/',
-        'packages/ui/design-systems/clean/',
+        '.pensador/login-social-v1/design-systems/bmw/',
+        '.pensador/login-social-v1/design-systems/clean/',
       ]);
     });
 
-    it('honors a custom uiPackageDir and fires in spec mode too', () => {
+    it('records a custom uiPackageDir as materializeInto and fires in spec mode too', () => {
       const state = {
         ...stateAt('FINAL', [frontendReq()]),
+        featurePath: '.pensador/checkout-v2',
         artifactMode: 'spec',
         designSystems: ['vercel'],
         uiPackageDir: 'frontend/packages/ui',
       };
       const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
-      expect(dsf.path).toBe('frontend/packages/ui/design-systems/vercel/');
+      // Persisted inside the feature root regardless of the UI package target.
+      expect(dsf.path).toBe('.pensador/checkout-v2/design-systems/vercel/');
+      expect(dsf.materializeInto).toBe('frontend/packages/ui/design-systems/vercel/');
     });
 
     it('is gated on the final stage and on hasFrontend', () => {
@@ -407,7 +462,7 @@ describe('classifyProject(requirements)', () => {
 
 // ---------------------------------------------------------------------------
 // End-to-end: withConsolidated → planArtifacts (regression for the prior
-// wiring gap where state.consolidated stayed empty and comunication_json
+// wiring gap where state.consolidated stayed empty and communication
 // was never planned).
 // ---------------------------------------------------------------------------
 
@@ -423,20 +478,20 @@ describe('withConsolidated wires consolidated requirements into artifact plannin
     return withConsolidated(state);
   }
 
-  it('plans comunication when answered requirements are fullstack', () => {
+  it('plans communication when answered requirements are fullstack', () => {
     const state = finalStateFrom([
       { id: 'a', text: 'backend?', origin: 'pensador', answer: null, answerText: 'A REST API with a database' },
       { id: 'b', text: 'frontend?', origin: 'pensador', answer: null, answerText: 'A React web UI' },
     ]);
-    expect(planArtifacts(state).comunication).toBe(true);
-    expect(buildArtifactList(state).find((a) => a.kind === 'comunication')).toBeDefined();
+    expect(planArtifacts(state).communication).toBe(true);
+    expect(buildArtifactList(state).find((a) => a.kind === 'communication')).toBeDefined();
   });
 
-  it('does NOT plan comunication when answered requirements are not fullstack', () => {
+  it('does NOT plan communication when answered requirements are not fullstack', () => {
     const state = finalStateFrom([
       { id: 'a', text: 'what?', origin: 'pensador', answer: null, answerText: 'A CLI batch tool' },
     ]);
-    expect(planArtifacts(state).comunication).toBe(false);
-    expect(buildArtifactList(state).find((a) => a.kind === 'comunication')).toBeUndefined();
+    expect(planArtifacts(state).communication).toBe(false);
+    expect(buildArtifactList(state).find((a) => a.kind === 'communication')).toBeUndefined();
   });
 });

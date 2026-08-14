@@ -8,16 +8,21 @@ Os antigos estagios `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` nao fazem parte de
 
 ## Visao geral
 
-| Lente | Skill | Origin | Quando usar | Foco |
-|---|---|---|---|---|
-| Clareza | `requirements-clarity` | `requirements-clarity` | Sempre | Ambiguidades, criterios de aceite, escopo, requisitos implicitos |
-| Backend | `backend-development` | `backend-development` | Como referencia/fallback quando `hasBackend` e Codex nao cobrir o dominio | Dados, APIs, integracoes, seguranca, contratos |
-| UI/UX | `ui-ux-pro-max` | `ui-ux-pro-max` | Como referencia/fallback quando `hasFrontend` e AGY nao cobrir UX suficiente | Fluxos, estados de tela, acessibilidade, microcopy |
-| Frontend | `frontend-design` | `frontend-design` | Como referencia/fallback quando `hasFrontend` e for necessario detalhar construcao de UI | Componentizacao, design system, responsividade, layout |
+No v2.6 cada dominio do BRAINSTORM_GERAL tem uma lente **primaria** (skill determinista, roda sempre que o dominio e relevante) e, quando aplicavel, lentes de **refinamento** (subagentes) e o **motor de design**.
 
-`requirements-clarity` e a lente skill primaria do BRAINSTORM_GERAL. As demais skills continuam disponiveis como lentes especializadas de dominio, mas nao criam estagios independentes.
+| Lente | Skill | Origin | Papel | Quando usar | Foco |
+|---|---|---|---|---|---|
+| Clareza | `requirements-clarity` | `requirements-clarity` | primaria | Sempre | Ambiguidades, criterios de aceite, escopo, requisitos implicitos |
+| Backend | `backend-development` | `backend-development` | **primaria** | `hasBackend` | Dados, APIs, integracoes, seguranca, contratos (alimenta o contrato maquina-legivel) |
+| Backend (refino) | `codex:codex-rescue` | `codex` | refine | `hasBackend` | Aprofunda riscos tecnicos sobre o checklist da lente primaria |
+| UX | `ui-ux-pro-max` | `ui-ux-pro-max` | **primaria** | `hasFrontend` | Fluxos, estados de tela, acessibilidade, microcopy (alimenta o Open Design) |
+| Frontend | `frontend-design` | `frontend-design` | **primaria** | `hasFrontend` | Componentizacao, design system, responsividade, layout (alimenta o Open Design) |
+| Design (motor) | Open Design (`od`) | `open-design` | design-engine | `hasFrontend` | Materializa o design system verbatim a partir do brief |
+| UX/Front (refino) | `cc-antigravity-plugin:antigravity-agent` | `agy` | refine | `hasFrontend` | Aprofunda produto/experiencia sobre as lentes primarias |
 
-> **Motor de design (Open Design).** Quando `hasFrontend = true`, o Pensador parseia um **brief de design** e usa o **Open Design** (`od`, MCP/CLI) como motor para gerar o `design-system.md` (DESIGN.md brand-grade). As lentes `ui-ux-pro-max` e `frontend-design` definem *o que* perguntar; o Open Design materializa *o sistema de design*. Se indisponivel, ofereca instalacao via `AskUserQuestion` ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+`requirements-clarity`, `backend-development`, `ui-ux-pro-max` e `frontend-design` sao as **lentes primarias** (skills deterministas) do BRAINSTORM_GERAL. Codex e AGY entram como **lentes de refinamento** por cima delas; o Open Design entra como **motor de design**. Nenhuma cria estagio independente. Mapeamento em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.*.lenses`.
+
+> **Motor de design (Open Design).** Quando `hasFrontend = true`, as lentes primarias `ui-ux-pro-max` e `frontend-design` definem *o que* perguntar; o Pensador parseia um **brief de design** e usa o **Open Design** (`od`, MCP/CLI) como motor para materializar o system verbatim (`DESIGN.md`/`tokens.css`/…). Se indisponivel, ofereca instalacao via `AskUserQuestion` ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
 
 ---
 
@@ -78,7 +83,7 @@ Se uma skill estiver indisponivel:
 2. Pergunte via `AskUserQuestion` se deve retentar, seguir sem a lente ou registrar as lacunas como `"TBD"`.
 3. O fallback e por dominio; dominios independentes continuam validos.
 
-Quando Codex ou AGY nao cobrirem suficientemente um dominio durante BRAINSTORM_GERAL, o Pensador pode usar `backend-development`, `ui-ux-pro-max` ou `frontend-design` como lente complementar, respeitando o modo Lite/Completo e o gate do estagio.
+Quando uma lente primaria (`backend-development`, `ui-ux-pro-max` ou `frontend-design`) estiver indisponivel, o Pensador aplica o fallback por dominio via `AskUserQuestion` (retentar, seguir sem a lente ou registrar `"TBD"`) e ainda pode aproveitar a lente de refinamento (Codex/AGY) daquele dominio, respeitando o modo Lite/Completo e o gate do estagio.
 
 ---
 

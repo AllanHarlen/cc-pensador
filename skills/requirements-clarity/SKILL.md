@@ -1,11 +1,11 @@
 ---
 name: requirements-clarity
-description: Lente de clareza e completude de requisitos para o estágio CLARITY do Pensador. Identifica ambiguidades, termos vagos, requisitos implícitos, escopo dentro/fora e critérios de aceite verificáveis, retornando perguntas objetivas para o usuário. Sempre relevante.
+description: Lente primária de clareza e completude de requisitos do estágio BRAINSTORM_GERAL do Pensador. Identifica ambiguidades, termos vagos, requisitos implícitos, escopo dentro/fora e critérios de aceite verificáveis, retornando perguntas objetivas para o usuário. Sempre relevante.
 ---
 
 # requirements-clarity — Clareza de Requisitos
 
-Skill de brainstorm do Pensador (estágio **CLARITY**, sempre relevante). Aplica uma lente de **clareza e completude** sobre a demanda, o `PRD_Base` e os requisitos consolidados, e retorna **perguntas objetivas** para o usuário fechar ambiguidades antes do aprofundamento técnico.
+Skill de brainstorm do Pensador (lente **primária de clareza** do estágio **BRAINSTORM_GERAL**, sempre relevante). Aplica uma lente de **clareza e completude** sobre a demanda, o `PRD_Base` e os requisitos consolidados, e retorna **perguntas objetivas** para o usuário fechar ambiguidades antes do aprofundamento técnico.
 
 > Conteúdo upstream (mcp.directory id 2157) pode enriquecer esta skill. Baixe com:
 > `curl -L -o skill.zip "https://mcp.directory/api/skills/download/2157" && unzip -o skill.zip -d skills/requirements-clarity && rm skill.zip`

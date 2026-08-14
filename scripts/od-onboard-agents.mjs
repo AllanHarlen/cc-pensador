@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * od-onboard-agents.mjs — locate the host coding-agent CLIs (claude, codex,
  * antigravity) and register them with a LOCAL (host) Open Design daemon so its
