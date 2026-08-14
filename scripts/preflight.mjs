@@ -16,8 +16,11 @@
  *    keeps AskUserQuestion as the only user-dialogue channel.
  *
  * It also reports an `integrations` block: codebaseMemory (MANDATORY exploration
- * before PRD/Spec), openspec (OPTIONAL spec mode), and openDesign (OPTIONAL,
- * front-end-conditional design-system support — parsed design brief → DESIGN.md).
+ * before PRD/Spec), webResearch (MANDATORY two-track RESEARCH — business benchmark +
+ * current stack practice; descriptive only, since WebSearch/WebFetch are built-in
+ * tools and not probeable on disk),
+ * openspec (OPTIONAL spec mode), and openDesign (OPTIONAL, front-end-conditional
+ * design-system support — parsed design brief → DESIGN.md).
  * Optional integrations never affect the overall `status`.
  *
  * Detection strategy: inspect the Claude Code plugin cache on disk to determine
@@ -321,6 +324,67 @@ function checkCodebaseMemory() {
 }
 
 /**
+ * MANDATORY (when the demand has a product surface): web/market research support.
+ *
+ * Unlike the other integrations, this one has NOTHING to probe on disk: the RESEARCH
+ * stage runs on Claude Code's built-in `WebSearch`/`WebFetch` tools, whose
+ * availability is only observable by the agent at runtime (they may be disabled by
+ * policy or offline). So this block is DESCRIPTIVE: it carries the stage contract,
+ * budget and compliance rules the Pensador must honor, and `probeable: false` makes
+ * explicit that `available` is not a disk check. It never affects the overall status.
+ */
+function checkWebResearch() {
+  return {
+    tools: { search: "WebSearch", fetch: "WebFetch" },
+    mandatory: true,
+    probeable: false,
+    stage: "RESEARCH (pre-PRD_BASE/Spec) — two tracks",
+    tracks: {
+      business: {
+        relevantWhen: "hasProductSurface",
+        snapshotFile: "market-research.md",
+        budget: { liteQueries: 4, completoQueries: 8, maxFetchPerQuery: 2, minCompetitors: 3, maxCompetitors: 5 },
+        sourceTiers: ["official", "comparison", "community"],
+        purpose:
+          "Research the business context and the category's table-stakes feature set (competitors/references) before drafting the PRD/Spec.",
+        fallbackBehavior:
+          "(A) the user supplies the competitors/references manually, or " +
+          "(B) proceed on the archetype baselineFeatures alone; record SKIPPED/PARTIAL in market-research.md.",
+      },
+      technical: {
+        relevantWhen: "stackDetected || isGreenfield || touchesArchitecture",
+        snapshotFile: "tech-research.md",
+        budget: { liteQueries: 6, completoQueries: 16, maxFetchPerQuery: 2, maxTechnologies: 6, maxAnglesPerTech: 3 },
+        // Inverted relative to the business track ON PURPOSE: for a market claim the
+        // vendor page is biased; for a framework claim the vendor IS the authority.
+        sourceTiers: ["official-docs", "release-notes", "reputable-guide", "community"],
+        purpose:
+          "Research how the requested stack is built TODAY — current stable versions, idiomatic project structure, " +
+          "architecture/design patterns, conventions, security and testing baselines, and which patterns are now discouraged. " +
+          "An LLM's knowledge of a fast-moving ecosystem is frozen at its training cutoff and the failure mode is silent, so " +
+          "version and recommended approach are RESEARCHED, never recalled.",
+        fallbackBehavior:
+          "(A) the user supplies current versions/conventions manually, or " +
+          "(B) proceed without them and state explicitly in the PRD that the patterns were NOT verified and may be stale; " +
+          "record SKIPPED/PARTIAL in tech-research.md. When the stack is not yet known, record DEFERRED and let ARCH top it up.",
+      },
+    },
+    compliance: [
+      "cite-source-url",
+      "max-30-consecutive-words",
+      "paraphrase-not-quote",
+      "no-proprietary-assets",
+      "no-trademark-imitation",
+    ],
+    purpose:
+      "Look OUTWARD before drafting the PRD/Spec: benchmark the product category AND the current engineering practice of the " +
+      "chosen stack, then package both as a reusable Prompt System injected into every downstream prompt.",
+    fallbackBehavior:
+      "If WebSearch/WebFetch are unavailable at runtime, ask via AskUserQuestion per track (see tracks.*.fallbackBehavior).",
+  };
+}
+
+/**
  * OPTIONAL: OpenSpec availability.
  *
  * Detected via the `openspec` CLI on PATH or an existing `openspec/` directory in
@@ -493,6 +557,7 @@ const codex = checkCodex();
 const agy = checkAgy();
 const executionMode = checkExecutionMode(mode, modeValid, requestedMode);
 const codebaseMemory = checkCodebaseMemory();
+const webResearch = checkWebResearch();
 const openspec = checkOpenSpec();
 const openDesign = checkOpenDesign();
 
@@ -529,10 +594,11 @@ const report = {
   },
   integrations: {
     codebaseMemory,
+    webResearch,
     openspec,
     openDesign,
   },
-  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, openDesign),
+  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, openspec, openDesign),
 };
 
 console.log(JSON.stringify(report, null, 2));
@@ -549,7 +615,7 @@ process.exit(0);
  * opening context or relay to the user when a subagent / execution engine is
  * missing.
  */
-function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, openDesign) {
+function buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, openspec, openDesign) {
   const lines = [];
 
   // Execution mode summary first — it is the most impactful decision.
@@ -609,6 +675,30 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, openspec, open
         `    (B) Seguir sem o Code Base Memory — use Read/Glob/Grep exploration; record fallback in codebase-memory.md.`,
       );
     }
+  }
+
+  if (webResearch) {
+    const biz = webResearch.tracks.business;
+    const tech = webResearch.tracks.technical;
+    lines.push(
+      `Web research: RESEARCH runs TWO tracks on ${webResearch.tools.search}/${webResearch.tools.fetch} (not probeable on disk).`,
+    );
+    lines.push(
+      `  business  → collect sectorContext, confirm the product archetype, run the bounded plan ` +
+        `(${biz.budget.liteQueries} queries lite / ${biz.budget.completoQueries} completo, ` +
+        `${biz.budget.minCompetitors}-${biz.budget.maxCompetitors} competitors) → ${biz.snapshotFile}.`,
+    );
+    lines.push(
+      `  technical → detect the stack, close the stack gaps via AskUserQuestion, then run version-currency (MANDATORY) + ` +
+        `patterns round-robin + front/back cross-cutting ` +
+        `(${tech.budget.liteQueries} queries lite / ${tech.budget.completoQueries} completo, ` +
+        `up to ${tech.budget.maxTechnologies} technologies) → ${tech.snapshotFile}.`,
+    );
+    lines.push(
+      `  Source tiers — business: ${biz.sourceTiers.join(" > ")} | technical: ${tech.sourceTiers.join(" > ")}.`,
+    );
+    lines.push(`  Compliance (mandatory): ${webResearch.compliance.join(", ")}.`);
+    lines.push(`  → ${webResearch.fallbackBehavior}`);
   }
 
   if (openspec) {

@@ -24,6 +24,22 @@
 
 {{PROBLEMA_CONTEXTO}}
 
+### Benchmark de mercado
+
+> **Instrução:** Derivado do estágio RESEARCH (`market-research.md`). Registre setor, categoria e o que os concorrentes analisados entregam — sempre com a URL da fonte, parafraseado (nunca mais de 30 palavras consecutivas copiadas). Se a pesquisa não foi possível, marque `"TBD"` e explique.
+
+- **Setor/indústria:** {{SECTOR_CONTEXT}}
+- **Categoria de produto:** {{PRODUCT_ARCHETYPE}}
+
+| Concorrente / referência | Fonte | Funcionalidades relevantes | Observação |
+|---|---|---|---|
+| {{CONCORRENTE_1}} | {{URL_1}} | {{FUNCIONALIDADES_1}} | {{OBS_1}} |
+| {{CONCORRENTE_N}} | {{URL_N}} | {{FUNCIONALIDADES_N}} | {{OBS_N}} |
+
+| Funcionalidade | Tier | Cobertura no mercado | Decisão |
+|---|---|---|---|
+| {{FEATURE_1}} | table-stakes / differentiator / anti-feature / out-of-scope | {{COBERTURA_1}} | {{DECISAO_1}} |
+
 ---
 
 ## 3. Objetivos & Métricas de Sucesso
@@ -65,6 +81,7 @@
 - **Fora de escopo:** {{FORA_DE_ESCOPO}}
 - **Premissas:** {{PREMISSAS}}
 - **Restrições:** {{RESTRICOES}}
+- **Table-stakes recusadas (anti-features):** {{ANTI_FEATURES}} — cada item com o motivo da recusa, vindo das decisões do estágio RESEARCH.
 
 ---
 
@@ -234,16 +251,51 @@
 
 ### Stack Tecnológica
 
-- **Front-end:** {{FRONTEND_STACK}}
-- **Back-end:** {{BACKEND_STACK}}
-- **Banco de dados:** {{DATABASE}}
-- **Infraestrutura:** {{INFRA}}
+> **Instrução:** A coluna **Versão** vem do track técnico do RESEARCH (`tech-research.md`), consulta `version-currency`. **Nunca escreva versão de memória** — se não foi pesquisada, marque `"TBD"` em vez de arriscar um número desatualizado.
+
+| Camada | Tecnologia | Versão (pesquisada) | Documentação oficial |
+|---|---|---|---|
+| Front-end | {{FRONTEND_STACK}} | {{FRONTEND_VERSAO}} | {{FRONTEND_DOCS_URL}} |
+| Back-end | {{BACKEND_STACK}} | {{BACKEND_VERSAO}} | {{BACKEND_DOCS_URL}} |
+| Banco de dados | {{DATABASE}} | {{DATABASE_VERSAO}} | {{DATABASE_DOCS_URL}} |
+| Autenticação | {{AUTH_STACK}} | {{AUTH_VERSAO}} | {{AUTH_DOCS_URL}} |
+| Testes | {{TESTING_STACK}} | {{TESTING_VERSAO}} | {{TESTING_DOCS_URL}} |
+| Infraestrutura | {{INFRA}} | {{INFRA_VERSAO}} | {{INFRA_DOCS_URL}} |
 
 ### Diagrama de Componentes
 
 ```
 {{DIAGRAMA_OU_DESCRICAO_DE_COMPONENTES}}
 ```
+
+### Estrutura de Projeto & Convenções
+
+> **Instrução:** Estrutura idiomática do major atual e convenções que o Executor deve seguir (naming, lint/format, organização de arquivos), conforme pesquisado. Cite a fonte oficial.
+
+```
+{{ESTRUTURA_DE_PASTAS}}
+```
+
+- **Convenções:** {{CONVENCOES}}
+- **Fonte:** {{CONVENCOES_FONTE_URL}}
+
+### Padrões de Arquitetura & Design
+
+> **Instrução:** Um padrão só entra aqui com `adoption = current` (respaldado pela documentação oficial e recente) ou `experimental` escolhido de forma consciente. `legacy` exige justificativa explícita; `deprecated` **não entra** — vai para os anti-padrões abaixo.
+
+| Padrão | Adoção | Aplicado em | Fonte oficial |
+|---|---|---|---|
+| {{PADRAO_1}} | current / experimental / legacy | {{ONDE_1}} | {{FONTE_1}} |
+| {{PADRAO_N}} | current / experimental / legacy | {{ONDE_N}} | {{FONTE_N}} |
+
+### Anti-padrões Técnicos (desencorajados pelo ecossistema)
+
+> **Instrução:** O que a documentação oficial hoje desencoraja, com o substituto. Esta seção é o que evita o PRD especificar a aplicação de ontem.
+
+| Anti-padrão | Substituído por | Fonte oficial |
+|---|---|---|
+| {{ANTIPADRAO_1}} | {{SUBSTITUTO_1}} | {{FONTE_1}} |
+| {{ANTIPADRAO_N}} | {{SUBSTITUTO_N}} | {{FONTE_N}} |
 
 ### Decisões Técnicas Fundamentais
 

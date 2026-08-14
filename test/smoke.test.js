@@ -43,6 +43,7 @@ describe('Pensador Engine — smoke', () => {
     expect(STAGE_ORDER).toEqual([
       'INIT',
       'EXPLORE',
+      'RESEARCH',
       'PRD_BASE',
       'ARCH',
       'EXPAND',
@@ -55,8 +56,9 @@ describe('Pensador Engine — smoke', () => {
     ]);
   });
 
-  it('exports REQUIREMENT_STAGES covering every working stage after PRD_BASE', () => {
+  it('exports REQUIREMENT_STAGES covering every requirement-producing stage', () => {
     expect(REQUIREMENT_STAGES).toEqual([
+      'RESEARCH',
       'EXPAND',
       'BRAINSTORM_GERAL',
       'CODEX',

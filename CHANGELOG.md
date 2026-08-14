@@ -1,5 +1,80 @@
 # Changelog
 
+## [2.11.0] — 2026-08-14
+
+### Segundo track no RESEARCH: pesquisa tecnica (stack, arquitetura, padroes, convencoes)
+
+A v2.10.0 trouxe o `RESEARCH` olhando para o **mercado**. Faltava a outra metade: o mesmo estagio precisa entender **como a stack pedida e construida hoje**. O estagio passa a ter **dois tracks**:
+
+| Track | Pergunta | Descritor | Snapshot |
+|---|---|---|---|
+| `business` | O que essa categoria de produto entrega? | `WEB_RESEARCH` | `market-research.md` |
+| `technical` | Como essa stack e construida hoje? | `TECH_RESEARCH` | `tech-research.md` |
+
+**O problema que o track tecnico resolve.** O conhecimento de um LLM sobre um ecossistema em movimento esta congelado no corte de treinamento, e o modo de falha e **silencioso**. Pedindo *"tela de login com autenticacao e cadastro de usuario, front-end React e TypeScript, back-end com C#"*, o modelo pode produzir com total confianca um PRD ancorado em padroes que a documentacao oficial ja substituiu — estrutura de pastas de um major anterior, a abordagem antiga de busca de dados, JWT feito a mao onde o framework ja entrega identidade suportada, pacote de teste que deixou de ser o default. O PRD vira a **especificacao de construir o aplicativo de ontem**, e Orquestrador e Executor implementam fielmente a decisao vencida. Dai a regra: para toda tecnologia sensivel a versao, versao estavel atual e abordagem recomendada sao **pesquisadas, nunca lembradas**.
+
+**Registro de tecnologias (`TECH_STACK_REGISTRY`).** ~70 entradas compactas (`{ id, label, category, keywords, docsUrl, versionSensitive }`) cobrindo linguagens, frameworks de front-end e back-end, kits de UI, estado/dados, ORMs, bancos, auth, testes, infra e mobile. **Nenhuma entrada guarda numero de versao** — fixar "React 19" no registro recriaria exatamente a obsolescencia que o track existe para eliminar; guarda so onde a verdade mora (`docsUrl`) e se precisa ser checada (`versionSensitive`). Um teste dedicado impede a regressao, inclusive versao embutida no `label` (foi o que pegou `OAuth 2.1`, corrigido para `OAuth / OpenID Connect`). As perguntas de pesquisa vivem na **categoria** (`TECH_CATEGORY_ANGLES`), nao em cada entrada: adicionar tecnologia e uma linha e ela ja herda os angulos certos. Tecnologia fora do registro nao e descartada — `resolveTechEntry()` devolve entrada generica com `versionSensitive: true`.
+
+**Casamento por fronteira de palavra (`matchesKeyword`).** `includes()` nao serve neste dominio: `go` casaria em "algo"/"google" e `crm` em qualquer token maior. E `\b` e inutil justamente para os identificadores que mais importam — `c#`, `.net`, `c++` comecam/terminam em caractere nao-palavra, entao `\bc#\b` nunca dispara. A fronteira e expressa como lookaround sobre a classe alfanumerica, o que torna `C#`, `.NET` e `Go` detectaveis sem falso positivo. `detectProductArchetype` foi migrado para o mesmo matcher, ganhando precisao.
+
+**Lacunas de stack viram pergunta, nao suposicao (`inferStackGaps`).** "Back-end com C#" nomeia a **linguagem**, nao o framework; "tela de login" nao diz a abordagem de auth. Adivinhar produziria um PRD sobre uma premissa que o usuario nunca fez. Tres lacunas detectadas — `backend-framework-missing` (com os candidatos de `SERVER_LANGUAGE_FRAMEWORKS`), `auth-approach-missing` (candidatos conforme o back-end detectado) e `database-missing` — cada uma virando `AskUserQuestion` com a pergunta pronta. Uma linguagem de servidor tambem passa a contar como o lado back-end da fronteira: sem isso `backend` vinha vazio e os angulos de integracao front↔back, os mais valiosos numa feature de login, nunca disparavam.
+
+**Plano de consultas em tres fases (`techResearchQueryPlan`).** Duas correcoes de ordenacao que os testes expuseram:
+
+1. **`version-currency` obrigatoria, primeiro.** Uma consulta por tecnologia sensivel a versao. Vem antes de tudo porque toda resposta posterior ("estrutura recomendada", "abordagem de auth recomendada") so tem sentido em relacao ao major atual. E a fase que neutraliza o corte de treinamento.
+2. **`stack-patterns` em round-robin.** O primeiro angulo de cada tecnologia, depois o segundo de cada. O laco ingenuo por tecnologia gastava o orcamento inteiro em React e deixava o back-end C# quase sem consulta.
+3. **Cross-cutting com vagas reservadas.** `integration-contract`, `auth-flow` e `project-conventions` dependem da **combinacao** front/back e nenhuma consulta por tecnologia os revela — mas eram os primeiros a serem truncados, o inverso do correto. Agora as fases 1 e 3 sao obrigatorias e o orcamento governa apenas quantas consultas da fase 2 cabem; o plano pode exceder `liteQueries` numa stack grande, porque seis tecnologias exigem genuinamente seis checagens de versao e descartar uma reintroduziria o bug. A consulta de fronteira tambem prefere o **framework concreto** a linguagem nua (`react + asp.net core` e melhor que `react + c#`).
+
+**Gate de adocao (`classifyPatternAdoption`).** Quatro niveis (`PATTERN_ADOPTION`), precedencia do sinal mais forte: `deprecated` (a doc oficial desencoraja ou existe `replacedBy`) → `experimental` → `current` (doc oficial **e** evidencia com no maximo `PATTERN_STALENESS_MONTHS` = 24 meses) → `legacy`. So `current` (e `experimental` escolhido consciente) pode virar decisao de PRD; `legacy` exige justificativa; `deprecated` vai para os anti-padroes com o substituto documentado. O limite de 24 meses existe porque um tutorial de 2019 pode continuar **correto** sem ser a **pratica recomendada hoje** — e e a segunda coisa que o PRD precisa.
+
+**Tiers de fonte invertidos.** `official-docs` > `release-notes` > `reputable-guide` > `community`, com `requiresOfficialSource: true`. Inversao proposital em relacao ao track de negocio: para afirmacao de **mercado** a pagina do fornecedor e enviesada; para afirmacao sobre **framework** o fornecedor **e** a autoridade.
+
+**Diferimento e top-up no ARCH.** Quando nenhuma stack e detectavel (nem na demanda, nem no codigo), nao ha o que pesquisar ainda — a stack so e resolvida no `ARCH`. O track registra `status: DEFERRED` e o **ARCH executa o top-up** com as mesmas funcoes, apos resolver a stack por analise do projeto ou entrevista greenfield. Se ja foi pesquisada no RESEARCH, o ARCH reaproveita: nao pergunta nem pesquisa de novo.
+
+**Prompt System agora cobre os dois tracks.** `PROMPT_SYSTEM_SECTIONS` passa de 9 para 16 secoes, com `PROMPT_SYSTEM_SECTION_GROUPS` separando `business` (8) de `technical` (7: `techStack`, `architectureBaseline`, `designPatterns`, `codingConventions`, `securityBaseline`, `testingBaseline`, `technicalAntiPatterns`) mais `openQuestions` compartilhada. Cada consumidor injeta **so o grupo pertinente** — o brief do Open Design nao tem uso para convencoes de ORM, a lente de back-end nao tem uso para precificacao de concorrente. `techStack` e derivavel da stack detectada, mas as **versoes** dentro dela sao sempre pesquisadas.
+
+**PRD com as decisoes tecnicas rastreaveis.** A secao 15 do `prd-template.md` foi reescrita: tabela de stack com coluna **Versao (pesquisada)** e URL da documentacao oficial, blocos de **Estrutura de Projeto & Convencoes**, **Padroes de Arquitetura & Design** (com coluna de adocao) e **Anti-padroes Tecnicos** (com o substituto). A instrucao e explicita: nunca escrever versao de memoria — se nao foi pesquisada, `"TBD"`. `skills/prd/SKILL.md` ganhou as perguntas correspondentes na entrevista e a secao 15 do `Strict_PRD_Schema` foi atualizada.
+
+**Estado.** `initState` ganha `techStack` e `techResearch`; `withTechResearch()` normaliza `status` (`DONE` | `PARTIAL` | `DEFERRED` | `SKIPPED`), `versions`, `patterns`, `conventions`, `antiPatterns`, `sources` e `notes`. Persistido no checkpoint v2. `tech-research.md` e **arquivo de trabalho** (como `codebase-memory.md` e `market-research.md`), fora de `buildArtifactList` — o baseline tecnico chega ao downstream dobrado no PRD e no `architecture.md`.
+
+**Novos/atualizados:** `references/tech-research.md` (protocolo completo, registro, angulos, anti-padroes), `test/tech-research.test.js` (78 testes, incluindo property-based para totalidade de `detectTechStack`, `techResearchQueryPlan` e `classifyPatternAdoption`, e o teste que impede versao no registro), bloco `integrations.webResearch.tracks.*` no `preflight.mjs` com orcamento e tiers por track, e docs sincronizados (`SKILL.md` com a secao RESEARCH em dois tracks + top-up no ARCH + baseline no prompt do CODEX, `stages.md`, `feature-isolation.md`, `web-research.md`, `commands/pensador.md`, READMEs).
+
+- **Versao:** `package.json`/`plugin.json`/`marketplace.json` → **2.11.0**. Testes: **381 passam** em 12 suites.
+
+## [2.10.0] — 2026-08-14
+
+### Novo estágio RESEARCH: pesquisa web / benchmark de mercado antes do PRD
+
+O fluxo tinha um ponto cego: o `EXPLORE` olhava só para **dentro** (a base de código, via Code Base Memory) e o PRD nascia direto da demanda crua. Mas a demanda que chega ao Pensador quase sempre é uma **categoria de produto com milhares de implementações publicadas** — site comercial de empresa, landing page de prestador de serviço, SaaS, CRM, e-commerce, sistema de gestão. O conjunto de funcionalidades básicas dessa categoria é conhecimento público; escrever o PRD sem lê-lo significa re-derivar do zero o que o mercado já resolveu, e entregar um produto sem o obvio.
+
+`STAGE_ORDER` passa de 11 para **12 estágios**, com o `RESEARCH` entre `EXPLORE` e `PRD_BASE`:
+
+```text
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+```
+
+**Arquétipos de produto (`PRODUCT_ARCHETYPES`).** 11 categorias reconhecidas — `landing-page`, `institutional-site`, `ecommerce`, `marketplace`, `crm`, `saas`, `erp`, `booking`, `dashboard`, `mobile-app`, `api-service` — mais o fallback `unknown`. Cada uma traz um checklist `baselineFeatures` (o table-stakes da categoria, conhecido **antes** de qualquer busca; a pesquisa confirma e estende), `researchAngles` (templates de consulta) e o sinal `broadScope`. `detectProductArchetype()` pontua palavras-chave PT-BR/EN de forma insensível a acento e caixa, com a ordem do registro como desempate; o resultado é **sugestão** confirmada via `AskUserQuestion`.
+
+**`sectorContext` coletado primeiro — e uma única vez.** O setor/indústria do negócio ("oficina automotiva de carro/moto", "clínica odontológica") deixou de ser uma dimensão tardia do brief de design e passou a ser o **primeiro dado do RESEARCH**: sem ele a pesquisa retorna generalidades. O `BRAINSTORM_GERAL` agora **reaproveita** `state.sectorContext` em vez de perguntar de novo, e o inventário de concorrentes alimenta `brandReferences` do Open Design.
+
+**Pesquisa com teto, não crawl.** `marketResearchQueryPlan()` monta um plano determinístico e truncado ao orçamento de `WEB_RESEARCH.budget` (4 consultas em `lite`, 8 em `completo`; 3 a 5 concorrentes; no máximo 2 `WebFetch` por consulta), cobrindo 6 ângulos: descoberta de concorrentes, inventário de funcionalidades, vocabulário do setor, precificação/empacotamento, reclamações de UX (fonte dos diferenciais) e conformidade legal do setor. `researchRelevance()` decide relevância e profundidade a partir dos sinais da própria demanda — o `COMPLEXITY` roda depois, então não serve para isso. Só demanda **sem superfície de produto** (refactor interno, build/CI, bump de dependência) é dispensada, e mesmo assim o estágio é visitado e registra o motivo.
+
+**Classificação em tiers (`FEATURE_TIERS`).** `classifyFeatureTier()` separa `table-stakes` (cobertura ≥ 60% dos concorrentes — ausência é defeito, não escopo), `differentiator`, `anti-feature` (comum no mercado e **recusada**, documentada com o motivo) e `out-of-scope`. Decisão explícita do usuário sempre vence o sinal de mercado. Toda `table-stakes` ausente da demanda original vira pergunta `origin = 'web-research'` via `AskUserQuestion` — o benchmark nunca virou backlog automático.
+
+**Prompt System reaproveitável.** `buildResearchPromptSystem()` empacota o contexto pesquisado nas 9 seções de `PROMPT_SYSTEM_SECTIONS` (`businessContext`, `productArchetype`, `marketBaseline`, `competitorFeatures`, `differentiators`, `antiFeatures`, `domainVocabulary`, `complianceNotes`, `openQuestions`), com a mesma garantia do `buildPrdBase()`: completude estrutural, `"TBD"` no que a pesquisa não preencheu — exceto arquétipo, baseline e contexto de negócio, sempre deriváveis sem busca. Esse bloco é injetado **verbatim** nos consumidores de `WEB_RESEARCH.promptSystemConsumers`: PRD base, EXPAND, `context-pack.md`, **toda unidade de trabalho delegada** em `--modo agy|kiro|codex`, brief do Open Design e handoff. Assim toda lente raciocina sobre o mesmo contexto de negócio, em vez de re-inferir o domínio a partir da demanda crua.
+
+**Conformidade de conteúdo inegociável (`WEB_RESEARCH.compliance`).** Citar a URL de todo achado; nunca reproduzir mais de 30 palavras consecutivas de uma fonte; parafrasear preservando o sentido; jamais copiar logos, imagens, textos de marca ou código de concorrente; referenciar padrões de uma marca, nunca a identidade dela. `table-stakes` exige 2 fontes independentes (`official` > `comparison` > `community`). O produto do estágio é **análise, não cópia**.
+
+**Estado e artefatos.** `initState` ganha `productArchetype`, `sectorContext` e `marketResearch`; `withMarketResearch()` normaliza o resultado (`DONE`/`PARTIAL`/`SKIPPED` + concorrentes, features, fontes, notas e o Prompt System) e o checkpoint v2 o persiste. O snapshot `market-research.md` é **arquivo de trabalho** (como `codebase-memory.md` e `architecture.md`), fora de `buildArtifactList` — o benchmark chega ao downstream dobrado no PRD: nova subseção **Benchmark de mercado** na seção 2 do `prd-template.md` (setor, arquétipo, matriz concorrente × funcionalidade com fonte e tier) e as anti-features explícitas na seção 5 (Escopo). `REQUIREMENT_STAGES` passa a incluir `RESEARCH` e `GAP_ORIGINS` ganha `web-research`, então as decisões de escopo do estágio consolidam como requisitos rastreáveis.
+
+**Conflito de merge não resolvido corrigido em `skills/pensador/SKILL.md`.** O arquivo carregava marcadores `<<<<<<< HEAD` / `=======` / `>>>>>>>` (linhas 347-359) desde o merge `d008cdf`, deixando a seção de roteamento do `BRAINSTORM_GERAL` duplicada e ambígua para o LLM que executa a skill. Resolvido preservando a estrutura de lentes primárias (v2.9.0) **e** a menção a `sectorContext`, que existia só no outro lado do conflito.
+
+**Novos/atualizados:** `references/web-research.md` (protocolo completo, arquétipos, plano de consultas, tiers, anti-padrões), `test/web-research.test.js` (62 testes, incluindo property-based para totalidade de `detectProductArchetype`/`classifyFeatureTier`/`marketResearchQueryPlan`), bloco descritivo `integrations.webResearch` no `preflight.mjs` (`probeable: false` — `WebSearch`/`WebFetch` são ferramentas nativas, não checáveis em disco), `WebSearch`/`WebFetch` adicionadas ao `allowed-tools` de `/pensador`, e docs sincronizados (`SKILL.md`, `stages.md`, `feature-isolation.md`, `skills/prd/SKILL.md`, `prd-template.md`, `commands/pensador.md`, READMEs).
+
+- **Versão:** `package.json`/`plugin.json`/`marketplace.json` → **2.10.0**. Testes: **303 passam** em 11 suites.
+
+> `references/handoff-contract.md` **não** foi alterado: adicionar uma role `market-research` exigiria replicação byte-idêntica nos três plugins (`cc-pensador`, `cc-orchestrador-subagents`, `cc-executor-subagents`), o que não pode ser feito a partir deste repositório isolado. O benchmark viaja para o downstream dentro do `prd.md`, que já é a fonte da verdade de produto.
+
 ## [2.9.0] — 2026-07-15
 
 ### Correções de processo identificadas em auditoria multi-frente (Pensador → Orquestrador)

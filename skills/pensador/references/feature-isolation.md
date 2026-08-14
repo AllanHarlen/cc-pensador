@@ -11,6 +11,8 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
   login-social-v1/
     .pensador-progress.json
     codebase-memory.md
+    market-research.md
+    tech-research.md
     handoff.json
     architecture.md
     shared-agents/
@@ -29,7 +31,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     ...
 ```
 
-O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE. No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`communication.md` nao se aplicam.
+O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE e `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do estagio RESEARCH (negocio/mercado e tecnico). No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`communication.md` nao se aplicam.
 
 ---
 
@@ -74,6 +76,11 @@ O `StageState` deve incluir:
 | `slug` | Sim | Slug base da demanda, sem o sufixo `-vN` (ex.: `login-social`). Usado pelo handoff e pela correlacao entre estagios. |
 | `demanda` | Sim | Demanda original ou retomada |
 | `codebaseMemoryPath` | Apos EXPLORE | Normalmente `<featurePath>/codebase-memory.md` (ou fallback registrado) |
+| `sectorContext` | Apos RESEARCH | Setor/industria do negocio; reaproveitado no brief do Open Design |
+| `productArchetype` | Apos RESEARCH | Arquetipo confirmado (`PRODUCT_ARCHETYPES`), ex.: `saas`, `crm`, `landing-page` |
+| `marketResearch` | Apos RESEARCH | Track de negocio: `status` (`DONE`/`PARTIAL`/`SKIPPED`), concorrentes, features com tier, fontes e o Prompt System |
+| `techStack` | Apos RESEARCH | Tecnologias detectadas (`detectTechStack`), ex.: `['react','typescript','csharp','dotnet']` |
+| `techResearch` | Apos RESEARCH (ou ARCH, se `DEFERRED`) | Track tecnico: `status` (`DONE`/`PARTIAL`/`DEFERRED`/`SKIPPED`), `versions` pesquisadas, `patterns`/`conventions`/`antiPatterns` com `adoption`, fontes |
 | `prdBase` | Apos PRD_BASE | Estrutura do PRD Base (ou change set OpenSpec no modo Spec) |
 | `architecturePath` | Apos ARCH | Normalmente `<featurePath>/architecture.md` |
 | `complexity` | Apos COMPLEXITY | `Lite` ou `Completo` + sinais |
@@ -149,7 +156,7 @@ Arquivos:
 - `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`) **e o Open Design NAO foi usado** (fallback inline das 9 secoes). Quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Nao se aplica no modo Spec.
 - `design-systems/<id>/`: arquivos verbatim do Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), quando `hasFrontend` e um system foi selecionado — nos dois modos. Ficam dentro da pasta da feature; o Executor os materializa depois em `packages/ui`/`src/styles` (`state.uiPackageDir`).
 
-Alem dos artefatos finais, `<featurePath>/` contem dois arquivos de trabalho: `codebase-memory.md` (snapshot da exploracao do Code Base Memory, gravado no EXPLORE) e `architecture.md` (gravado no ARCH).
+Alem dos artefatos finais, `<featurePath>/` contem quatro arquivos de trabalho: `codebase-memory.md` (exploracao do Code Base Memory, gravado no EXPLORE), `market-research.md` e `tech-research.md` (os dois tracks do RESEARCH) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.
 - `userhistory.md`: sempre.
 - `communication.md`: somente quando ha back-end confirmado.

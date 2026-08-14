@@ -34,7 +34,7 @@ O `Strict_PRD_Schema` define as seções obrigatórias que **todo** PRD produzid
 | # | Seção | Descrição |
 |---|-------|-----------|
 | 1 | **Visão Geral** | Resumo executivo: o que é, para quem serve e qual valor entrega. |
-| 2 | **Problema & Contexto** | Dor/necessidade concreta, contexto de negócio e impacto de não resolver. |
+| 2 | **Problema & Contexto** | Dor/necessidade concreta, contexto de negócio, setor/indústria e **benchmark de mercado** (concorrentes analisados no estágio RESEARCH, com fonte) e impacto de não resolver. |
 | 3 | **Objetivos & Métricas de Sucesso** | Metas mensuráveis, KPIs e metas quantitativas. |
 | 4 | **Público-Alvo & Personas** | Perfis de usuário, papéis, necessidades e familiaridade técnica. |
 | 5 | **Escopo** | Incluído, fora de escopo, premissas e restrições. |
@@ -47,7 +47,7 @@ O `Strict_PRD_Schema` define as seções obrigatórias que **todo** PRD produzid
 | 12 | **Segurança, Privacidade & Conformidade** | AuthN/AuthZ, papéis, multitenancy, LGPD/consentimento, dados sensíveis. |
 | 13 | **Observabilidade & Operação** | Logs, métricas, tracing, alertas, backup, deploy/CI-CD e ambientes. |
 | 14 | **Critérios de Aceite** | Condições verificáveis por requisito (IDs `CA-`, cruzados com `RF-`). |
-| 15 | **Arquitetura** | Componentes, stack, decisões técnicas e diagrama. |
+| 15 | **Arquitetura** | Componentes, stack com a **versão estável atual pesquisada**, padrões de arquitetura/design vigentes, convenções, anti-padrões desencorajados e diagrama. Baseado no track técnico do RESEARCH (`tech-research.md`), com URL oficial por decisão — nunca em versão/padrão lembrados de memória. |
 | 16 | **Riscos & Mitigações** | Riscos técnicos/produto/negócio, probabilidade, impacto e mitigação. |
 | 17 | **Plano de Entrega** | Fases/milestones com escopo (por `RF-`) e estimativas (IDs `EP-`). |
 
@@ -67,6 +67,7 @@ A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Apliqu
 
 #### Problema & Contexto
 - Qual dor concreta resolve? Qual o contexto de negócio e o impacto de não ter a solução?
+- Qual o setor/indústria (`sectorContext`) e a categoria de produto (`productArchetype`)? O que o benchmark de mercado do estágio RESEARCH (`market-research.md`) mostrou que os concorrentes entregam?
 
 #### Objetivos & Métricas de Sucesso
 - Como o sucesso será medido (métricas/KPIs)? Há meta quantitativa ou prazo?
@@ -76,6 +77,7 @@ A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Apliqu
 
 #### Escopo
 - O que está incluído no MVP? O que fica explicitamente fora? Quais premissas e restrições?
+- Quais funcionalidades `table-stakes` do benchmark foram aprovadas (entram como `RF-`) e quais viraram `anti-feature`/`out-of-scope`? Registre o motivo de cada exclusão — omissão silenciosa de table-stakes é defeito, não escopo.
 
 #### Requisitos Funcionais
 - Quais funcionalidades são imprescindíveis? Há fluxos de trabalho (workflows/steps) e estados?
@@ -109,6 +111,9 @@ A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Apliqu
 
 #### Arquitetura
 - Há decisões tecnológicas já tomadas (linguagem, framework, nuvem)? É front-end, back-end, fullstack ou monorepo?
+- Qual a **versão estável atual** de cada tecnologia da stack, conforme pesquisado no track técnico do RESEARCH (`tech-research.md`)? Nunca registre versão de memória.
+- Qual a estrutura de projeto idiomática, os padrões de arquitetura/design `current` e as convenções (naming, lint/format) que o Executor deve seguir? Cite a URL oficial de cada decisão.
+- Quais padrões o ecossistema hoje **desencoraja** (`deprecated`) e que portanto não podem entrar como decisão? Registre-os como anti-padrões, com o substituto documentado.
 
 #### Riscos & Mitigações
 - Quais riscos técnicos, de produto ou de negócio? Como mitigá-los?

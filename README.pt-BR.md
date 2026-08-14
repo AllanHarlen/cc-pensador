@@ -1,6 +1,6 @@
 # cc-pensador
 
-> Plugin de Claude Code que conduz uma demanda em linguagem natural por **onze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
+> Plugin de Claude Code que conduz uma demanda em linguagem natural por **doze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
 
 `versão 2.7.1` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
@@ -34,17 +34,18 @@ Por padrão (`--modo claude`), o Claude Code executa o fluxo com os próprios to
 ## Fluxo de estágios
 
 ```
-INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
 
-O funil vai de **iniciar/retomar → PRD base → arquitetura → ampliar → calibrar complexidade → brainstorm por domínio → varredura técnica → varredura de produto → consolidar → entregar.**
+O funil vai de **iniciar/retomar → explorar o código → pesquisar o mercado → PRD base → arquitetura → ampliar → calibrar complexidade → brainstorm por domínio → varredura técnica → varredura de produto → consolidar → entregar.**
 
 | Estágio | O que faz | Delegação | Relevância |
 |---|---|---|---|
 | **INIT** | Verifica retomada de checkpoint v2, aloca feature dir, obtém demanda, pergunta PRD vs Spec quando OpenSpec é detectado. | — | sempre |
 | **EXPLORE** | Explora o projeto com Code Base Memory (`index_repository → get_architecture → search_graph → trace_path`); grava `codebase-memory.md`. Fallback para Read/Glob/Grep se indisponível. | MCP `codebase-memory-mcp` | sempre |
+| **RESEARCH** | Olha para fora, em dois tracks. *business*: coleta `sectorContext`, confirma o arquétipo, roda o plano de consultas, levanta e classifica as funcionalidades dos concorrentes → `market-research.md`. *technical*: detecta a stack, fecha suas lacunas, pesquisa versão atual/arquitetura/padrões/convenções → `tech-research.md`. Os dois alimentam o Prompt System. | `WebSearch` · `WebFetch` | exceto demanda sem superfície de produto |
 | **PRD_BASE** | Gera PRD base pelo `Strict_PRD_Schema` (ou escala os comandos `openspec-*` para montar o change set no modo Spec). Sem perguntas ao usuário; avanço automático. | skill `prd` / `openspec-*` | sempre |
-| **ARCH** | Analisa arquitetura (reaproveita o índice do Code Base Memory + Read/Glob/Grep); grava `architecture.md`. Entrevista greenfield se necessário. | — | sempre |
+| **ARCH** | Analisa arquitetura (reaproveita o índice do Code Base Memory + Read/Glob/Grep); roda o top-up da pesquisa técnica quando ficou `DEFERRED`; grava `architecture.md` com o baseline técnico pesquisado. Entrevista greenfield se necessário. | `WebSearch` · `WebFetch` (só no top-up) | sempre |
 | **EXPAND** | Amplia demanda com requisitos candidatos (perguntas do Pensador). | — | sempre |
 | **COMPLEXITY** | Calcula score por `detectComplexity()`; propõe Lite ou Completo; usuário confirma. | — | sempre |
 | **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend + brief de design do Open Design se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY · Open Design (`od`) | sempre |
@@ -66,7 +67,9 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `design-system.md` — Sistema de design brand-grade (schema DESIGN.md), escrito inline **apenas como fallback** quando o Open Design não está disponível. Quando o Open Design é usado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) é o documento de design e nenhum arquivo standalone redundante é gerado. *(modo PRD, quando houver front-end)*
 - `design-systems/<id>/` — Arquivos verbatim do system Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), copiados por `scripts/od-fetch-system.mjs` para dentro da pasta da feature. *(nos dois modos, quando houver front-end e um system selecionado; o Executor os materializa em `packages/ui`/`src/styles` na implementação)*
 - `codebase-memory.md` — Snapshot da exploração do Code Base Memory. *(sempre, em `<featurePath>/`)*
-- `architecture.md` — Retrato da arquitetura detectada no estágio ARCH. *(sempre, em `<featurePath>/`)*
+- `market-research.md` — Snapshot do track de negócio: setor, arquétipo, concorrentes, matriz de funcionalidades com tiers, exigências legais do setor e fontes. *(sempre, em `<featurePath>/`)*
+- `tech-research.md` — Snapshot do track técnico: stack com a **versão atual pesquisada**, estrutura de projeto idiomática, padrões de arquitetura/design com status de adoção, convenções, baseline de segurança e testes, anti-padrões desencorajados e a URL oficial de cada decisão. *(sempre, em `<featurePath>/`)*
+- `architecture.md` — Retrato da arquitetura detectada no estágio ARCH, mais o baseline técnico pesquisado. *(sempre, em `<featurePath>/`)*
 - `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orchestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
 
 ## Isolamento por atualização
@@ -182,6 +185,55 @@ Antes de redigir o PRD/Spec base, o Pensador explora o projeto existente com o *
 
 Instalação: `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash` (ou `install.ps1` no Windows), depois reinicie o agente. Veja `skills/pensador/references/codebase-memory.md`.
 
+## Pesquisa web (estágio RESEARCH, dois tracks)
+
+O `EXPLORE` olha para **dentro** (a base de código). O **RESEARCH** olha para **fora**, em dois tracks que respondem perguntas diferentes:
+
+| Track | Pergunta | Snapshot |
+|---|---|---|
+| `business` | O que essa **categoria de produto** entrega? | `market-research.md` |
+| `technical` | Como essa **stack** é construída **hoje**? | `tech-research.md` |
+
+Os dois rodam no mesmo estágio e alimentam o mesmo Prompt System reaproveitável.
+
+### Track 1 — negócio / mercado
+
+A demanda que chega ao Pensador quase sempre é uma *categoria* que já tem milhares de implementações publicadas — site comercial de empresa, landing page de prestador de serviço, SaaS, CRM, e-commerce, sistema de gestão. Esse conjunto de funcionalidades básicas é conhecimento público: escrever o PRD sem lê-lo significa re-derivar do zero o que o mercado já resolveu.
+
+- Roda logo após o **EXPLORE**, antes do `PRD_BASE`, usando `WebSearch` + `WebFetch`.
+- Coleta `sectorContext` (setor/indústria do negócio) **primeiro** e depois confirma o arquétipo sugerido por `detectProductArchetype()` — `landing-page`, `institutional-site`, `ecommerce`, `marketplace`, `crm`, `saas`, `erp`, `booking`, `dashboard`, `mobile-app`, `api-service`. Cada arquétipo já traz um checklist `baselineFeatures` conhecido *antes* de qualquer busca; a pesquisa confirma e estende.
+- Executa um plano de consultas com teto (`marketResearchQueryPlan()`: descoberta de concorrentes, inventário de funcionalidades, vocabulário do setor, precificação/empacotamento, reclamações de UX, conformidade do setor) — 4 consultas em profundidade `lite`, 8 em `completo`, de 3 a 5 concorrentes. Nunca uma varredura ilimitada.
+- Classifica cada achado com `classifyFeatureTier()` em `table-stakes` / `differentiator` / `anti-feature` / `out-of-scope`. Toda `table-stakes` ausente da demanda original vira pergunta explícita via `AskUserQuestion` (`origin: 'web-research'`) — o escopo é sempre decisão do usuário.
+- Grava `<featurePath>/market-research.md`.
+- Só é dispensado em demandas sem superfície de produto (refactor interno, correção de build/CI, bump de dependência) — mesmo assim o estágio é visitado e registra o motivo.
+
+Veja `skills/pensador/references/web-research.md`.
+
+### Track 2 — técnico (stack, arquitetura, padrões, convenções)
+
+O conhecimento de um LLM sobre um ecossistema em movimento está congelado no corte de treinamento, e o modo de falha é **silencioso**. Pedindo "tela de login com React + TypeScript e back-end em C#", um modelo pode produzir com total confiança um PRD ancorado em padrões que a documentação oficial já substituiu — estrutura de pastas de um major anterior, a abordagem antiga de busca de dados, JWT feito à mão onde o framework já entrega uma stack de identidade suportada. O PRD vira a especificação de construir o aplicativo de ontem, e todo estágio seguinte implementa fielmente.
+
+Daí a regra: para toda tecnologia sensível a versão, a versão estável atual e a abordagem recomendada atual são **pesquisadas, nunca lembradas**.
+
+- **Detecção de stack** (`detectTechStack`) sobre a demanda *mais* o snapshot do EXPLORE, então em brownfield a stack vem do código em vez de nova pergunta. O casamento é por fronteira de palavra, que é o que torna `C#`, `.NET` e `Go` detectáveis sem os falsos positivos de uma busca por substring ("algo" → Go, "abc#" → C#). `\b` não serve aqui: esses identificadores começam/terminam em caractere não-palavra. ~70 tecnologias entre linguagens, frameworks de front e back, kits de UI, ORMs, bancos, auth, testes e infra — e tecnologia fora do registro ainda é pesquisada com ângulos genéricos, não descartada.
+- **Fechar lacunas antes de pesquisar** (`inferStackGaps`). "Back-end com C#" não diz ASP.NET Core; "tela de login" não diz a abordagem de auth. Cada lacuna (`backend-framework-missing`, `auth-approach-missing`, `database-missing`) vira `AskUserQuestion` com candidatos concretos do ecossistema. Adivinhar produziria um PRD sobre uma premissa que você nunca fez.
+- **Plano de consultas em três fases** (`techResearchQueryPlan`): (1) uma consulta `version-currency` obrigatória por tecnologia sensível a versão — primeiro, porque toda resposta posterior só tem sentido em relação ao major atual; (2) `stack-patterns` em **round-robin** entre tecnologias, para o orçamento não ser gasto na primeira da lista; (3) cross-cutting `integration-contract` / `auth-flow` / `project-conventions` com **vagas reservadas** — a fronteira front↔back é onde os erros de integração se concentram e nenhuma consulta por tecnologia a revela. O truncamento só consome a fase 2.
+- **Tiers de fonte invertidos** em relação ao track de negócio: `official-docs` > `release-notes` > `reputable-guide` > `community`. Para afirmação de mercado o fornecedor é enviesado; para afirmação sobre framework o fornecedor *é* a autoridade. Um padrão só é registrado como atual com respaldo oficial.
+- **Gate de adoção** (`classifyPatternAdoption`): `current` (doc oficial + evidência recente) pode virar decisão de PRD; `experimental` só como risco consciente e registrado; `legacy` exige justificativa explícita; `deprecated` vai para a seção de anti-padrões com o substituto documentado. Um tutorial de 2019 pode continuar *correto* sem ser a prática *recomendada* hoje.
+- **Diferimento**: quando nenhuma stack é detectável, o track registra `DEFERRED` em vez de pesquisar uma stack que você não escolheu. O **ARCH** a resolve (análise do projeto ou entrevista greenfield) e roda o top-up com as mesmas funções.
+- O **registro não guarda número de versão** — fixar "React 19" recriaria exatamente a obsolescência que este track elimina. Guarda só onde a verdade mora (`docsUrl`) e se precisa ser checada (`versionSensitive`).
+- Grava `<featurePath>/tech-research.md` e alimenta as seções de engenharia do PRD (§7 RNF, §10 modelo de dados, §11 contratos, §12 segurança, §15 arquitetura), o `architecture.md`, as lentes de back-end/front-end, o CODEX e o handoff.
+
+Veja `skills/pensador/references/tech-research.md`.
+
+### Comum aos dois: o Prompt System reaproveitável
+
+`buildResearchPromptSystem()` empacota os dois tracks em `PROMPT_SYSTEM_SECTIONS`, agrupados por `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), e o bloco é injetado verbatim no PRD base, no EXPAND, no `context-pack.md`, em **todo prompt delegado** em `--modo agy|kiro|codex`, no brief do Open Design, no CODEX e no handoff. Cada consumidor injeta apenas o grupo de que precisa — o brief de design não tem uso para convenções de ORM, a lente de back-end não tem uso para precificação de concorrente.
+
+Conformidade de conteúdo é obrigatória nos dois tracks: citar a URL de toda fonte, nunca reproduzir mais de 30 palavras consecutivas, parafrasear e jamais copiar assets/textos/código de terceiros. A saída é análise, não cópia.
+
+Sem acesso à web, o Pensador pergunta por track: você informa concorrentes/versões manualmente, ou o fluxo segue sem eles — deixando explícito no PRD que os padrões não foram verificados.
+
 ## OpenSpec (modo Spec opcional)
 
 O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. Quando o preflight detecta o OpenSpec (CLI `openspec` no PATH ou diretório `openspec/`), o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
@@ -245,7 +297,7 @@ O `scripts/pensador-engine.mjs` é a **especificação determinística de refer�
 
 ```bash
 npm install
-npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · integrations · docs-consistency
+npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · integrations · web-research · tech-research · docs-consistency
 ```
 
 ## Estrutura do projeto
@@ -256,7 +308,7 @@ cc-pensador/
 │  ├─ plugin.json            # manifesto do plugin (nome, versão, dependências)
 │  └─ marketplace.json       # entrada de marketplace
 ├─ commands/
-│  └─ pensador.md            # comando /pensador (orquestra os 11 estágios + --modo)
+│  └─ pensador.md            # comando /pensador (orquestra os 12 estágios + --modo)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature + modos de execução
@@ -267,6 +319,8 @@ cc-pensador/
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
 │  │  │  ├─ execution-modes.md           # modos --modo (claude/agy/kiro/codex), parsing, preflight, delegação
 │  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) obrigatório: exploração antes do PRD/Spec
+│  │  │  ├─ web-research.md              # RESEARCH track de negócio: arquétipos, plano de consultas, tiers, Prompt System
+│  │  │  ├─ tech-research.md             # RESEARCH track técnico: detecção de stack, versão atual, padrões, convenções
 │  │  │  ├─ open-design.md               # Open Design (MCP/CLI) opcional: brief de design → design-system.md
 │  │  │  ├─ openspec.md                  # OpenSpec opcional: escolha PRD vs Spec no INIT
 │  │  │  └─ askuserquestion-protocol.md  # canal único, previews, recap final, handoff
@@ -287,6 +341,8 @@ cc-pensador/
 │  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
 │  ├─ execution-modes.test.js      # --modo: parse/resolve/buildDelegationInvocation
 │  ├─ integrations.test.js         # Code Base Memory + OpenSpec (modo Spec) + Open Design
+│  ├─ web-research.test.js         # RESEARCH track de negócio: arquétipos, consultas, tiers
+│  ├─ tech-research.test.js        # RESEARCH track técnico: stack, lacunas, fases do orçamento, adoção
 │  └─ docs-consistency.test.js     # STAGE_ORDER verbatim nos docs
 ├─ CHANGELOG.md              # histórico de versões e breaking changes
 └─ LICENSE                   # MIT
@@ -298,7 +354,7 @@ cc-pensador/
 
 | Aspecto | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 11 estágios (com EXPLORE/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 12 estágios (com EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
 | Pasta de artefatos | pasta raiz legada da v1 | `.pensador/<slug-da-demanda>-vN/` |
 | Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |

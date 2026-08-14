@@ -1,11 +1,11 @@
 ---
 name: pensador
-description: Orquestra o protocolo v2 do Pensador em onze estagios, transformando uma demanda em linguagem natural em PRD (ou specs OpenSpec) e artefatos isolados por feature. Inclui exploracao via Code Base Memory, analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
+description: Orquestra o protocolo v2 do Pensador em doze estagios, transformando uma demanda em linguagem natural em PRD (ou specs OpenSpec) e artefatos isolados por feature. Inclui exploracao via Code Base Memory, pesquisa web/benchmark de mercado, analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
 ---
 
 # Skill: Pensador
 
-Esta skill orquestra o fluxo **Pensador v2**. O fluxo gera um PRD base, analisa a arquitetura do projeto, expande requisitos, estima complexidade, coordena um brainstorm geral por dominio, refina tecnicamente com Codex, fecha lacunas de produto com AGY e entrega os artefatos finais em um diretorio isolado por feature.
+Esta skill orquestra o fluxo **Pensador v2**. O fluxo explora a base de codigo, pesquisa o mercado da categoria de produto, gera um PRD base, analisa a arquitetura do projeto, expande requisitos, estima complexidade, coordena um brainstorm geral por dominio, refina tecnicamente com Codex, fecha lacunas de produto com AGY e entrega os artefatos finais em um diretorio isolado por feature.
 
 O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` por um unico estagio **BRAINSTORM_GERAL**, que usa skills e agentes como lentes de dominio em paralelo quando aplicavel.
 
@@ -23,6 +23,8 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY/Kiro e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
+| `skills/pensador/references/web-research.md` | RESEARCH, track de negocio: arquetipos de produto, plano de consultas, classificacao de funcionalidades e o Prompt System reaproveitavel |
+| `skills/pensador/references/tech-research.md` | RESEARCH, track tecnico: deteccao de stack, lacunas, versao atual, padroes de arquitetura/design, convencoes e anti-padroes vigentes |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
 | `skills/pensador/references/imagery.md` | Pipeline de imagery/iconografia: `sectorContext` (Pensador) ate `IMAGE_SUGGESTIONS` do `antigravity-coder` (Orquestrador) |
 | `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (tokens.css, components.html, preview/, …) para `packages/ui/design-systems/<id>/` |
@@ -41,7 +43,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 A sequencia e fixa e nunca reordenada:
 
 ```text
-INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
 
 `STAGE_ORDER` v2:
@@ -50,6 +52,7 @@ INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_
 [
   'INIT',
   'EXPLORE',
+  'RESEARCH',
   'PRD_BASE',
   'ARCH',
   'EXPAND',
@@ -74,6 +77,8 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
 .pensador/<slug-da-demanda>-vN/
   .pensador-progress.json
   codebase-memory.md
+  market-research.md
+  tech-research.md
   architecture.md
   shared-agents/
     context-pack.md
@@ -92,7 +97,7 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   design-systems/<id>/          # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
-> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no INIT. `design-system.md` so e gravado no modo PRD quando ha front-end **e o Open Design NAO foi usado** (fallback inline) — quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no EXPLORE e `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do RESEARCH (todos arquivos de trabalho, fora de `buildArtifactList`). `design-system.md` so e gravado no modo PRD quando ha front-end **e o Open Design NAO foi usado** (fallback inline) — quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
 
 Regras:
 
@@ -110,7 +115,7 @@ Regras:
 
 Toda pergunta apresentada ao usuario durante o fluxo usa exclusivamente `AskUserQuestion`.
 
-Isso inclui demanda ausente, retomada de checkpoint, entrevista greenfield em ARCH, requisitos candidatos em EXPAND, decisao Lite/Completo em COMPLEXITY, perguntas vindas do BRAINSTORM_GERAL, Codex, AGY, fallback, confirmacao de back-end, sobrescrita de artefatos, recap final e handoff.
+Isso inclui demanda ausente, retomada de checkpoint, setor/arquetipo e escopo de funcionalidades em RESEARCH, entrevista greenfield em ARCH, requisitos candidatos em EXPAND, decisao Lite/Completo em COMPLEXITY, perguntas vindas do BRAINSTORM_GERAL, Codex, AGY, fallback, confirmacao de back-end, sobrescrita de artefatos, recap final e handoff.
 
 O idioma padrao e PT-BR. Cada pergunta deve oferecer uma opcao recomendada quando houver uma recomendacao defensavel, incluir previews quando a decisao afetar artefatos e registrar autoria/origem da pergunta.
 
@@ -165,6 +170,19 @@ EXPLORE
   search_graph, trace_path) e grava <featurePath>/codebase-memory.md. Descobre
   contrato de API existente (contractDiscoveryGlobs) como baseline em brownfield.
   Fallback para Read/Glob/Grep se indisponivel.
+
+RESEARCH
+  Olha para FORA, em dois tracks.
+  business:  coleta sectorContext, confirma o arquetipo (detectProductArchetype),
+             roda marketResearchQueryPlan via WebSearch/WebFetch, levanta o que os
+             concorrentes entregam, classifica por FEATURE_TIERS e grava
+             <featurePath>/market-research.md.
+  technical: detecta a stack (detectTechStack), fecha lacunas (inferStackGaps),
+             roda techResearchQueryPlan (version-currency obrigatoria + padroes em
+             round-robin + cross-cutting reservado), classifica adocao
+             (classifyPatternAdoption) e grava <featurePath>/tech-research.md.
+  Os dois alimentam o Prompt System reaproveitavel (grupos business/technical)
+  injetado em todos os prompts seguintes.
 
 PRD_BASE
   Modo PRD: gera PRD Base pelo Strict_PRD_Schema. Modo Spec: escala os comandos
@@ -241,6 +259,83 @@ Este e um estagio sem perguntas de produto: ele e visitado, produz o snapshot (o
 
 ---
 
+## RESEARCH
+
+**Objetivo:** olhar para **fora** antes de escrever o PRD/Spec. O `EXPLORE` entende o codigo que existe; o `RESEARCH` entende o mercado em que o produto vai competir **e** como a stack escolhida e construida hoje.
+
+O estagio tem **dois tracks**, que rodam no mesmo estagio e alimentam o mesmo Prompt System:
+
+| Track | Pergunta | Descritor | Snapshot | Referencia |
+|---|---|---|---|---|
+| **`business`** | O que essa **categoria de produto** entrega? | `WEB_RESEARCH` | `market-research.md` | `references/web-research.md` |
+| **`technical`** | Como essa **stack** e construida **hoje**? | `TECH_RESEARCH` | `tech-research.md` | `references/tech-research.md` |
+
+---
+
+### Track 1 — negocio/mercado
+
+A demanda que chega quase sempre e uma categoria com milhares de implementacoes publicadas (site comercial, landing page de prestador de servico, SaaS, CRM, e-commerce, sistema de gestao). Esse conjunto de funcionalidades e conhecimento publico: escrever o PRD sem le-lo significa re-derivar do zero o que o mercado ja resolveu.
+
+1. **Colete `sectorContext` primeiro** (setor/industria: "oficina automotiva de carro/moto", "clinica odontologica", "escritorio de contabilidade"). Pergunte via `AskUserQuestion` quando nao for inferivel — sem isso a pesquisa retorna generalidades. Grave em `state.sectorContext` e **reaproveite** no brief do Open Design (nao pergunte duas vezes).
+2. **Confirme o arquetipo** com `detectProductArchetype(demanda + sectorContext)` e apresente a sugestao via `AskUserQuestion` (recomendada primeiro). Grave em `state.productArchetype`. Cada arquetipo de `PRODUCT_ARCHETYPES` ja traz `baselineFeatures` — o table-stakes conhecido **antes** de qualquer busca; a pesquisa confirma e estende.
+3. **Decida relevancia e profundidade** com `researchRelevance({ isInternalOnly, archetype, hasBroadScopeKeywords, isGreenfield })`. So demandas sem superficie de produto (refactor interno, build/CI, bump de dependencia) sao `relevant: false` — e mesmo assim o estagio e visitado e registra o motivo.
+4. **Execute o plano** de `marketResearchQueryPlan({ demanda, archetype, sectorContext, region, depth })` com `WebSearch`, e `WebFetch` apenas nos resultados que valem leitura profunda. Respeite o teto de `WEB_RESEARCH.budget` (4 consultas em `lite`, 8 em `completo`; 3-5 concorrentes). Pesquisa e um estagio, nao uma varredura da internet.
+5. **Qualifique as fontes** (`official` > `comparison` > `community`). Uma feature so vira `table-stakes` com pelo menos 2 fontes independentes.
+6. **Respeite a conformidade de conteudo** (`WEB_RESEARCH.compliance`): cite a URL de todo achado, nunca reproduza mais de 30 palavras consecutivas, parafraseie, e **jamais** copie logos, imagens, textos de marca ou codigo de concorrente. O produto do estagio e analise, nao copia.
+7. **Classifique** cada funcionalidade com `classifyFeatureTier()` em `table-stakes`, `differentiator`, `anti-feature` ou `out-of-scope`. Decisao explicita do usuario sempre vence o sinal de mercado.
+8. **Pergunte o que a pesquisa nao resolve:** toda `table-stakes` que nao estava na demanda vira pergunta `origin = 'web-research'`, `stage = 'RESEARCH'` via `AskUserQuestion`, agrupada, com recomendacao e opcao de recusa (que a transforma em `anti-feature` documentada). Essas respostas entram em `REQUIREMENT_STAGES` e sao consolidadas no FINAL.
+9. **Grave o snapshot** em `<featurePath>/market-research.md` (`marketResearchSnapshotPath()`) e o estado com `withMarketResearch(state, research)`.
+
+Protocolo completo, arquetipos, plano de consultas e anti-padroes em `references/web-research.md`.
+
+---
+
+### Track 2 — tecnico (stack, arquitetura, padroes, convencoes)
+
+**Por que existe:** o conhecimento do modelo sobre um ecossistema em movimento esta congelado no corte de treinamento, e o modo de falha e **silencioso**. Pedindo "tela de login com React + TypeScript e back-end em C#", um modelo pode produzir com confianca um PRD ancorado em padroes que a documentacao oficial ja substituiu — estrutura de pastas de um major anterior, busca de dados no padrao antigo, JWT feito a mao onde o framework ja entrega identidade suportada. O PRD vira a especificacao de construir o aplicativo de ontem, e o Orquestrador/Executor implementam fielmente a decisao vencida.
+
+**Regra:** para toda tecnologia sensivel a versao, a versao estavel atual e a abordagem recomendada atual sao **pesquisadas, nunca lembradas**.
+
+1. **Detecte a stack** com `detectTechStack(demanda + codebase-memory.md)`. O casamento e por fronteira de palavra (`c#`, `.net` e `go` sao detectaveis sem os falsos positivos de "algo"/"google"/"abc#"). Em brownfield a stack vem do codigo, nao de nova pergunta. Grave em `state.techStack`. Tecnologia fora do registro nao e descartada: `resolveTechEntry()` devolve entrada generica e ela entra no plano.
+2. **Feche as lacunas antes de pesquisar** com `inferStackGaps(detected, demanda)`. "Back-end com C#" nao diz ASP.NET Core; "tela de login" nao diz a abordagem de auth. Cada lacuna (`backend-framework-missing`, `auth-approach-missing`, `database-missing`) vira `AskUserQuestion` com candidatos concretos. **Nao adivinhe.**
+3. **Decida relevancia/profundidade/diferimento** com `techResearchRelevance()`. Quando nenhuma stack e detectavel, o track fica `DEFERRED`: nao ha o que pesquisar ainda, porque a stack so e resolvida no ARCH — que executa o **top-up** com as mesmas funcoes de plano.
+4. **Execute o plano** de `techResearchQueryPlan()`, em tres fases: (1) `version-currency` obrigatoria por tecnologia sensivel a versao — vem primeiro porque toda resposta posterior so tem sentido em relacao ao major atual; (2) `stack-patterns` em **round-robin** entre tecnologias; (3) cross-cutting (`integration-contract`, `auth-flow`, `project-conventions`) com **vagas reservadas**. O truncamento so consome a fase 2.
+5. **Qualifique as fontes** com `TECH_RESEARCH.sourceTiers`: `official-docs` > `release-notes` > `reputable-guide` > `community`. Inversao proposital em relacao ao track de negocio — para mercado o fornecedor e enviesado, para framework o fornecedor **e** a autoridade. `requiresOfficialSource: true`.
+6. **Cubra as 10 dimensoes** de `TECH_RESEARCH_DIMENSIONS`, para a pesquisa nao parar em "qual e a versao atual".
+7. **Classifique a adocao** de cada padrao com `classifyPatternAdoption()`: `current` (doc oficial + evidencia recente) pode virar decisao do PRD; `experimental` so se escolhido consciente e registrado como risco; `legacy` exige justificativa; `deprecated` vai para `technicalAntiPatterns`, com o substituto documentado.
+8. **Grave** `<featurePath>/tech-research.md` (`techResearchSnapshotPath()`) e o estado com `withTechResearch(state, research)`.
+
+O track tecnico alimenta as secoes de **engenharia** do PRD (§7 RNF, §10 modelo de dados, §11 contratos, §12 seguranca, §15 arquitetura), o `architecture.md`, as lentes de back-end/front-end, o CODEX e o handoff (`TECH_RESEARCH.consumers`).
+
+Protocolo completo, registro de tecnologias, angulos por categoria e anti-padroes em `references/tech-research.md`.
+
+---
+
+### Prompt System (o reaproveitamento dos dois tracks)
+
+`buildResearchPromptSystem()` empacota o contexto pesquisado nas secoes de `PROMPT_SYSTEM_SECTIONS`, agrupadas em `PROMPT_SYSTEM_SECTION_GROUPS`:
+
+- **`business`:** `businessContext`, `productArchetype`, `marketBaseline`, `competitorFeatures`, `differentiators`, `antiFeatures`, `domainVocabulary`, `complianceNotes`
+- **`technical`:** `techStack`, `architectureBaseline`, `designPatterns`, `codingConventions`, `securityBaseline`, `testingBaseline`, `technicalAntiPatterns`
+- **compartilhado:** `openQuestions`
+
+Esse bloco e injetado **verbatim** nos consumidores de `WEB_RESEARCH.promptSystemConsumers` e `TECH_RESEARCH.consumers`: PRD base, EXPAND, `context-pack.md` do BRAINSTORM_GERAL, **toda unidade de trabalho delegada** em `--modo agy|kiro|codex`, o brief do Open Design, o CODEX e o recap/handoff. Injete apenas o **grupo pertinente** a cada consumidor — o brief do Open Design nao tem uso para convencoes de ORM, e a lente de back-end nao tem uso para precificacao de concorrente.
+
+Assim toda lente raciocina sobre o mesmo contexto de negocio **e** o mesmo baseline tecnico pesquisado, em vez de re-inferir dominio e stack a partir da demanda crua.
+
+### Fallback (sem acesso a web)
+
+Pergunte via `AskUserQuestion`:
+
+- **Track de negocio:** (A) o usuario informa concorrentes/referencias manualmente, ou (B) seguir apenas com os `baselineFeatures` do arquetipo.
+- **Track tecnico:** (A) o usuario informa as versoes e convencoes vigentes, ou (B) seguir sem elas — deixando explicito no PRD que os padroes nao foram verificados e podem estar defasados.
+
+Registre a escolha e marque `status: SKIPPED` ou `PARTIAL` no snapshot correspondente.
+
+**Gate:** `<featurePath>/market-research.md` **e** `<featurePath>/tech-research.md` gravados (cada um `DONE`, `PARTIAL` com lacunas marcadas, `DEFERRED` — so o tecnico, com top-up agendado no ARCH — ou `SKIPPED` com motivo) e todas as perguntas `origin = 'web-research'` (benchmark e lacunas de stack) respondidas ou diferidas.
+
+---
+
 ## PRD_BASE
 
 **Objetivo:** produzir o artefato base a partir da demanda — `PRD_Base` no modo PRD ou a **montagem de specs estruturadas** no modo Spec (OpenSpec). A escolha vem de `artifactMode`, definido no INIT.
@@ -248,8 +343,9 @@ Este e um estagio sem perguntas de produto: ele e visitado, produz o snapshot (o
 ### Modo PRD (`artifactMode = 'prd'`, padrao)
 
 1. Carregue `skills/prd/SKILL.md`.
-2. Aplique a entrevista de descoberta sobre a demanda, usando o `<featurePath>/codebase-memory.md` como contexto.
-3. Preencha cada secao inferivel; se nao inferivel, marque exatamente `"TBD"`.
+2. Aplique a entrevista de descoberta sobre a demanda, usando como contexto o `<featurePath>/codebase-memory.md` (o que existe), o `<featurePath>/market-research.md` (o que o mercado entrega) e o `<featurePath>/tech-research.md` (como a stack e construida hoje), mais o Prompt System.
+3. Preencha cada secao inferivel; se nao inferivel, marque exatamente `"TBD"`. As funcionalidades `table-stakes` aprovadas no RESEARCH entram como requisitos funcionais; as `anti-feature` e `out-of-scope` entram em **Escopo** como exclusoes explicitas, com o motivo.
+4. As secoes de engenharia usam o track tecnico: §7 (RNF), §10 (modelo de dados), §11 (contratos de API), §12 (seguranca) e §15 (arquitetura e decisoes tecnicas) citam a **versao pesquisada** e o padrao `current`, com a URL oficial. Padrao `deprecated` nunca vira decisao — vai para os anti-padroes tecnicos.
 
 ### Modo Spec (`artifactMode = 'spec'`, OpenSpec)
 
@@ -284,12 +380,15 @@ Greenfield:
 - Quando nao houver base de codigo relevante, marque `isGreenfield = true`.
 - Entreviste o usuario via `AskUserQuestion` sobre stack desejada, canais de entrega, persistencia, integracoes e restricoes tecnicas.
 
+**Top-up do track tecnico do RESEARCH.** Se `state.techResearch.status === 'DEFERRED'` (a stack nao era detectavel no RESEARCH), execute a pesquisa tecnica **agora**, com a stack que este estagio acabou de resolver: `detectTechStack` sobre as respostas/analise → `inferStackGaps` → `techResearchQueryPlan` → `classifyPatternAdoption` → `withTechResearch(state, { status: 'DONE', ... })`, atualizando `<featurePath>/tech-research.md`. Sao as mesmas funcoes do RESEARCH; o que muda e so o momento em que a stack ficou conhecida. Se a stack ja foi pesquisada no RESEARCH, **nao pergunte nem pesquise de novo** — reaproveite.
+
 Saida obrigatoria:
 
 - Grave `<featurePath>/architecture.md`.
 - Inclua resumo da arquitetura, dominios detectados, decisoes conhecidas, lacunas tecnicas e sinais para `detectComplexity()`.
+- Registre o **baseline tecnico pesquisado**: versao atual de cada tecnologia, estrutura de projeto idiomatica, padroes de arquitetura/design `current` e as convencoes que o Executor devera seguir — cada um com a URL oficial. Decisao que contraria o baseline vira override justificado, nao omissao.
 
-**Gate:** `architecture.md` gravado e perguntas greenfield respondidas ou diferidas.
+**Gate:** `architecture.md` gravado (com o baseline tecnico), perguntas greenfield respondidas ou diferidas e, quando o track tecnico estava `DEFERRED`, top-up concluido ou fallback registrado.
 
 ---
 
@@ -297,7 +396,7 @@ Saida obrigatoria:
 
 **Objetivo:** ampliar a demanda com requisitos candidatos nao previstos no enunciado.
 
-1. Revise o `PRD_Base`, `architecture.md`, secoes `"TBD"`, funcionalidades implicitas, fluxos alternativos, integracoes, seguranca, erros, desempenho, acessibilidade, persistencia e mobile.
+1. Revise o `PRD_Base`, `architecture.md`, `market-research.md`, secoes `"TBD"`, funcionalidades implicitas, fluxos alternativos, integracoes, seguranca, erros, desempenho, acessibilidade, persistencia e mobile. Use o inventario de funcionalidades do RESEARCH como fonte de requisitos candidatos — **sem repetir** o que o usuario ja decidiu naquele estagio (deduplique).
 2. **Gate de breaking change (brownfield):** se a feature toca o contrato de API existente descoberto no EXPLORE, classifique via `classifyContractChange({ touchesExistingContract, removesOrRenames, changesTypeOrRequired })`. Se o resultado for `breaking`, converta em pergunta explicita `AskUserQuestion` antes de consolidar — quebra de contrato e decisao arquitetural deliberada e versionada, nunca ajuste implicito. Mudancas `additive` seguem normalmente.
 3. Converta candidatos importantes em perguntas com `origin = 'pensador'`, `stage = 'EXPAND'`.
 4. Apresente via `AskUserQuestion`, agrupando apenas perguntas relacionadas de mesma origem e estagio.
@@ -344,19 +443,12 @@ Antes de delegar, grave `<featurePath>/shared-agents/context-pack.md` com contex
 
 Roteamento padrao (lentes primarias sao skills deterministas; Codex/AGY refinam; Open Design e o motor de design):
 
-<<<<<<< HEAD
-- `requirements-clarity`: sempre aplicavel como lente de clareza.
-- Codex com effort `high`: adicional no BRAINSTORM_GERAL quando `hasBackend = true`.
-- AGY com modelo `gemini-3.1-pro-high`: adicional no BRAINSTORM_GERAL quando `hasFrontend = true`.
-- **Open Design (lente de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (setor/industria do negocio, tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). A dimensao `sectorContext` (setor/industria) e coletada **primeiro**: sem ela o system fica com uma "vibe" de marca generica, sem iconografia/imagery nem microcopy do ramo real do usuario (ver `references/open-design.md` e `references/imagery.md`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
-=======
 - `requirements-clarity` (lente primaria): sempre aplicavel como lente de clareza.
 - `backend-development` (lente primaria): roda sempre que `hasBackend = true`, produzindo o checklist determinista de dados/APIs/contratos/seguranca que alimenta o **contrato maquina-legivel**. Codex com effort `high` roda **por cima dela** como lente de refinamento (`role: refine`) quando `hasBackend = true`.
 - `ui-ux-pro-max` + `frontend-design` (lentes primarias): rodam sempre que `hasFrontend = true` e alimentam o Open Design. AGY com modelo `gemini-3.1-pro-high` roda **por cima delas** como lente de refinamento (`role: refine`) quando `hasFrontend = true`.
-- **Open Design (motor de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+- **Open Design (motor de design, quando `hasFrontend = true`):** alem das perguntas de UX, o Pensador parseia o **brief de design** via `AskUserQuestion` (setor/industria do negocio, tom visual, marca/referencias, paleta, tipografia, estados de componente, responsividade, acessibilidade, microcopy — `openDesignBriefPlan()`). A dimensao `sectorContext` (setor/industria) **ja foi coletada no RESEARCH** (`state.sectorContext`): reaproveite-a em vez de perguntar de novo; sem ela o system fica com uma "vibe" de marca generica, sem iconografia/imagery nem microcopy do ramo real do usuario (ver `references/web-research.md`, `references/open-design.md` e `references/imagery.md`). O inventario de concorrentes do `market-research.md` tambem alimenta `brandReferences`. Cada resposta tem um destino estruturado no Open Design (`openDesignBriefRouting()`): `selection` (escolhe/importa o system), `input` (conteudo/componentes), `parameter` (estilizacao: hue/spacing/opacity), `constraint` (gate WCAG — enforced no review do modo Spec; documentado em PRD mode). Apos coletar o brief, **liste os candidates** via `od design-systems list --json` (ou `GET /api/design-systems`) e apresente os top-3 matches ao usuario via `AskUserQuestion` com preview do `visualTone` de cada um (inclua o system recomendado como primeira opcao). Somente apos confirmacao do usuario **grave os id(s) validados em `state.designSystems` (array de strings)** — ids nao confirmados causam exit 5 no FINAL. `buildArtifactList` le esse campo para emitir os artefatos `design-system-files` no handoff; sem ele o role `design-system-files` nao e gerado e o Orquestrador nao acha os arquivos verbatim. **Se `brandReferences` citar uma marca/repo real**, rode `od design-systems import-github <url>` (async: aguarde confirmacao do daemon antes de gravar o slug em `state.designSystems`). O download e a consolidacao acontecem no FINAL. Se o Open Design nao for detectado, ofereca instalacao via `AskUserQuestion` (igual ao Code Base Memory) ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
 
 Mapeamento deterministico em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.*.lenses` (`pensador-engine.mjs`).
->>>>>>> eab107193005463807f6cd23b038273b13b043cf
 
 Contrato:
 
@@ -388,8 +480,11 @@ inconsistencias ou riscos. Use effort: high. Retorne uma lista de pontos em aber
 Demanda: <demanda>
 PRD Base: <PRD_Base>
 Arquitetura: <architecture.md>
+Baseline tecnico pesquisado: <grupo technical do Prompt System + tech-research.md>
 Requisitos consolidados: <EXPAND + BRAINSTORM_GERAL>
 ```
+
+O baseline tecnico entra no prompt de proposito: a varredura deve raciocinar sobre as convencoes e versoes **pesquisadas**, nao sobre as que o modelo lembra. Divergencia entre o que o Codex propoe e o baseline pesquisado e um ponto a levantar, nao a resolver em silencio.
 
 Para cada ponto relevante, crie pergunta com `origin = 'codex'`, `stage = 'CODEX'` e apresente via `AskUserQuestion`.
 
@@ -464,8 +559,9 @@ Estado terminal. O fluxo esta encerrado.
 |---|---|
 | `INIT` | Demanda presente, modo de execucao resolvido, `artifactMode` definido, `featurePath` definido e retomada/novo fluxo decididos |
 | `EXPLORE` | `codebase-memory.md` gravado (exploracao do Code Base Memory ou fallback registrado) |
+| `RESEARCH` | `market-research.md` **e** `tech-research.md` gravados (`DONE`/`PARTIAL`/`DEFERRED`/`SKIPPED`) e perguntas `web-research` fechadas |
 | `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado pelos comandos `openspec-*` (ou fallback registrado) |
-| `ARCH` | `architecture.md` gravado e perguntas greenfield fechadas |
+| `ARCH` | `architecture.md` gravado com baseline tecnico, perguntas greenfield fechadas e top-up tecnico concluido quando estava `DEFERRED` |
 | `EXPAND` | Todas as perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |
 | `BRAINSTORM_GERAL` | `agent.response.md` ou fallback por dominio; perguntas fechadas |
@@ -478,6 +574,9 @@ Estado terminal. O fluxo esta encerrado.
 
 | Estagio | Tipo | Alvo | Condicao | Saida |
 |---|---|---|---|---|
+| `RESEARCH` | ferramenta (track business) | `WebSearch` + `WebFetch` | demanda com superficie de produto (`researchRelevance().relevant`) | `market-research.md` + grupo `business` do Prompt System |
+| `RESEARCH` | ferramenta (track technical) | `WebSearch` + `WebFetch` | stack detectada, greenfield ou impacto de arquitetura (`techResearchRelevance().relevant`) | `tech-research.md` + grupo `technical` do Prompt System |
+| `ARCH` | ferramenta (top-up) | `WebSearch` + `WebFetch` | `techResearch.status === 'DEFERRED'` | `tech-research.md` atualizado |
 | `BRAINSTORM_GERAL` | skill (primaria) | `requirements-clarity` | sempre | `shared-agents/requirements-clarity.response.md` |
 | `BRAINSTORM_GERAL` | skill (primaria) | `backend-development` | `hasBackend` | `shared-agents/backend-development.response.md` |
 | `BRAINSTORM_GERAL` | subagente (refino) | `codex:codex-rescue` | `hasBackend` | `shared-agents/codex.response.md` |

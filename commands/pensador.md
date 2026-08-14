@@ -1,29 +1,30 @@
 ---
-description: Conduz o Pensador v2 em onze estagios, com exploracao via Code Base Memory, arquitetura, expansao, complexidade, brainstorm geral por dominio, Codex, AGY e artefatos isolados por feature (PRD ou specs OpenSpec). Suporta --modo claude|agy|kiro|codex para delegar o trabalho pesado a uma CLI externa.
+description: Conduz o Pensador v2 em doze estagios, com exploracao via Code Base Memory, pesquisa web/benchmark de mercado, arquitetura, expansao, complexidade, brainstorm geral por dominio, Codex, AGY e artefatos isolados por feature (PRD ou specs OpenSpec). Suporta --modo claude|agy|kiro|codex para delegar o trabalho pesado a uma CLI externa.
 argument-hint: "[--modo claude|agy|kiro|codex] [--model <id>] [--effort <nivel>] <demanda em linguagem natural - ex.: 'Crie uma tela de login para os usuarios'>"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(node:*), Bash(openspec:*), AskUserQuestion, Agent, Skill, SlashCommand, mcp__codebase-memory-mcp
+allowed-tools: Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, Bash(node:*), Bash(openspec:*), AskUserQuestion, Agent, Skill, SlashCommand, mcp__codebase-memory-mcp
 ---
 
 # /pensador
 
-Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre onze estagios:
+Inicia o **Pensador v2** para a demanda em `$ARGUMENTS`. O fluxo cobre doze estagios:
 
 1. **INIT** - Demanda, checkpoint v2, `allocateFeatureDir()` e (se OpenSpec detectado) escolha PRD vs Spec.
 2. **EXPLORE** - Exploracao do projeto com Code Base Memory (`codebase-memory-mcp`); grava `codebase-memory.md`. Se o servidor nao for detectado, pergunta via `AskUserQuestion` se o usuario quer instalar (Claude executa o instalador e retoma) ou seguir com `Read`/`Glob`/`Grep`.
-3. **PRD_BASE** - Geracao do PRD Base pela `Skill_PRD_Base` (ou change set OpenSpec via comandos `openspec-*` no modo Spec).
-4. **ARCH** - Analise do projeto (reaproveita o indice do Code Base Memory + `Read`/`Glob`/`Grep`); em greenfield, entrevista o usuario; grava `architecture.md`.
-5. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
-6. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
-7. **BRAINSTORM_GERAL** - Orquestracao por dominio com lentes primarias (skills deterministas) + refino: `requirements-clarity` (sempre); `backend-development` primaria + Codex `effort high` (refino) se `hasBackend`; `ui-ux-pro-max` + `frontend-design` primarias + AGY `gemini-3.1-pro-high` (refino) e Open Design (brief de design -> arquivos verbatim) se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
-8. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`; nao participa em atividade especifica de front-end (`hasFrontend` sem `hasBackend`).
-9. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
-10. **FINAL** - Consolidacao, artefatos, recap final e handoff.
-11. **DONE** - Estado terminal.
+3. **RESEARCH** - Pesquisa web em dois tracks. `business`: coleta `sectorContext`, confirma o arquetipo (`detectProductArchetype`), roda `marketResearchQueryPlan` via `WebSearch`/`WebFetch`, levanta o que os concorrentes entregam, classifica por `FEATURE_TIERS` e grava `market-research.md`. `technical`: detecta a stack (`detectTechStack`), fecha lacunas (`inferStackGaps`), roda `techResearchQueryPlan` (versao atual obrigatoria + padroes/arquitetura/convencoes + integracao front/back), classifica adocao (`classifyPatternAdoption`) e grava `tech-research.md`. Os dois alimentam o Prompt System reaproveitado nos estagios seguintes.
+4. **PRD_BASE** - Geracao do PRD Base pela `Skill_PRD_Base` (ou change set OpenSpec via comandos `openspec-*` no modo Spec).
+5. **ARCH** - Analise do projeto (reaproveita o indice do Code Base Memory + `Read`/`Glob`/`Grep`); em greenfield, entrevista o usuario; executa o **top-up** do track tecnico quando ele ficou `DEFERRED`; grava `architecture.md` com o baseline tecnico pesquisado.
+6. **EXPAND** - Ampliacao da demanda com requisitos candidatos.
+7. **COMPLEXITY** - `detectComplexity()` com `domainCount`, `hasBackend`, `hasBroadScopeKeywords` e `isGreenfield`; sugere Lite ou Completo.
+8. **BRAINSTORM_GERAL** - Orquestracao por dominio com lentes primarias (skills deterministas) + refino: `requirements-clarity` (sempre); `backend-development` primaria + Codex `effort high` (refino) se `hasBackend`; `ui-ux-pro-max` + `frontend-design` primarias + AGY `gemini-3.1-pro-high` (refino) e Open Design (brief de design -> arquivos verbatim) se `hasFrontend`; usa `shared-agents/context-pack.md` e `agent.response.md`.
+9. **CODEX** - Refinamento tecnico final com `codex:codex-rescue`; nao participa em atividade especifica de front-end (`hasFrontend` sem `hasBackend`).
+10. **AGY** - Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent`.
+11. **FINAL** - Consolidacao, artefatos, recap final e handoff.
+12. **DONE** - Estado terminal.
 
 `STAGE_ORDER` v2:
 
 ```text
-INIT -> EXPLORE -> PRD_BASE -> ARCH -> EXPAND -> COMPLEXITY -> BRAINSTORM_GERAL -> CODEX -> AGY -> FINAL -> DONE
+INIT -> EXPLORE -> RESEARCH -> PRD_BASE -> ARCH -> EXPAND -> COMPLEXITY -> BRAINSTORM_GERAL -> CODEX -> AGY -> FINAL -> DONE
 ```
 
 Os antigos `CLARITY`, `BACKEND`, `UIUX` e `FRONTEND` nao sao mais estagios autonomos; eles viraram lentes de dominio dentro de `BRAINSTORM_GERAL`.
@@ -70,6 +71,7 @@ Parse o JSON retornado e registre o status:
 Leia tambem o bloco `integrations`:
 
 - `integrations.codebaseMemory` (obrigatorio): disponibilidade do MCP `codebase-memory-mcp` para a exploracao pre-PRD/Spec.
+- `integrations.webResearch` (obrigatorio, descritivo): contrato do estagio RESEARCH nos dois tracks — ferramentas (`WebSearch`/`WebFetch`), orcamento de consultas de negocio e tecnico, tiers de fonte, regras de conformidade e fallback. `probeable: false` porque sao ferramentas nativas do Claude Code, cuja disponibilidade so se observa em runtime.
 - `integrations.openspec` (opcional): se detectado, o INIT deve oferecer PRD vs Spec.
 - `integrations.openDesign` (opcional, condicional a front-end): se a demanda tiver front-end e o Open Design (`od`) nao for detectado, ofereca instalacao via `AskUserQuestion` rodando o script `scripts/install-open-design.ps1` (Windows) ou `scripts/install-open-design.sh` (macOS/Linux), que sobe o Open Design via Docker e conecta o MCP; ou caia para `design-system.md` inline. Com o Open Design no ar, puxe o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Veja `skills/pensador/references/open-design.md`.
 
@@ -97,6 +99,28 @@ A skill define gates, checkpoint v2, isolamento por atualizacao, delegacao e fal
 
 - **Code Base Memory (obrigatorio):** antes do `PRD_BASE`/Spec, explore o projeto via MCP `codebase-memory-mcp` (`index_repository → get_architecture → get_graph_schema → search_graph → trace_path`, mais `detect_changes` em fixes) e grave `<featurePath>/codebase-memory.md`. Indisponivel: pergunte via `AskUserQuestion` se deve instalar ou cair para `Read`/`Glob`/`Grep`. Veja `skills/pensador/references/codebase-memory.md`.
 
+### Passo 3.2 - RESEARCH (dois tracks)
+
+**Track `business` — mercado (obrigatorio quando a demanda tem superficie de produto):**
+
+- Colete `sectorContext` via `AskUserQuestion`, confirme o arquetipo sugerido por `detectProductArchetype()`, decida profundidade com `researchRelevance()` e execute `marketResearchQueryPlan()` com `WebSearch` (+ `WebFetch` nos resultados que valem leitura profunda, respeitando `WEB_RESEARCH.budget`).
+- Classifique cada funcionalidade com `classifyFeatureTier()` e transforme as `table-stakes` ausentes da demanda em perguntas `origin = 'web-research'` via `AskUserQuestion`.
+- Grave `<featurePath>/market-research.md`. Veja `skills/pensador/references/web-research.md`.
+
+**Track `technical` — stack (obrigatorio quando ha stack detectada, greenfield ou impacto de arquitetura):**
+
+- Detecte a stack com `detectTechStack(demanda + codebase-memory.md)` e feche as lacunas com `inferStackGaps()` **antes** de pesquisar: "back-end com C#" nao diz ASP.NET Core, "tela de login" nao diz a abordagem de auth. Cada lacuna vira `AskUserQuestion` com candidatos.
+- Decida com `techResearchRelevance()`. Sem stack detectavel, marque `status: DEFERRED` — o ARCH resolve a stack e roda o top-up.
+- Execute `techResearchQueryPlan()`: `version-currency` obrigatoria primeiro (a fase que neutraliza o corte de treinamento), depois `stack-patterns` em round-robin, depois os cross-cutting reservados (`integration-contract`, `auth-flow`, `project-conventions`).
+- Classifique cada padrao com `classifyPatternAdoption()`. So `current` (e `experimental` consciente) vira decisao de PRD; `deprecated` vai para anti-padroes com o substituto.
+- Fontes: `official-docs` > `release-notes` > `reputable-guide` > `community` (`requiresOfficialSource: true`).
+- Grave `<featurePath>/tech-research.md`. Veja `skills/pensador/references/tech-research.md`.
+
+**Comum aos dois:**
+
+- Grave o Prompt System (`buildResearchPromptSystem()`), que passa a ser injetado em todos os prompts seguintes — inclusive nos delegados em `--modo agy|kiro|codex`. Injete apenas o grupo pertinente (`PROMPT_SYSTEM_SECTION_GROUPS.business` / `.technical`).
+- Conformidade obrigatoria: cite a URL de todo achado, no maximo 30 palavras consecutivas por fonte, parafraseie e nunca copie assets/textos/codigo de terceiros.
+
 ### Passo 4 - Executar os estagios
 
 Siga a ordem v2 definida em `skills/pensador/SKILL.md` e `skills/pensador/references/stages.md`.
@@ -117,6 +141,8 @@ Artefatos e estado devem ficar sob:
 .pensador/<slug-da-demanda>-vN/
   .pensador-progress.json
   codebase-memory.md
+  market-research.md
+  tech-research.md
   handoff.json
   architecture.md
   shared-agents/
@@ -140,7 +166,7 @@ Ao concluir FINAL, informe:
 - Caminho de `userhistory.md` (modo PRD).
 - Caminho do contrato maquina-legivel (`openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml`) e de `communication.md` (visao derivada), se houver back-end confirmado (modo PRD).
 - Caminho dos arquivos do design system, se houver front-end (modo PRD): quando o Open Design foi usado, `design-systems/<id>/` (arquivos verbatim, incl. `DESIGN.md`); no fallback (sem Open Design), o `design-system.md` inline.
-- Caminho de `codebase-memory.md` e `architecture.md`.
+- Caminho de `codebase-memory.md`, `market-research.md`, `tech-research.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
 - Recap final e handoff. No modo Spec, oriente `/openspec-verify-change`, `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.
 - Caminho de `handoff.json` (manifesto de handoff para o Orchestrador).
@@ -154,12 +180,14 @@ Ao concluir FINAL, informe:
 |---|---|
 | `skills/pensador/SKILL.md` | Skill principal do Pensador v2 |
 | `skills/prd/SKILL.md` | Skill_PRD_Base: schema e entrevista de descoberta |
-| `skills/pensador/references/stages.md` | Definicao detalhada dos onze estagios |
+| `skills/pensador/references/stages.md` | Definicao detalhada dos doze estagios |
 | `skills/pensador/references/feature-isolation.md` | Isolamento `.pensador/<slug-da-demanda>-vN/`, `allocateFeatureDir()`, checkpoint e `shared-agents/` |
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Codex/AGY/Kiro, roteamento por dominio, motores de execucao e contrato `shared-agents/` |
 | `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex), parsing, preflight e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
+| `skills/pensador/references/web-research.md` | RESEARCH, track de negocio: arquetipos, plano de consultas, tiers de funcionalidade e Prompt System |
+| `skills/pensador/references/tech-research.md` | RESEARCH, track tecnico: deteccao de stack, lacunas, versao atual, padroes/arquitetura/convencoes e anti-padroes |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e geracao de `design-system.md` quando ha front-end |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes `.pensador/.orchestration/.executor`, correlacao por slug |

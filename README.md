@@ -1,6 +1,6 @@
 # cc-pensador
 
-> Claude Code plugin that conducts a natural language request through **eleven stages of work** to a high-quality PRD — with Code Base Memory exploration, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--modo`, saving Claude tokens.
+> Claude Code plugin that conducts a natural language request through **twelve stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--modo`, saving Claude tokens.
 
 `version 2.7.2` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
@@ -97,6 +97,55 @@ Before drafting the PRD/Spec base, Pensador explores the existing project with *
 
 Install: `curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash` (or `install.ps1` on Windows), then restart your agent. See `skills/pensador/references/codebase-memory.md`.
 
+## Web research (RESEARCH stage, two tracks)
+
+`EXPLORE` looks **inward** (the codebase). **RESEARCH** looks **outward**, on two tracks that answer different questions:
+
+| Track | Question | Snapshot |
+|---|---|---|
+| `business` | What does this product **category** ship? | `market-research.md` |
+| `technical` | How is this **stack** built **today**? | `tech-research.md` |
+
+Both run in the same stage and feed the same reusable Prompt System.
+
+### Track 1 — business / market
+
+A request that reaches Pensador is usually a *category* that already has thousands of shipped implementations — a company website, a service-provider landing page, a SaaS, a CRM, an e-commerce, an internal management system. That category's table-stakes feature set is public knowledge, so drafting the PRD without reading it means re-deriving what the market already settled.
+
+- Runs right after **EXPLORE**, before `PRD_BASE`, using `WebSearch` + `WebFetch`.
+- Collects `sectorContext` (business sector/industry) **first**, then confirms the product archetype suggested by `detectProductArchetype()` — `landing-page`, `institutional-site`, `ecommerce`, `marketplace`, `crm`, `saas`, `erp`, `booking`, `dashboard`, `mobile-app`, `api-service`. Each archetype ships a `baselineFeatures` checklist known *before* any search; the research confirms and extends it.
+- Executes a bounded query plan (`marketResearchQueryPlan()`: competitor discovery, feature inventory, sector vocabulary, pricing/packaging, UX complaints, sector compliance) — 4 queries in `lite` depth, 8 in `completo`, 3–5 competitors. Never an open-ended crawl.
+- Classifies every finding with `classifyFeatureTier()` into `table-stakes` / `differentiator` / `anti-feature` / `out-of-scope`. Any table-stakes feature missing from the original request becomes an explicit `AskUserQuestion` (`origin: 'web-research'`) — the user always decides scope.
+- Writes `<featurePath>/market-research.md`.
+- Skipped only for requests with no product surface (internal refactor, build/CI fix, dependency bump) — the stage is still visited and records why.
+
+See `skills/pensador/references/web-research.md`.
+
+### Track 2 — technical (stack, architecture, patterns, conventions)
+
+An LLM's knowledge of a fast-moving ecosystem is frozen at its training cutoff, and the failure mode is **silent**. Asked for "a login screen with React + TypeScript and a C# back end", a model can confidently produce a PRD anchored in patterns the official docs have already replaced — a folder layout two majors out of date, the previous data-fetching approach, a hand-rolled JWT where the framework now ships a supported identity stack. The PRD becomes a specification for building yesterday's application, and every downstream stage implements it faithfully.
+
+So the rule is: for every version-sensitive technology, the current stable version and the current recommended approach are **researched, never recalled**.
+
+- **Stack detection** (`detectTechStack`) over the demand *plus* the EXPLORE snapshot, so a brownfield stack comes from the code instead of another question. Matching is boundary-aware, which is what makes `C#`, `.NET` and `Go` detectable without the false positives a substring search produces ("algo" → Go, "abc#" → C#). `\b` is useless here: those identifiers start/end with non-word characters. ~70 technologies across languages, front-end and back-end frameworks, UI kits, ORMs, databases, auth, testing and infra — and an unknown technology is still researched with generic angles rather than dropped.
+- **Gap closing before searching** (`inferStackGaps`). "Back end with C#" does not say ASP.NET Core; "login screen" does not say the auth approach. Each gap (`backend-framework-missing`, `auth-approach-missing`, `database-missing`) becomes an `AskUserQuestion` with concrete ecosystem candidates. Guessing would produce a PRD built on an assumption you never made.
+- **Three-phase query plan** (`techResearchQueryPlan`): (1) a mandatory `version-currency` query per version-sensitive technology — first, because every later answer is only meaningful relative to the current major; (2) `stack-patterns` in **round-robin** across technologies, so the budget is not spent on the first one in the list; (3) cross-cutting `integration-contract` / `auth-flow` / `project-conventions` with **reserved slots** — the front↔back boundary is where integration mistakes concentrate and no per-technology query surfaces it. Truncation only ever eats into phase 2.
+- **Source tiers inverted** relative to the business track: `official-docs` > `release-notes` > `reputable-guide` > `community`. For a market claim the vendor page is biased; for a framework claim the vendor *is* the authority. A pattern may only be recorded as current with official backing.
+- **Adoption gating** (`classifyPatternAdoption`): `current` (official docs + recent evidence) may become a PRD decision; `experimental` only as a conscious, recorded risk; `legacy` needs explicit justification; `deprecated` goes to the anti-patterns section with its documented replacement. A 2019 tutorial may still be *correct* without being today's *recommended* practice.
+- **Deferral**: when no stack is detectable, the track records `DEFERRED` instead of researching a stack you have not chosen. **ARCH** resolves it (project analysis or greenfield interview) and runs the top-up with the same functions.
+- The **registry stores no version numbers** — pinning "React 19" would recreate exactly the staleness this track removes. It stores only where the truth lives (`docsUrl`) and whether it must be checked (`versionSensitive`).
+- Writes `<featurePath>/tech-research.md`, and feeds the PRD's engineering sections (§7 NFRs, §10 data model, §11 contracts, §12 security, §15 architecture), `architecture.md`, the backend/frontend lenses, CODEX and the handoff.
+
+See `skills/pensador/references/tech-research.md`.
+
+### Shared: the reusable Prompt System
+
+`buildResearchPromptSystem()` packages both tracks into `PROMPT_SYSTEM_SECTIONS`, grouped by `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), and the block is injected verbatim into the PRD base, EXPAND, `context-pack.md`, every delegated prompt in `--modo agy|kiro|codex`, the Open Design brief, CODEX and the handoff. Consumers inject only the group they need — the design brief has no use for ORM conventions, the backend lens has no use for competitor pricing.
+
+Content compliance is enforced on both tracks: cite every source URL, never reproduce more than 30 consecutive words, paraphrase, never copy third-party assets/copy/code. The output is an analysis, not a copy.
+
+No web access? Pensador asks per track: supply the competitors/versions manually, or proceed without them — stating explicitly in the PRD that the patterns were not verified.
+
 ## OpenSpec (optional spec mode)
 
 Pensador optionally integrates **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. When preflight detects OpenSpec (the `openspec` CLI on PATH or an `openspec/` directory), **INIT** asks via `AskUserQuestion` whether to generate a **PRD** (default) or a structured **Spec**.
@@ -123,18 +172,19 @@ Install: Open Design is a local-first app (daemon + web); there is no `curl | sh
 
 The `Strict_PRD_Schema` (`skills/prd/SKILL.md`) defines **17 mandatory sections** so the PRD details the whole product at modern-system depth: Overview, Problem & Context, Objectives & Metrics, Personas, Scope, Functional Requirements, Non-Functional Requirements, **Design System & UI/UX**, Use Cases & Flows, **Data Model & Domain**, **API Contracts & Integrations**, **Security/Privacy & Compliance (LGPD, roles, multitenancy)**, **Observability & Operations**, Acceptance Criteria, Architecture, **Risks & Mitigations**, and Delivery Plan. An explicit anti-truncation directive requires every gap (business rule or technology) to be resolved or marked exactly `"TBD"` — the PRD is never shortened for brevity.
 
-## Eleven Stages
+## Twelve Stages
 
 ```
-INIT → EXPLORE → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
 ```
 
 | Stage | Purpose | Delegates | Always runs |
 |---|---|---|---|
 | **INIT** | Resolve execution mode (`--modo`), check v2 checkpoint resumption, allocate feature dir, obtain request, ask PRD-vs-Spec when OpenSpec is detected | — | ✓ |
 | **EXPLORE** | Explore the project with Code Base Memory (`index_repository → get_architecture → search_graph → trace_path`); write `codebase-memory.md`. Falls back to Read/Glob/Grep if unavailable. | MCP `codebase-memory-mcp` | ✓ |
+| **RESEARCH** | Look outward, two tracks. *business*: collect `sectorContext`, confirm the product archetype, run the bounded query plan, inventory and tier competitor features → `market-research.md`. *technical*: detect the stack, close its gaps, research current versions/architecture/patterns/conventions → `tech-research.md`. Both feed the reusable Prompt System. | `WebSearch` · `WebFetch` | except no-product-surface requests |
 | **PRD_BASE** | Generate base PRD via `Strict_PRD_Schema` (or scaffold the OpenSpec change set via `openspec-*` commands in spec mode). No user questions; auto-advance. | skill `prd` / `openspec-*` | ✓ |
-| **ARCH** | Analyze architecture (reuse the Code Base Memory index + Read/Glob/Grep); write `architecture.md`. | — | ✓ |
+| **ARCH** | Analyze architecture (reuse the Code Base Memory index + Read/Glob/Grep); run the technical-research top-up when it was `DEFERRED`; write `architecture.md` with the researched technical baseline. | `WebSearch` · `WebFetch` (top-up only) | ✓ |
 | **EXPAND** | Amplify request with candidate requirements (Pensador questions). | — | ✓ |
 | **COMPLEXITY** | Calculate complexity score (0–4); propose Lite or Full mode; user confirms. | — | ✓ |
 | **BRAINSTORM_GERAL** | Orchestrate domain lenses in parallel: requirements-clarity + Codex (if backend) + AGY (if frontend) + Open Design design brief (if frontend). | `requirements-clarity` · `codex:codex-rescue` · `cc-antigravity-plugin:antigravity-agent` · Open Design (`od`) | ✓ |
@@ -154,7 +204,9 @@ All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUser
 - `design-system.md` — Brand-grade design system (DESIGN.md schema), written inline **only as a fallback** when Open Design is unavailable. When Open Design is used, its verbatim `DESIGN.md` (in `design-systems/<id>/`) is the design document, so no redundant standalone file is produced. *(PRD mode, when front-end exists)*
 - `design-systems/<id>/` — Verbatim Open Design system files (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), fetched by `scripts/od-fetch-system.mjs` into the feature folder. *(both modes, when front-end exists and a system was selected; the Executor materializes them into `packages/ui`/`src/styles` during implementation)*
 - `codebase-memory.md` — Code Base Memory exploration snapshot. *(always, in `<featurePath>/`)*
-- `architecture.md` — Detected architecture portrait. *(always, in `<featurePath>/`)*
+- `market-research.md` — Business-track snapshot: sector, archetype, competitors, feature matrix with tiers, sector compliance and sources. *(always, in `<featurePath>/`)*
+- `tech-research.md` — Technical-track snapshot: stack with the **researched current version**, idiomatic project structure, architecture/design patterns with adoption status, conventions, security and testing baselines, discouraged anti-patterns and the official doc URL behind each. *(always, in `<featurePath>/`)*
+- `architecture.md` — Detected architecture portrait plus the researched technical baseline. *(always, in `<featurePath>/`)*
 - `handoff.json` — Handoff manifest for `/cc-orchestrador-subagents:orchestrador` (artifact discovery anchor; see `references/handoff-contract.md`). *(always)*
 
 ## Lite vs. Full Mode
@@ -190,7 +242,7 @@ cc-pensador/
 │  ├─ plugin.json            # plugin manifest
 │  └─ marketplace.json       # marketplace entry
 ├─ commands/
-│  └─ pensador.md            # /pensador command (orchestrates the 11 stages + --modo)
+│  └─ pensador.md            # /pensador command (orchestrates the 12 stages + --modo)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md
@@ -201,6 +253,8 @@ cc-pensador/
 │  │  │  ├─ skill-stack.md
 │  │  │  ├─ execution-modes.md           # --modo (claude/agy/kiro/codex): parsing, preflight, delegation
 │  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) mandatory exploration before PRD/Spec
+│  │  │  ├─ web-research.md              # RESEARCH business track: product archetypes, query plan, feature tiers, Prompt System
+│  │  │  ├─ tech-research.md             # RESEARCH technical track: stack detection, current versions, patterns, conventions
 │  │  │  ├─ open-design.md               # Open Design (MCP/CLI) optional: design brief → design-system.md when front-end
 │  │  │  ├─ openspec.md                  # OpenSpec optional spec mode (PRD vs Spec in INIT)
 │  │  │  └─ askuserquestion-protocol.md
@@ -221,6 +275,8 @@ cc-pensador/
 │  ├─ artifacts.test.js
 │  ├─ execution-modes.test.js            # --modo: parse/resolve/buildDelegationInvocation
 │  ├─ integrations.test.js               # Code Base Memory + OpenSpec spec mode + Open Design
+│  ├─ web-research.test.js               # RESEARCH business track: archetypes, query plan, feature tiers
+│  ├─ tech-research.test.js              # RESEARCH technical track: stack detection, gaps, budget phases, adoption
 │  └─ docs-consistency.test.js
 ├─ CHANGELOG.md
 └─ LICENSE                   # MIT
@@ -232,14 +288,14 @@ Add `.pensador/` to `.gitignore` to avoid versioning local artifacts and checkpo
 
 ```bash
 npm install
-npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · integrations · docs-consistency
+npm test       # Vitest — smoke · engine-complexity · feature-isolation · consolidate · artifacts · execution-modes · integrations · web-research · tech-research · docs-consistency
 ```
 
 ## Migration from v1
 
 | Aspect | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 11 stages (EXPLORE/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 12 stages (EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
 | Artifacts folder | legacy v1 root | `.pensador/<slug-vN>/` |
 | v1 checkpoints | `pensador-output/.pensador-progress.json` | Incompatible — Pensador offers fresh start |
