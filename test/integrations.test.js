@@ -275,6 +275,7 @@ describe('Open Design descriptor', () => {
   it('openDesignBriefPlan covers every design dimension and never throws', () => {
     const plan = openDesignBriefPlan();
     expect(plan).toEqual([
+      'sectorContext',
       'visualTone',
       'brandReferences',
       'colorPalette',
@@ -290,8 +291,8 @@ describe('Open Design descriptor', () => {
   it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
     // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
     // Directory entries (trailing '/') are copied recursively. assets/ and fonts/
-    // are required for brand fidelity; preview/ varies by system (~72 curated systems
-    // as of 2026; most ship preview/colors.html+typography.html+spacing.html, not app.html).
+    // are required for brand fidelity; preview/ varies by system (~150 curated systems
+    // as of 2026; most ship preview/colors.html+typography.html+spacing.html, only 1 has app.html).
     expect(OPEN_DESIGN.systemArtifacts).toEqual([
       'manifest.json',
       'USAGE.md',
@@ -318,6 +319,7 @@ describe('Open Design descriptor', () => {
       expect(routing[dim]).toBeDefined();
     }
     expect(routing).toEqual({
+      sectorContext: 'input',
       visualTone: 'selection',
       brandReferences: 'selection',
       colorPalette: 'parameter',

@@ -206,6 +206,7 @@
 - **Alertas:** {{ALERTAS}}
 - **Backup / retenção:** {{BACKUP}}
 - **Ambientes e deploy/CI-CD:** {{DEPLOY_CICD}}
+- **Credenciais de seed/demo (dev/homologação):** {{SEED_CREDENTIALS}} — quando houver dados de demonstração populados via seed/migrations para os ambientes não-produtivos, registre aqui, por papel/role (ex.: Admin, Cliente, Super-Admin), um e-mail/usuário e senha **conhecidos e documentados** (nunca apenas um hash sem plaintext registrado). Sem isso, o Orquestrador não consegue validar no navegador (Fase 9.5) nenhum fluxo que exija login — a verificação E2E fica limitada às páginas públicas.
 
 ---
 

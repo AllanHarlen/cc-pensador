@@ -22,6 +22,7 @@ Mapeamento determinístico em `pensador-engine.mjs`: `OPEN_DESIGN`, `designSyste
 
   | Dimensão | O que parsear |
   |---|---|
+  | `sectorContext` | Setor/indústria do negócio (ex.: oficina automotiva, clínica odontológica, e-commerce de moda). Não é tema visual — orienta iconografia, imagery de produto/serviço e o vocabulário de domínio da microcopy. Sem esta dimensão o system fica com uma "vibe" de marca genérica sem nada do ramo real do usuário (ex.: loja de autopeças com texto institucional fixo em inglês e zero imagem de produto). |
   | `visualTone` | Tom visual desejado (ex.: "clean azul/grafite tipo Linear/Vercel", "vibrante") |
   | `brandReferences` | Produtos/sites de referência ou identidade visual existente |
   | `colorPalette` | Cor de marca, neutros e semânticas (sucesso/erro/aviso/info) |
@@ -61,7 +62,7 @@ Por ser opcional e condicional, a ausência do Open Design **nunca bloqueia** o 
 
 ## Parse e acionamento do Open Design
 
-> ⚠️ **O Open Design não gera um `DESIGN.md` a partir de um brief em prosa.** Não é isso que o produto faz. Ele **cura ~72 design systems** prontos (DESIGN.md de 9 seções), **importa** systems de fontes reais (GitHub, shadcn, projeto local) e usa esse DESIGN.md como camada de system-prompt para gerar protótipos HTML. Portanto o Pensador não pede ao Open Design para "inventar" um design system; ele **seleciona/importa** o DESIGN.md mais próximo do brief e o **consolida + adapta** em `design-system.md`.
+> ⚠️ **O Open Design não gera um `DESIGN.md` a partir de um brief em prosa.** Não é isso que o produto faz. Ele **cura ~150 design systems** prontos (DESIGN.md de 9 seções; confirmado via clone local — o catálogo cresce com o tempo, não trate este número como exato), **importa** systems de fontes reais (GitHub, shadcn, projeto local) e usa esse DESIGN.md como camada de system-prompt para gerar protótipos HTML. Portanto o Pensador não pede ao Open Design para "inventar" um design system; ele **seleciona/importa** o DESIGN.md mais próximo do brief e o **consolida + adapta** em `design-system.md`.
 
 Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do CLI `od` (caminho pnpm/local, que fornece o binário `od`) ou, no caminho Docker, pela **API REST do daemon** (os endpoints que o `od` encapsula):
 
@@ -96,7 +97,7 @@ O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **ba
 | `fonts/` | webfonts — **necessário para fidelidade tipográfica** | — |
 | `preview/` | diretório de sanity check visual para o gate de review | — |
 
-> ⚠️ **`preview/` e `fonts/` variam por system.** Dos ~72 systems curados, a maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; apenas alguns trazem `preview/app.html`. O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
+> ⚠️ **`preview/` e `fonts/` variam por system.** Dos ~150 systems curados, a maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; apenas 1 (`default`) traz `preview/app.html`. O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
 
 Destino no repo: `<state.uiPackageDir>/design-systems/<id>/` (derivado pelo Pensador em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`).
 
@@ -110,10 +111,11 @@ O Pensador nunca delega o diálogo: toda decisão de direção visual que precis
 
 ## Do brief (`AskUserQuestion`) para o Open Design
 
-As 8 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa do `design-system.md` (foi isso que gerou o tema chapado). Cada resposta tem um **destino estruturado** no Open Design — `openDesignBriefRouting()` define qual. O Open Design expõe dois mecanismos tipados no bloco `od:` de uma skill: **`inputs`** (conteúdo/componentes: `product_name`, `tagline`, `theme` enum) e **`parameters`** (estilização ao vivo: `accent_hue`, `hero_density`, `section_spacing`, `accent_strength`).
+As 9 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa do `design-system.md` (foi isso que gerou o tema chapado). Cada resposta tem um **destino estruturado** no Open Design — `openDesignBriefRouting()` define qual. O Open Design expõe dois mecanismos tipados no bloco `od:` de uma skill: **`inputs`** (conteúdo/componentes: `product_name`, `tagline`, `theme` enum) e **`parameters`** (estilização ao vivo: `accent_hue`, `hero_density`, `section_spacing`, `accent_strength`).
 
 | Dimensão do brief | Destino | Onde age no Open Design |
 |---|---|---|
+| `sectorContext` | `input` | vocabulário de domínio para `tagline`/copy das seções e **seleção de imagery/iconografia** (ver `references/imagery.md`) — não escolhe o system, mas orienta o que popular nele |
 | `visualTone` | `selection` | escolha do system curado + `theme` enum (`dark-glass`/`minimal`/…) |
 | `brandReferences` | `selection` | marca real citada → `od design-systems import-github <url>` |
 | `colorPalette` | `parameter` | `accent_hue` (matiz da cor de marca) / `accent_strength` (opacity) |
@@ -238,6 +240,7 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 ## Leitura relacionada
 
 - `references/stages.md`: BRAINSTORM_GERAL (lente de UI/UX) e FINAL (artefatos).
+- `references/imagery.md`: pipeline de imagery/iconografia — `sectorContext` (Pensador) → `IMAGE_SUGGESTIONS` do `antigravity-coder` (Orquestrador).
 - `references/skill-stack.md`: skills como lentes de domínio; Open Design como motor de design.
 - `references/codebase-memory.md`: padrão de oferta de instalação via `AskUserQuestion`.
 - `references/feature-isolation.md` e `references/handoff-contract.md`: artefato `design-system.md` e role `design-system`.

@@ -102,6 +102,7 @@ A entrevista de descoberta orienta o preenchimento inicial do `PRD_Base`. Apliqu
 
 #### Observabilidade & Operação
 - Como será monitorado (logs/métricas/alertas)? Como é o deploy/CI-CD e os ambientes?
+- Se houver dados de demonstração via seed/migrations em ambientes não-produtivos: qual e-mail/usuário e senha, por papel/role, ficam documentados para permitir login de teste? (nunca deixe apenas um hash sem plaintext registrado — sem credencial conhecida, a verificação E2E autenticada downstream fica bloqueada)
 
 #### Critérios de Aceite
 - Como saberemos que cada funcionalidade está "pronta"? Há checklists de aceite?

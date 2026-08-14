@@ -1014,14 +1014,18 @@ export function designSystemArtifactPath(featurePath) {
  */
 export function openDesignBriefPlan() {
   return [
-    'visualTone',        // ex.: "clean azul/grafite tipo Linear/Vercel", "vibrante"
-    'brandReferences',   // produtos/sites de referência ou identidade existente
-    'colorPalette',      // cor de marca, neutros, semânticas (sucesso/erro/aviso)
-    'typography',        // famílias, escala, pesos
-    'componentStates',   // default/hover/focus/active/disabled/loading/vazio/erro
-    'responsiveness',    // breakpoints, grid, densidade
-    'accessibility',     // contraste, foco, leitura de tela, alvo WCAG
-    'microcopy',         // voz/tom de textos, mensagens de estado
+    'sectorContext',      // setor/indústria do negócio (ex.: oficina automotiva, clínica,
+                           // e-commerce de moda) — orienta iconografia, imagery de produto/
+                           // serviço e microcopy de domínio; sem isso o system fica com
+                           // "vibe" genérica de marca sem nada do ramo real do usuário
+    'visualTone',          // ex.: "clean azul/grafite tipo Linear/Vercel", "vibrante"
+    'brandReferences',     // produtos/sites de referência ou identidade existente
+    'colorPalette',        // cor de marca, neutros, semânticas (sucesso/erro/aviso)
+    'typography',          // famílias, escala, pesos
+    'componentStates',     // default/hover/focus/active/disabled/loading/vazio/erro
+    'responsiveness',      // breakpoints, grid, densidade
+    'accessibility',       // contraste, foco, leitura de tela, alvo WCAG
+    'microcopy',           // voz/tom de textos, mensagens de estado
   ];
 }
 
@@ -1045,6 +1049,8 @@ export function openDesignBriefPlan() {
  */
 export function openDesignBriefRouting() {
   return {
+    sectorContext: 'input',       // orienta imagery/iconografia de produto-serviço e o
+                                   // vocabulário de domínio da microcopy (não é tema visual)
     visualTone: 'selection',      // casa o system curado mais próximo + `theme` enum
     brandReferences: 'selection', // marca real citada → import-github do system
     colorPalette: 'parameter',    // accent_hue / accent_strength sobre o token

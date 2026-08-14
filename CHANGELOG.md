@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.9.0] — 2026-07-15
+
+### Correções de processo identificadas em auditoria multi-frente (Pensador → Orquestrador)
+
+Uma auditoria de ponta a ponta (código-fonte dos dois plugins + verificação real da entrega de um SaaS de oficina automotiva no navegador via Playwright) encontrou 9 problemas concretos no processo Pensador → Orquestrador. Esta versão corrige os que cabem ao Pensador:
+
+- **`handoff-contract.md` ressincronizado (byte-idêntico nos 3 plugins).** A cópia do Pensador estava 118 linhas divergente da versão real usada pelo Orquestrador/Executor — faltava `artifactMode`, a role `api-contract`, e o path correto de `design-system-files` (`design-systems/<id>/` relativo ao `artifactRoot`, não `packages/ui/design-systems/<id>/`). O `pensador-engine.mjs` já emitia o formato novo; só a documentação estava desatualizada, virando uma armadilha para qualquer leitura/manutenção futura.
+- **Nova dimensão `sectorContext` no brief de design (`openDesignBriefPlan()`).** As 8 dimensões anteriores eram só de estilo visual (paleta, tipografia, tom); nenhuma capturava o setor/indústria do negócio. Em uma entrega real isso produziu um design system com "vibe" genérica de marca, sem nenhuma imagem de produto/serviço e com texto institucional fixo em inglês. `sectorContext` é coletado primeiro e roteado como `input` (`openDesignBriefRouting()`), persistido na seção **Brand** do `design-system.md`.
+- **Novo `references/imagery.md`.** Documenta a pipeline ponta a ponta de imagery/iconografia: o Pensador coleta `sectorContext` e o grava onde o Orquestrador o encontra; o Orquestrador aciona o mecanismo `IMAGE_SUGGESTIONS` já existente no `antigravity-coder` (`--generate-image`, Nano Banana) mediante aprovação do usuário via `AskUserQuestion`. Fecha a lacuna real observada: 0 `<img>`, 0 `background-image`, 0 tooltips numa entrega completa.
+- **Credenciais de seed/demo agora fazem parte do PRD.** Nova pergunta na entrevista de descoberta (`skills/prd/SKILL.md`) e novo campo no template (`prd-template.md` seção 13, Observabilidade & Operação): quando há dados de demonstração via seed/migrations, credenciais conhecidas por papel/role devem ser documentadas — nunca apenas um hash sem plaintext. Sem isso, a verificação E2E autenticada do Orquestrador (Fase 9.5) fica bloqueada, como aconteceu na entrega real auditada.
+- **Contagem de design systems curados corrigida (~72 → ~150).** `references/open-design.md` e o comentário em `test/integrations.test.js` afirmavam "~72 design systems" — confirmado via clone local em disco: são ~150 (151 excluindo `_schema`), e apenas 1 (`default`) traz `preview/app.html`. O número estava desalinhado do próprio `cc-orchestrador-subagents`, que já usava "~152" em changelogs anteriores.
+- **222 testes verdes** (`npm test`) após todas as mudanças; `openDesignBriefPlan`/`openDesignBriefRouting` com cobertura atualizada para a nova dimensão.
+
 ## [2.8.3] — 2026-06-23
 
 ### Handoff carrega o `<id>` concreto do system (fecha o elo e2e)
