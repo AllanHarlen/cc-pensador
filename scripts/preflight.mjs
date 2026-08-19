@@ -324,6 +324,68 @@ function checkCodebaseMemory() {
 }
 
 /**
+ * OPTIONAL: Context7 MCP — current, versioned documentation for a library,
+ * framework, SDK, API or cloud service, injected into context before code
+ * that uses it is written or a PRD/Spec claim about it is drafted.
+ *
+ * Purpose here specifically: the TECH_RESEARCH track's `version-currency`
+ * phase (references/tech-research.md) exists to neutralize the model's
+ * training-cutoff staleness for version-sensitive tech — Context7 is the
+ * versioned-documentation source that phase consults when available, ranking
+ * above release notes / guides / community sources under the same
+ * official-first tier ordering TECH_RESEARCH already uses.
+ *
+ * Detection mirrors codebase-memory: skill presence + known MCP config files
+ * mentioning context7/ctx7/its endpoint. Absence never blocks the flow — the
+ * phase falls back to whatever WebSearch/WebFetch can find.
+ */
+function checkContext7() {
+  const evidence = [];
+  const skillCandidates = [
+    join(HOME, ".claude", "skills", "context7", "SKILL.md"),
+    join(HOME, ".claude", "skills", "context7-mcp", "SKILL.md"),
+  ];
+  for (const file of skillCandidates) {
+    if (existsSync(file)) evidence.push({ type: "skill", path: file });
+  }
+
+  const configCandidates = [
+    join(process.cwd(), ".mcp.json"),
+    join(HOME, ".claude.json"),
+    join(HOME, ".claude", ".mcp.json"),
+    join(HOME, ".claude", "mcp.json"),
+    join(HOME, ".config", "claude", "mcp.json"),
+  ];
+  for (const file of configCandidates) {
+    if (!existsSync(file)) continue;
+    try {
+      const contents = readFileSync(file, "utf8");
+      if (/\bcontext7\b|@upstash\/context7-mcp|mcp\.context7\.com|ctx7/i.test(contents)) {
+        evidence.push({ type: "mcp-config", path: file });
+      }
+    } catch {
+      // Unreadable config is not evidence either way; skip it silently.
+    }
+  }
+
+  const available = evidence.length > 0;
+  return {
+    server: "context7",
+    mandatory: false,
+    available,
+    evidence,
+    stage: "RESEARCH (TECH_RESEARCH track, version-currency phase)",
+    purpose:
+      "Current, versioned library/framework documentation so version-sensitive claims in the PRD/Spec " +
+      "are researched, not recalled from the training cutoff.",
+    installCommands: { any: "npx ctx7 setup --claude" },
+    fallbackBehavior:
+      "If unavailable, TECH_RESEARCH falls back to WebSearch/WebFetch for the version-currency phase " +
+      "and the limitation is noted alongside the researched claim.",
+  };
+}
+
+/**
  * MANDATORY (when the demand has a product surface): web/market research support.
  *
  * Unlike the other integrations, this one has NOTHING to probe on disk: the RESEARCH
@@ -557,6 +619,7 @@ const codex = checkCodex();
 const agy = checkAgy();
 const executionMode = checkExecutionMode(mode, modeValid, requestedMode);
 const codebaseMemory = checkCodebaseMemory();
+const context7 = checkContext7();
 const webResearch = checkWebResearch();
 const openspec = checkOpenSpec();
 const openDesign = checkOpenDesign();
@@ -594,11 +657,12 @@ const report = {
   },
   integrations: {
     codebaseMemory,
+    context7,
     webResearch,
     openspec,
     openDesign,
   },
-  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, openspec, openDesign),
+  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign),
 };
 
 console.log(JSON.stringify(report, null, 2));
@@ -615,7 +679,7 @@ process.exit(0);
  * opening context or relay to the user when a subagent / execution engine is
  * missing.
  */
-function buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, openspec, openDesign) {
+function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign) {
   const lines = [];
 
   // Execution mode summary first — it is the most impactful decision.
@@ -653,7 +717,7 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, o
     if (codebaseMemory.available) {
       lines.push(
         `Code Base Memory: ${codebaseMemory.server} available — explore the project before PRD_BASE/Spec generation ` +
-          `(index_repository → get_architecture → search_graph/trace_path).`,
+          `(index_status gate → index_repository if confirmed → get_architecture → search_graph/trace_path).`,
       );
     } else {
       lines.push(
@@ -673,6 +737,20 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, o
       );
       lines.push(
         `    (B) Seguir sem o Code Base Memory — use Read/Glob/Grep exploration; record fallback in codebase-memory.md.`,
+      );
+    }
+  }
+
+  if (context7) {
+    if (context7.available) {
+      lines.push(
+        `Context7: available — RESEARCH's version-currency phase (TECH_RESEARCH) resolves the library ` +
+          `identifier before requesting docs, and passes the project's fixed version when a manifest pins one.`,
+      );
+    } else {
+      lines.push(
+        `Context7: NOT available — version-currency phase falls back to WebSearch/WebFetch. ` +
+          `Optional install: ${context7.installCommands?.any ?? "npx ctx7 setup --claude"}.`,
       );
     }
   }

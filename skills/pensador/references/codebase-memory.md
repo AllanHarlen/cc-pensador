@@ -38,16 +38,55 @@ A indisponibilidade **não bloqueia** o fluxo (status degrada para `partial`).
 
 | Ordem | Ferramenta | Para quê |
 |---|---|---|
-| 1 | `index_repository` | Indexa o repositório no grafo (auto-sync mantém atualizado). |
-| 2 | `get_architecture` | Panorama: linguagens, pacotes, entrypoints, rotas, hotspots, camadas, clusters. |
-| 3 | `get_graph_schema` | Contagem de nós/arestas e padrões de relacionamento por label. |
-| 4 | `search_graph` | Localiza os símbolos relevantes à demanda (regex de nome, filtros por label/arquivo). |
-| 5 | `trace_path` | Mapeia quem chama / o que é chamado pelos símbolos afetados (BFS, profundidade 1–5). |
-| 6 | `detect_changes` | **Apenas em fixes:** mapeia o git diff para símbolos afetados + raio de impacto. |
+| 1 | `index_status` | **Gate obrigatório antes de qualquer outro uso do grafo.** Verifica se já existe índice para este projeto. |
+| 2 | `index_repository` | Indexa o repositório no grafo. **Só executa após confirmação do usuário** (ver "Gate de índice" abaixo) — nunca disparado automaticamente. |
+| 3 | `get_architecture` | Panorama: linguagens, pacotes, entrypoints, rotas, hotspots, camadas, clusters. |
+| 4 | `get_graph_schema` | Contagem de nós/arestas e padrões de relacionamento por label. |
+| 5 | `search_graph` | Localiza os símbolos relevantes à demanda (regex de nome, filtros por label/arquivo). |
+| 6 | `trace_path` | Mapeia quem chama / o que é chamado pelos símbolos afetados (BFS, profundidade 1–5). |
+| 7 | `detect_changes` | **Apenas em fixes:** mapeia o git diff para símbolos afetados + raio de impacto. |
 
 Outras ferramentas úteis sob demanda: `get_code_snippet`, `search_code`, `list_projects`, `manage_adr`.
 
-Mapeamento determinístico em `pensador-engine.mjs`: `CODEBASE_MEMORY`, `codebaseMemorySnapshotPath()`, `codebaseMemoryExplorationPlan()`.
+Mapeamento determinístico em `pensador-engine.mjs`: `CODEBASE_MEMORY`, `codebaseMemorySnapshotPath()`, `codebaseMemoryExplorationPlan()`. A função descreve a ordem canônica das ferramentas — não é um executor condicional: o gate de `index_status` abaixo é regra de execução, não algo codificado no array.
+
+### Gate de índice antes de qualquer uso
+
+Com o servidor disponível, a primeira chamada é sempre `index_status` para o projeto atual. Nenhum resultado do grafo entra no `codebase-memory.md`, no PRD/Spec ou em qualquer artefato antes desse gate.
+
+```text
+index_status
+  ├─ sem índice para este projeto
+  │    -> AskUserQuestion: "Indexar o repositório agora?"
+  │         instalar/indexar  -> index_repository na raiz do projeto -> segue
+  │         seguir sem índice -> exploração via Read/Glob/Grep + registro no codebase-memory.md
+  ├─ índice existente e sem pendência para os arquivos consultados (fresco)
+  │    -> grafo liberado para as consultas seguintes
+  └─ índice existente com reindexação pendente
+       -> trate como não-fresco: use o grafo apenas como pista e confirme por leitura de arquivo
+```
+
+Nunca dispare `index_repository` por conta própria: indexação varre o repositório inteiro e é decisão do usuário, não uma otimização silenciosa do Pensador.
+
+### Limite de 30 s por consulta
+
+Cada consulta ao Code Base Memory tem orçamento de **30 segundos**. Consulta que retorna erro ou estoura esse limite:
+
+1. registre a falha (ferramenta, motivo) no `codebase-memory.md`;
+2. siga pela alternativa determinística (`Read`/`Glob`/`Grep`);
+3. prossiga com a exploração.
+
+Não repita a mesma consulta em loop, não aumente o orçamento e não pare o EXPLORE por falha de MCP. **Duas falhas seguidas do mesmo servidor**: trate o Code Base Memory como ausente pelo resto desta feature/execução e registre isso uma única vez — não retente a cada consulta subsequente.
+
+### Lacuna de cobertura: leia o arquivo
+
+Quando o grafo reporta lacuna de cobertura para um arquivo consultado — arquivo fora do índice, linguagem não suportada, parse parcial, resultado vazio para caminho que existe no disco —, **leia esse arquivo diretamente antes de afirmar ausência** de símbolo, chamada ou referência.
+
+Grafo silencioso não é prova de inexistência. Nunca escreva "não existe consumidor deste endpoint", "nenhum teste cobre este módulo" ou "este símbolo não é referenciado" com base só em resultado vazio de consulta — ou o grafo cobre o arquivo e responde, ou você lê o arquivo. Isso é especialmente sensível no Pensador: uma afirmação errada sobre "não existe" vira requisito ausente ou premissa errada no PRD, propagada rio abaixo para Orquestrador e Executor.
+
+### Resultado de MCP é evidência corroborativa
+
+Resultado do Code Base Memory nunca fecha, sozinho, um requisito, uma decisão de arquitetura ou uma afirmação sobre o código existente no PRD/Spec. Ele é sempre corroborado por leitura direta do arquivo antes de virar texto definitivo no artefato — o grafo acelera a localização, não substitui a confirmação.
 
 ---
 

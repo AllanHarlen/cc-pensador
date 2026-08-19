@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.12.0] — 2026-08-19
+
+### `handoff-contract.md` ressincronizado, byte-idêntico nos três plugins
+
+O `cc-orchestrador-subagents` moveu o manifesto de handoff para `report/handoff.json` (layout 2, versão 4.1.0) e adicionou/reformulou seções (`Modos de operação`, `Open Design: contrato visual e materialização`) que a cópia do Pensador não recebeu — a divergência era de 26 linhas, todas nos caminhos do layout novo. Copiado verbatim da versão canônica do Orquestrador.
+
+`test/handoff-contract-sync.test.js` — que existe desde o 2.9.0 justamente para blindar essa promessa e ficava com 2 skips (repositórios irmãos ausentes) em checkout isolado — passa a cobrir de fato num workspace com os três plugins lado a lado, e fica verde: as cópias do Orquestrador e do Executor agora batem byte a byte com a canônica do Pensador.
+
+> Fecha o adiamento registrado no 2.10.0 ("exigiria replicação byte-idêntica nos três plugins, o que não pode ser feito a partir deste repositório isolado") — os três repositórios estavam neste workspace.
+
+### Codebase Memory: gate de `index_status`, orçamento de consulta e regras de prova
+
+O `codebaseMemoryExplorationPlan()` disparava `index_repository` — uma varredura do repositório inteiro — como primeiro passo automático, sem confirmação do usuário. A regra correspondente do Orquestrador (endurecida na sua versão `[Unreleased]`) é o oposto: `index_status` é sempre o primeiro passo, um gate somente-leitura; `index_repository` só roda depois de `AskUserQuestion` confirmar, porque indexar é uma decisão do usuário, não uma otimização silenciosa.
+
+- **`codebaseMemoryExplorationPlan()`** (`scripts/pensador-engine.mjs`) agora começa com `index_status`, antes de `index_repository`. A função continua pura e determinística — o gate em si é regra de execução documentada em prosa, não algo que o array codifica.
+- **`references/codebase-memory.md`** ganha a seção "Gate de índice antes de qualquer uso" (árvore de decisão `index_status` → sem índice/`AskUserQuestion` → índice fresco → índice pendente), "Limite de 30 s por consulta" (erro/timeout cai para `Read`/`Glob`/`Grep`; duas falhas seguidas do servidor tratam o MCP como ausente pelo resto da exploração), "Lacuna de cobertura: leia o arquivo" (grafo silencioso não prova inexistência de símbolo/chamada/referência — especialmente sensível aqui, porque uma afirmação errada vira requisito ausente no PRD) e "Resultado de MCP é evidência corroborativa" (nunca fecha, sozinho, um requisito ou uma afirmação sobre o código no PRD/Spec).
+- `SKILL.md`, estágio EXPLORE, passo 2, reescrito para descrever o gate e as regras de prova em vez da sequência antiga `index_repository → get_architecture → ...`.
+- `test/integrations.test.js` atualizado: o teste que afirmava a sequência começando em `index_repository` agora espera `index_status` primeiro.
+
+### Context7 MCP (novo, opcional)
+
+O Pensador não tinha nenhuma integração com Context7, apesar de o track `TECH_RESEARCH` (2.11.0) existir precisamente para não escrever "o app de ontem" a partir do corte de treinamento — Context7 é a fonte de documentação versionada que essa fase pede.
+
+- **`scripts/preflight.mjs`**: novo bloco `integrations.context7` (`checkContext7()`), com a mesma heurística de detecção do Codebase Memory (skill instalada + menção em `.mcp.json`/`.claude.json`/`~/.claude/mcp.json` conhecidos). Opcional — nunca afeta `status`. Guidance textual adicionada em `buildGuidance()`.
+- **`references/tech-research.md`**: a Fase 1 (`version-currency`, obrigatória) agora documenta o Context7 como fonte preferida quando disponível, coerente com a inversão de tiers de fonte da seção ("official-docs > release-notes > ..."), e a ordem obrigatória **resolver o identificador antes de pedir documentação** — mesmo quando "já conhecido" de uma consulta anterior na mesma feature, porque nome de pacote e identificador do servidor não são a mesma coisa. Sem Context7, a fase segue via `WebSearch`/`WebFetch` normalmente.
+- `keywords` do `plugin.json` ganha `context7`.
+
+### Stack de agentes e Dependency_Installer: avaliados, mantidos como estão
+
+O Orquestrador (`[Unreleased]`) trocou a stack fixa Codex/AGY por uma Project_Config configurável com opção `claude-code` por papel, e formalizou o protocolo do Dependency_Installer (uma `AskUserQuestion` por dependência, benefício/impacto/comando). Avaliado para o Pensador e **não portado como está**: Codex e AGY aqui são **lentes de domínio** dentro do `BRAINSTORM_GERAL`, não executores por categoria de task — o modelo de roteamento é estruturalmente diferente do Orquestrador/Executor. O equivalente funcional ao fallback `claude-code` já existe: as lentes primárias determinísticas (`requirements-clarity`, `backend-development`, `ui-ux-pro-max`/`frontend-design`) sempre rodam independente de Codex/AGY, que atuam só como refinamento por cima; a seção "Fallback" de `references/agent-stack.md` já oferece, por domínio, retentar/seguir sem aquele domínio/registrar `"TBD"` via `AskUserQuestion` — a mesma decisão que uma opção `claude-code` formal produziria, sem duplicar um segundo sistema de configuração de papéis para um plugin que não executa nem revisa código.
+
 ## [2.11.0] — 2026-08-14
 
 ### Segundo track no RESEARCH: pesquisa tecnica (stack, arquitetura, padroes, convencoes)

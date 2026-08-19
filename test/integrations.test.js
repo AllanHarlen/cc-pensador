@@ -65,8 +65,9 @@ describe('Code Base Memory (mandatory exploration)', () => {
     expect(codebaseMemorySnapshotPath(undefined)).toBe('.pensador/atualizacao-v1/codebase-memory.md');
   });
 
-  it('exploration plan starts with index then architecture/schema/search/trace', () => {
+  it('exploration plan starts with index_status (gate) then index/architecture/schema/search/trace', () => {
     expect(codebaseMemoryExplorationPlan()).toEqual([
+      'index_status',
       'index_repository',
       'get_architecture',
       'get_graph_schema',
