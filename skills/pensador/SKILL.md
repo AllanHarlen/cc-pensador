@@ -185,8 +185,8 @@ RESEARCH
   injetado em todos os prompts seguintes.
 
 PRD_BASE
-  Modo PRD: gera PRD Base pelo Strict_PRD_Schema. Modo Spec: escala os comandos
-  openspec-* para montar o change set. Sem perguntas; avanco automatico.
+  Modo PRD: gera PRD Base pelo Strict_PRD_Schema. Modo Spec: escala o comando
+  /opsx:propose para montar o change set. Sem perguntas; avanco automatico.
 
 ARCH
   Analisa projeto existente via Code Base Memory (indice criado no EXPLORE) e Read/Glob/Grep.
@@ -349,16 +349,16 @@ Registre a escolha e marque `status: SKIPPED` ou `PARTIAL` no snapshot correspon
 
 ### Modo Spec (`artifactMode = 'spec'`, OpenSpec)
 
-Quando o usuario escolheu Spec no INIT, este estagio **substitui o PRD base** acionando os comandos `openspec-*` (nunca escrevendo os arquivos manualmente):
+Quando o usuario escolheu Spec no INIT, este estagio **substitui o PRD base** acionando `/opsx:propose` (nunca escrevendo os arquivos manualmente):
 
-1. Confirme que os comandos `openspec-*` estao disponiveis. Se nao estiverem, pergunte via `AskUserQuestion` se deve cair para o modo PRD ou abortar — nao monte a estrutura manualmente nem siga como Claude direto.
-2. Crie e monte o change set: `/openspec-new-change <nome>` seguido de `/openspec-ff-change <nome>` (gera `proposal.md`, `design.md`, `tasks.md` e `specs/` de uma vez) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
+1. Confirme que os comandos `/opsx:*` estao disponiveis (perfil core, instalado por padrao por `openspec init`). Se nao estiverem, pergunte via `AskUserQuestion` se deve cair para o modo PRD ou abortar — nao monte a estrutura manualmente nem siga como Claude direto.
+2. Crie e monte o change set: `/opsx:propose <nome ou descricao>` (gera `proposal.md`, `design.md` e `tasks.md` de uma vez) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
 3. Alimente os comandos com a demanda e o `<featurePath>/codebase-memory.md`; o que nao for inferivel fica como `"TBD"`.
 4. Todas as etapas seguintes (`ARCH`, `EXPAND`, `COMPLEXITY`, `BRAINSTORM_GERAL`, `CODEX`, `AGY`, `FINAL`) passam a raciocinar sobre a **spec** em vez do PRD, refinando os artefatos do change set.
 
-O prefixo legado `/opsx:*` esta descontinuado. Detalhes do fluxo e do handoff em `references/openspec.md`.
+Detalhes do fluxo, chamadas de CLI (`openspec validate`, `openspec archive`) e handoff em `references/openspec.md`.
 
-**Gate:** no modo PRD, todas as secoes do PRD Base preenchidas ou `"TBD"`; no modo Spec, change set OpenSpec criado pelos comandos `openspec-*` (ou fallback para PRD/abortar registrado). Sem perguntas ao usuario alem do fallback.
+**Gate:** no modo PRD, todas as secoes do PRD Base preenchidas ou `"TBD"`; no modo Spec, change set OpenSpec criado por `/opsx:propose` (ou fallback para PRD/abortar registrado). Sem perguntas ao usuario alem do fallback.
 
 ---
 
@@ -538,10 +538,10 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 
      Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/` em `<featurePath>/design-systems/<id>/` — ou seja, dentro de `.pensador/<slug>-vN/`, mantendo a saida do Pensador autocontida (ver `openDesignFetchPlan()` + `designSystemFilesRoot()`). Passe `--out-dir` com o `featurePath` da execucao (ex.: `.pensador/login-social-v1`). Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
    - **Modo PRD:** quando o Open Design foi usado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) **e** o documento de design — **nao gere `design-system.md` standalone** (evita duplicacao). As decisoes de selecao/merge/overrides ja viajam no `handoff.json` (role `design-system-files` com o `<id>`). O `design-system.md` inline so e escrito no **fallback** (Open Design indisponivel/recusado): nesse caso preenche as 9 secoes do schema `DESIGN.md` a partir do brief. Os demais artefatos saem dos templates.
-   - **Modo Spec:** dobre o design no change set usando o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)`. Ele entrega os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar: (a) na secao *Decisions* do `design.md`, registre o(s) `<id>`, a origem verbatim (`verbatimDir`) e o alvo de materializacao (`materializeInto`) + overrides justificados; (b) na capability delta-spec `specs/ui-design-system/spec.md`, escreva requisitos `SHALL` + cenarios `#### Scenario:` que citam `materializedTokens` (ex.: `packages/ui/design-systems/<id>/tokens.css`) como fonte de estilo. Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs). Contrato completo em `references/openspec.md` › **Contrato Spec ↔ Open Design**.
+   - **Modo Spec:** dobre o design no change set usando o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)`. Ele entrega os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar: (a) na secao *Decisions* do `design.md`, registre o(s) `<id>`, a origem verbatim (`verbatimDir`) e o alvo de materializacao (`materializeInto`) + overrides justificados; (b) na capability delta-spec `specs/ui-design-system/spec.md`, escreva requisitos `SHALL` + cenarios `#### Scenario:` que citam `materializedTokens` (ex.: `packages/ui/design-systems/<id>/tokens.css`) como fonte de estilo. Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `openspec validate <nome> --strict --json` (e `/opsx:sync` se introduziu/ajustou specs). Contrato completo em `references/openspec.md` › **Contrato Spec ↔ Open Design**.
    - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
    - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
-6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este ultimo move pastas: so apos confirmacao do usuario).
+6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados.
 
@@ -560,7 +560,7 @@ Estado terminal. O fluxo esta encerrado.
 | `INIT` | Demanda presente, modo de execucao resolvido, `artifactMode` definido, `featurePath` definido e retomada/novo fluxo decididos |
 | `EXPLORE` | `codebase-memory.md` gravado (exploracao do Code Base Memory ou fallback registrado) |
 | `RESEARCH` | `market-research.md` **e** `tech-research.md` gravados (`DONE`/`PARTIAL`/`DEFERRED`/`SKIPPED`) e perguntas `web-research` fechadas |
-| `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado pelos comandos `openspec-*` (ou fallback registrado) |
+| `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado por `/opsx:propose` (ou fallback registrado) |
 | `ARCH` | `architecture.md` gravado com baseline tecnico, perguntas greenfield fechadas e top-up tecnico concluido quando estava `DEFERRED` |
 | `EXPAND` | Todas as perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |

@@ -77,6 +77,16 @@ const CODEBASE_MEMORY_SERVER = "codebase-memory-mcp";
 /** OpenSpec (https://github.com/Fission-AI/OpenSpec) — OPTIONAL spec workflow. */
 const OPENSPEC_CLI = "openspec";
 const OPENSPEC_DIR = "openspec";
+const OPENSPEC_CONFIG_FILE = "config.yaml";
+/** 1.9.0: honest root resolution (non-zero exit outside a root) + reliable archive exit codes. */
+const OPENSPEC_MIN_VERSION = "1.9.0";
+const OPENSPEC_RECOMMENDED_VERSION = "1.10.0";
+/** Any of these under .claude/skills/ signals the EXPANDED profile is also installed (opt-in via `openspec config profile`). */
+const OPENSPEC_EXPANDED_SKILL_DIRS = [
+  "openspec-new-change",
+  "openspec-ff-change",
+  "openspec-verify-change",
+];
 
 /**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
@@ -138,11 +148,14 @@ function parseModeArg(argv) {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Check whether a CLI binary is present on PATH and responsive.
- * @param {string} cli  Binary name (e.g. "codex", "agy", "kiro-cli")
- * @returns {{ ok: boolean, version?: string, error?: string }}
+ * Check whether a CLI binary is present on PATH and responsive. Optionally
+ * enforces a minimum semver and flags whether it meets a recommended one.
+ * @param {string} cli  Binary name (e.g. "codex", "agy", "kiro-cli", "openspec")
+ * @param {{ minVersion?: string, recommendedVersion?: string }} [options]
+ * @returns {{ ok: boolean, version?: string, minVersion?: string|null,
+ *   recommendedVersion?: string|null, meetsRecommended?: boolean|null, error?: string }}
  */
-function checkCli(cli) {
+function checkCli(cli, options = {}) {
   try {
     const out = execSync(`${cli} --version`, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -150,10 +163,73 @@ function checkCli(cli) {
     })
       .toString()
       .trim();
-    return { ok: true, version: out.split(/\r?\n/)[0] };
+    const versionLine = out.split(/\r?\n/)[0];
+    const version = versionLine.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/)?.[0] ?? null;
+    if (options.minVersion && (!version || compareSemver(version, options.minVersion) < 0)) {
+      return {
+        ok: false,
+        version: version ?? versionLine,
+        minVersion: options.minVersion,
+        error: `${cli} ${options.minVersion}+ is required (found ${version ?? versionLine})`,
+      };
+    }
+    return {
+      ok: true,
+      version: version ?? versionLine,
+      minVersion: options.minVersion ?? null,
+      recommendedVersion: options.recommendedVersion ?? null,
+      meetsRecommended: options.recommendedVersion && version
+        ? compareSemver(version, options.recommendedVersion) >= 0
+        : null,
+    };
   } catch (err) {
     return { ok: false, error: err.message?.split(/\r?\n/)[0] ?? "not found" };
   }
+}
+
+/**
+ * Parses a strict semver string (core + optional prerelease). Returns null on
+ * anything that doesn't match `x.y.z(-prerelease)?`.
+ * @param {string} version
+ */
+function parseSemver(version) {
+  const match = String(version ?? "").match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return null;
+  return {
+    core: match.slice(1, 4).map((part) => Number(part)),
+    prerelease: match[4]?.split(".") ?? [],
+  };
+}
+
+/**
+ * Strict semver comparison (core numeric, then prerelease per semver.org
+ * precedence rules). Returns null when either input fails to parse.
+ * @param {string} left
+ * @param {string} right
+ */
+function compareSemver(left, right) {
+  const a = parseSemver(left);
+  const b = parseSemver(right);
+  if (!a || !b) return null;
+
+  for (let i = 0; i < 3; i += 1) {
+    if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i];
+  }
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let i = 0; i < length; i += 1) {
+    if (a.prerelease[i] == null) return -1;
+    if (b.prerelease[i] == null) return 1;
+    if (a.prerelease[i] === b.prerelease[i]) continue;
+    const aNumber = /^\d+$/.test(a.prerelease[i]);
+    const bNumber = /^\d+$/.test(b.prerelease[i]);
+    if (aNumber && bNumber) return Number(a.prerelease[i]) - Number(b.prerelease[i]);
+    if (aNumber !== bNumber) return aNumber ? -1 : 1;
+    return a.prerelease[i].localeCompare(b.prerelease[i]);
+  }
+  return 0;
 }
 
 /**
@@ -387,25 +463,98 @@ function checkWebResearch() {
 /**
  * OPTIONAL: OpenSpec availability.
  *
- * Detected via the `openspec` CLI on PATH or an existing `openspec/` directory in
- * the working tree (created by `openspec init`). When present, the Pensador asks
- * (via AskUserQuestion) in INIT whether to generate a PRD or a structured Spec.
+ * Detected via three independent signals:
+ *   1) the `openspec` CLI on PATH, gated on OPENSPEC_MIN_VERSION (1.9.0 — the
+ *      version that made root resolution and archive exit codes reliable
+ *      enough to script against). Below the floor, Spec mode is NOT offered
+ *      and the flow stays in PRD mode — OpenSpec stays optional and this
+ *      check never affects the overall `status`.
+ *   2) `openspec doctor --json` against the project root — exit 0 means an
+ *      initialized, healthy root (config.yaml present). This is the
+ *      authoritative "initialized" signal per the OpenSpec agent contract.
+ *   3) which profile is installed: CORE (the default since OpenSpec 1.4 —
+ *      `/opsx:explore|propose|apply|update|sync|archive`) vs EXPANDED (adds
+ *      `/opsx:new|continue|ff|verify|bulk-archive|onboard`, opt-in via
+ *      `openspec config profile`). The flow targets CORE and never requires
+ *      EXPANDED; profile is reported for information only.
+ *
+ * When available, the Pensador asks (via AskUserQuestion) in INIT whether to
+ * generate a PRD or a structured Spec.
  */
 function checkOpenSpec() {
-  const cli = checkCli(OPENSPEC_CLI);
+  const cli = checkCli(OPENSPEC_CLI, {
+    minVersion: OPENSPEC_MIN_VERSION,
+    recommendedVersion: OPENSPEC_RECOMMENDED_VERSION,
+  });
+
+  const configPath = join(process.cwd(), OPENSPEC_DIR, OPENSPEC_CONFIG_FILE);
   const dirPath = join(process.cwd(), OPENSPEC_DIR);
-  const initialized = existsSync(dirPath);
-  const available = cli.ok || initialized;
+  let initialized = existsSync(configPath) || existsSync(dirPath);
+  let doctorOk = null;
+  if (cli.ok) {
+    try {
+      const out = execSync("openspec doctor --json", {
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 10_000,
+        env: { ...process.env, NO_COLOR: "1", OPENSPEC_NO_UPDATE_CHECK: "1" },
+      }).toString();
+      const report = JSON.parse(out);
+      doctorOk = report?.root?.healthy === true;
+      initialized = doctorOk || initialized;
+    } catch (err) {
+      // Non-zero exit (e.g. no_openspec_root) still emits the null-shape JSON
+      // report on stdout per the agent contract — parse it if present so
+      // doctorOk reflects "confirmed unhealthy" (false) rather than "unknown"
+      // (null, reserved for a genuine CLI failure with no parseable output).
+      try {
+        const report = JSON.parse(String(err.stdout ?? ""));
+        doctorOk = report?.root?.healthy === true;
+      } catch {
+        // No parseable stdout — leave doctorOk as null (unknown); fall back
+        // to the static existsSync signal above.
+      }
+    }
+  }
+
+  const expandedSkillDir = (name) =>
+    join(process.cwd(), ".claude", "skills", name);
+  const profile = OPENSPEC_EXPANDED_SKILL_DIRS.some((name) => existsSync(expandedSkillDir(name)))
+    ? "expanded"
+    : "core";
+
+  const meetsMinimum = cli.ok;
+  const belowRecommended = cli.ok && cli.meetsRecommended === false;
+  const available = meetsMinimum;
+
+  let behavior;
+  if (available) {
+    behavior = belowRecommended
+      ? `OpenSpec ${cli.version} detected (meets the ${OPENSPEC_MIN_VERSION}+ floor, below the recommended ${OPENSPEC_RECOMMENDED_VERSION}). ` +
+        "INIT presents an AskUserQuestion offering PRD or Spec; consider `npm install -g @fission-ai/openspec@latest`."
+      : "OpenSpec detected. INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.";
+  } else if (cli.error && cli.minVersion) {
+    behavior =
+      `OpenSpec CLI found but below the ${OPENSPEC_MIN_VERSION}+ floor (${cli.error}). ` +
+      "Spec mode is not offered; the flow stays in PRD mode. Run `npm install -g @fission-ai/openspec@latest` to enable it.";
+  } else {
+    behavior = "OpenSpec not detected. The flow stays in PRD mode and the question is not asked.";
+  }
 
   return {
     cli: OPENSPEC_CLI,
     optional: true,
     available,
+    version: cli.version ?? null,
+    meetsMinimum,
+    belowRecommended,
+    minVersion: OPENSPEC_MIN_VERSION,
+    recommendedVersion: OPENSPEC_RECOMMENDED_VERSION,
     cliCheck: cli,
     initialized,
+    doctorOk,
+    profile,
     stage: "INIT",
-    behavior:
-      "When available, INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.",
+    behavior,
   };
 }
 
@@ -702,9 +851,21 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, webResearch, o
   }
 
   if (openspec) {
-    if (openspec.available) {
+    if (openspec.available && !openspec.belowRecommended) {
       lines.push(
-        "OpenSpec: detected — INIT should ask (via AskUserQuestion) whether to generate a PRD or a structured Spec.",
+        `OpenSpec: detected (${openspec.version}, ${openspec.profile} profile) — INIT should ask (via AskUserQuestion) ` +
+          "whether to generate a PRD or a structured Spec.",
+      );
+    } else if (openspec.available && openspec.belowRecommended) {
+      lines.push(
+        `OpenSpec: detected (${openspec.version}, meets the ${openspec.minVersion}+ floor but below the recommended ` +
+          `${openspec.recommendedVersion}) — INIT still offers PRD vs Spec; suggest ` +
+          "`npm install -g @fission-ai/openspec@latest` when convenient.",
+      );
+    } else if (openspec.cliCheck?.minVersion) {
+      lines.push(
+        `OpenSpec: CLI found but below the ${openspec.minVersion}+ floor — Spec mode is NOT offered, flow stays in PRD mode. ` +
+          "Run `npm install -g @fission-ai/openspec@latest` to enable it.",
       );
     } else {
       lines.push("OpenSpec: not detected — flow stays in PRD mode (no PRD-vs-Spec question).");

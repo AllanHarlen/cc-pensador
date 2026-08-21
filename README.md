@@ -148,13 +148,13 @@ No web access? Pensador asks per track: supply the competitors/versions manually
 
 ## OpenSpec (optional spec mode)
 
-Pensador optionally integrates **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. When preflight detects OpenSpec (the `openspec` CLI on PATH or an `openspec/` directory), **INIT** asks via `AskUserQuestion` whether to generate a **PRD** (default) or a structured **Spec**.
+Pensador optionally integrates **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** (CORE profile, ≥ 1.9.0 recommended 1.10.0). When preflight detects a compatible OpenSpec CLI, **INIT** asks via `AskUserQuestion` whether to generate a **PRD** (default) or a structured **Spec**.
 
-- Choosing **Spec** repurposes the `PRD_BASE` stage to drive the **`openspec-*` commands** (`/openspec-new-change`, `/openspec-ff-change`, …), which scaffold the change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) under `openspec/changes/<name>/`. Pensador never hand-writes these files. Every later stage then reasons over the spec.
+- Choosing **Spec** repurposes the `PRD_BASE` stage to drive **`/opsx:propose`**, which scaffolds the change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) under `openspec/changes/<name>/` in one step. Pensador never hand-writes these files. Every later stage then reasons over the spec.
 - Spec mode delivers **only** the OpenSpec change set — `userhistory.md` and `communication.md` do not apply.
 - `STAGE_ORDER` is unchanged — `PRD_BASE` keeps its id and only its behavior/artifacts differ (orthogonal `artifactMode`).
-- FINAL runs `/openspec-verify-change` and points the handoff at `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
-- If the `openspec-*` commands are unavailable when Spec is chosen, Pensador asks (via `AskUserQuestion`) whether to fall back to PRD mode or abort — it does not build the structure manually. The legacy `/opsx:*` prefix is deprecated.
+- FINAL runs `openspec validate <name> --strict --json` and points the handoff at `/opsx:apply` / `/opsx:sync` / `openspec archive <name> --json --yes`.
+- If the `/opsx:*` commands are unavailable when Spec is chosen, Pensador asks (via `AskUserQuestion`) whether to fall back to PRD mode or abort — it does not build the structure manually, and never runs a manual `mkdir`/`mv` on `openspec/`.
 
 Install: `npm install -g @fission-ai/openspec@latest` then `openspec init`. See `skills/pensador/references/openspec.md`.
 

@@ -130,7 +130,7 @@ As 9 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa 
 
 ## Modo Spec (OpenSpec) — onde o design entra no change set
 
-O Open Design é **ortogonal ao `artifactMode`**: roda sempre que `hasFrontend`, nos dois modos. O que muda é **onde** cada saída é escrita (`openDesignDeliveryFor(artifactMode, changeName)` no engine). No modo Spec o Pensador **não escreve à mão** os arquivos do change — alimenta os comandos `openspec-*`.
+O Open Design é **ortogonal ao `artifactMode`**: roda sempre que `hasFrontend`, nos dois modos. O que muda é **onde** cada saída é escrita (`openDesignDeliveryFor(artifactMode, changeName)` no engine). No modo Spec o Pensador **não escreve à mão** os arquivos do change — alimenta `/opsx:propose`.
 
 | Saída do Open Design | Modo PRD | Modo Spec (OpenSpec) |
 |---|---|---|
@@ -169,8 +169,8 @@ Use o contrato `openDesignSpecContract(featurePath, state.designSystems, state.u
 
 1. Baixa e persiste os arquivos verbatim do system em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD) — esta é a `origem` (`verbatimDir`) do contrato.
 2. Alimenta o `proposal.md` com a capability `ui-design-system` na seção **Capabilities**.
-3. Conduz `/openspec-ff-change <nome>` (ou `continue`) para gerar: `design.md` (Decisions citando `verbatimDir` + `materializeInto` + `<id>` + overrides) e `specs/ui-design-system/spec.md` (requisitos `SHALL` que citam `materializedTokens` + cenários).
-4. `/openspec-verify-change <nome>` valida — cenários com exatamente 4 `#` e todo requisito com ≥ 1 cenário.
+3. Conduz `/opsx:propose <nome ou descrição>` para gerar: `design.md` (Decisions citando `verbatimDir` + `materializeInto` + `<id>` + overrides) e `specs/ui-design-system/spec.md` (requisitos `SHALL` que citam `materializedTokens` + cenários).
+4. `openspec validate <nome> --strict --json` valida — cenários com exatamente 4 `#` e todo requisito com ≥ 1 cenário.
 
 ---
 

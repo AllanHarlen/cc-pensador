@@ -31,7 +31,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     ...
 ```
 
-O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE e `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do estagio RESEARCH (negocio/mercado e tecnico). No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado pelos comandos `openspec-*` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`communication.md` nao se aplicam.
+O nome do diretorio e o slug curto da demanda recebida ("nome da atualizacao") com sufixo de versao: minusculas, sem acentos, com qualquer sequencia de caracteres nao alfanumericos colapsada em um unico hifen (ex.: `Login Social` -> `login-social-v1`). Os artefatos finais ficam diretamente na raiz dessa pasta. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no estagio EXPLORE e `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do estagio RESEARCH (negocio/mercado e tecnico). No modo Spec (OpenSpec), o entregavel nao fica em `.pensador/`: e o change set criado por `/opsx:propose` em `openspec/changes/<nome>/` (`proposal.md`, `design.md`, `tasks.md`, `specs/`), e `prd.md`/`userhistory.md`/`communication.md` nao se aplicam.
 
 ---
 
@@ -150,7 +150,7 @@ Artefatos finais ficam diretamente em:
 
 Arquivos:
 
-- `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado pelos comandos `openspec-*`), fora de `.pensador/`.
+- `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado por `/opsx:propose`), fora de `.pensador/`.
 - `userhistory.md`: modo PRD (nao se aplica no modo Spec).
 - `communication.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
 - `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`) **e o Open Design NAO foi usado** (fallback inline das 9 secoes). Quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Nao se aplica no modo Spec.

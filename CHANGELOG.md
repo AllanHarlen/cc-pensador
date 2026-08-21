@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.12.0] — 2026-08-21
+
+### Integração OpenSpec atualizada para o perfil core (CLI 1.9.0+, recomendado 1.10.0)
+
+A integração de modo Spec estava escrita contra o OpenSpec ~1.1/1.3 e o **perfil expandido**
+(`/openspec-new-change`, `/openspec-ff-change`, `/openspec-verify-change`, `/openspec-sync-specs`,
+`/openspec-archive-change`). Desde a 1.4, `openspec init` instala por padrão o **perfil core**
+(`/opsx:explore|propose|apply|update|sync|archive`) — numa instalação nova os comandos antigos
+simplesmente não existem, e o modo Spec falhava silenciosamente.
+
+- `OPENSPEC` (em `pensador-engine.mjs`) foi reancorado no perfil core: `commands` usa o prefixo
+  `/opsx:*` atual (não mais `/openspec-*`, que era descrito — incorretamente — como o prefixo
+  descontinuado). Novos campos: `minVersion` (`1.9.0`), `recommendedVersion` (`1.10.0`),
+  `profile`, `configFile`, `skills` (nomes de diretório), `expandedCommands` (opcionais, nunca
+  requisito), `cliCalls` (chamadas de CLI scriptáveis: `openspec validate --strict --json`,
+  `openspec archive --json --yes`, `openspec doctor --json`, …) e `exitCodes`.
+- `checkOpenSpec()` (preflight) ganhou piso de versão (`checkCli` agora aceita
+  `{ minVersion, recommendedVersion }`), detecção de raiz via `openspec doctor --json` (com
+  fallback estático) e detecção de perfil instalado. Abaixo do piso, o modo Spec não é oferecido —
+  a invariante de que OpenSpec nunca afeta o `status` geral do preflight continua valendo.
+- `state.skipSpecs` (default `false`): quando `true`, `planArtifacts`/`buildArtifactList` omitem o
+  artefato `specs/`, espelhando `openspec archive --skip-specs` para mudanças de infra/tooling/doc
+  que não alteram specs.
+- `openspec validate <nome> --strict --json` substitui o antigo `verify-change`; arquivamento
+  sempre via `openspec archive <nome> --json --yes` — nunca `mv`/`mkdir` manual (o contrato de
+  agente do OpenSpec proíbe isso explicitamente).
+- `references/openspec.md`, `SKILL.md`, `stages.md`, `open-design.md`, `feature-isolation.md`,
+  `commands/pensador.md`, `README.md` e `README.pt-BR.md` atualizados para o novo comando set.
+- `.gitignore`: `.claude/` deixou de ser ignorado — a árvore `.claude/skills/openspec-*` e
+  `.claude/commands/opsx/*` gerada por `openspec update` (1.10.0) agora é versionada como parte do
+  plugin.
+
 ## [2.11.0] — 2026-08-14
 
 ### Segundo track no RESEARCH: pesquisa tecnica (stack, arquitetura, padroes, convencoes)

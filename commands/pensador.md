@@ -168,7 +168,7 @@ Ao concluir FINAL, informe:
 - Caminho dos arquivos do design system, se houver front-end (modo PRD): quando o Open Design foi usado, `design-systems/<id>/` (arquivos verbatim, incl. `DESIGN.md`); no fallback (sem Open Design), o `design-system.md` inline.
 - Caminho de `codebase-memory.md`, `market-research.md`, `tech-research.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
-- Recap final e handoff. No modo Spec, oriente `/openspec-verify-change`, `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.
+- Recap final e handoff. No modo Spec, oriente `openspec validate <nome> --strict --json`, `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes`.
 - Caminho de `handoff.json` (manifesto de handoff para o Orchestrador).
 - Recap final e handoff: informe que o proximo passo e `/cc-orchestrador-subagents:orchestrador implemente o plano destacado`, que ira ingerir `handoff.json`.
 

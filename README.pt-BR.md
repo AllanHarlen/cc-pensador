@@ -236,13 +236,13 @@ Sem acesso à web, o Pensador pergunta por track: você informa concorrentes/ver
 
 ## OpenSpec (modo Spec opcional)
 
-O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. Quando o preflight detecta o OpenSpec (CLI `openspec` no PATH ou diretório `openspec/`), o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
+O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** (perfil CORE, ≥ 1.9.0, recomendado 1.10.0). Quando o preflight detecta um CLI OpenSpec compatível, o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
 
-- Escolhendo **Spec**, o estágio `PRD_BASE` passa a escalar os **comandos `openspec-*`** (`/openspec-new-change`, `/openspec-ff-change`, …), que montam o change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) em `openspec/changes/<name>/`. O Pensador nunca escreve esses arquivos manualmente. Todas as fases seguintes raciocinam sobre a spec.
+- Escolhendo **Spec**, o estágio `PRD_BASE` passa a escalar **`/opsx:propose`**, que monta o change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) em `openspec/changes/<name>/` num único passo. O Pensador nunca escreve esses arquivos manualmente. Todas as fases seguintes raciocinam sobre a spec.
 - O modo Spec entrega **apenas** o change set OpenSpec — `userhistory.md` e `communication.md` não se aplicam.
 - A `STAGE_ORDER` não muda — `PRD_BASE` mantém o id e só seu comportamento/artefatos diferem (`artifactMode` ortogonal).
-- O FINAL roda `/openspec-verify-change` e orienta o handoff para `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
-- Se os comandos `openspec-*` estiverem indisponíveis quando Spec for escolhido, o Pensador pergunta (via `AskUserQuestion`) se deve cair para o modo PRD ou abortar — não monta a estrutura manualmente. O prefixo legado `/opsx:*` está descontinuado.
+- O FINAL roda `openspec validate <name> --strict --json` e orienta o handoff para `/opsx:apply` / `/opsx:sync` / `openspec archive <name> --json --yes`.
+- Se os comandos `/opsx:*` estiverem indisponíveis quando Spec for escolhido, o Pensador pergunta (via `AskUserQuestion`) se deve cair para o modo PRD ou abortar — não monta a estrutura manualmente, e nunca roda `mkdir`/`mv` manual sobre `openspec/`.
 
 Instalação: `npm install -g @fission-ai/openspec@latest` e depois `openspec init`. Veja `skills/pensador/references/openspec.md`.
 

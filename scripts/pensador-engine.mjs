@@ -281,6 +281,10 @@ export function initState(demanda) {
     // Output mode: 'prd' (default) or 'spec' (OpenSpec). When OpenSpec is
     // detected at preflight, INIT asks the user and may switch this to 'spec'.
     artifactMode: DEFAULT_ARTIFACT_MODE,
+    // Spec mode only: true when the change does not alter any spec (pure
+    // infra/tooling/doc change) — mirrors OpenSpec's `skip_specs: true` /
+    // `openspec archive --skip-specs`. Drops the specs/ artifact from the plan.
+    skipSpecs: false,
     // RESEARCH: product category detected from the demand (detectProductArchetype),
     // confirmed with the user, and used to drive the web/market benchmark.
     productArchetype: DEFAULT_PRODUCT_ARCHETYPE,
@@ -2389,37 +2393,91 @@ export function withArtifactMode(state, mode) {
  * OpenSpec (https://github.com/Fission-AI/OpenSpec) descriptor.
  *
  * In spec mode the Pensador does NOT hand-write the change files: it drives the
- * `openspec-*` skills/commands, which scaffold and manage the change set under
- * `openspec/changes/<name>/`. The legacy `/opsx:*` prefix is DEPRECATED — always
- * use `openspec-*`. Detection (CLI on PATH, an `openspec/` directory, or the
- * openspec plugin) lives in preflight.mjs.
+ * `/opsx:*` slash commands (the CORE profile, the default since OpenSpec 1.4 —
+ * `openspec init` never installs the expanded profile unless explicitly
+ * configured), which scaffold and manage the change set under
+ * `openspec/changes/<name>/`. `expandedCommands` are opportunistic extras,
+ * never a requirement. Detection (CLI on PATH + version floor, an initialized
+ * `openspec/` root, installed skill directories) lives in preflight.mjs.
  *
- * If the `openspec-*` commands are unavailable when spec mode is chosen, the
+ * If the `/opsx:*` commands are unavailable when spec mode is chosen, the
  * Pensador must NOT create the structure manually nor proceed as plain Claude:
  * it asks (via AskUserQuestion) whether to fall back to PRD mode or abort.
+ *
+ * Archiving is ALWAYS done via `openspec archive <name> --json --yes` (and
+ * `--skip-specs` when applicable) — never a hand-rolled `mkdir`/`mv`. The
+ * OpenSpec agent contract explicitly forbids manually creating, moving, or
+ * deleting anything under `openspec/`.
  */
 export const OPENSPEC = {
   cli: 'openspec',
   package: '@fission-ai/openspec',
   repo: 'https://github.com/Fission-AI/OpenSpec',
+  /** Lowest CLI version this integration is written against (1.9.0: honest root resolution, reliable archive exit codes). */
+  minVersion: '1.9.0',
+  /** Version the docs/flow are written against; below this, features work but are undertested here. */
+  recommendedVersion: '1.10.0',
+  minNodeVersion: '20.19.0',
   dir: 'openspec',
+  /** Root config written by `openspec init` (schema + optional context/rules/operations). */
+  configFile: 'openspec/config.yaml',
   specsDir: 'openspec/specs',
   changesDir: 'openspec/changes',
   optional: true,
-  /** openspec-* slash commands (the legacy /opsx:* prefix is deprecated). */
+  /** The profile this integration targets. `openspec init` installs this by default. */
+  profile: 'core',
+  /** /opsx:* slash commands from the CORE profile (installed by `openspec init` by default). */
   commands: {
-    onboard: '/openspec-onboard',
-    explore: '/openspec-explore',
-    newChange: '/openspec-new-change',
-    ffChange: '/openspec-ff-change',
-    continueChange: '/openspec-continue-change',
-    applyChange: '/openspec-apply-change',
-    verifyChange: '/openspec-verify-change',
-    syncSpecs: '/openspec-sync-specs',
-    archiveChange: '/openspec-archive-change',
-    bulkArchiveChange: '/openspec-bulk-archive-change',
+    explore: '/opsx:explore',
+    propose: '/opsx:propose',
+    apply: '/opsx:apply',
+    update: '/opsx:update',
+    sync: '/opsx:sync',
+    archive: '/opsx:archive',
   },
-  /** Files OpenSpec scaffolds inside openspec/changes/<name>/. */
+  /** Skill directory names backing each core command (`.claude/skills/<name>/SKILL.md`). */
+  skills: {
+    explore: 'openspec-explore',
+    propose: 'openspec-propose',
+    apply: 'openspec-apply-change',
+    update: 'openspec-update-change',
+    sync: 'openspec-sync-specs',
+    archive: 'openspec-archive-change',
+  },
+  /**
+   * /opsx:* slash commands from the EXPANDED profile. Only present when the
+   * user ran `openspec config profile` to opt in; the flow must never require
+   * them — `commands`/`cliCalls` above are always sufficient.
+   */
+  expandedCommands: {
+    new: '/opsx:new',
+    continue: '/opsx:continue',
+    ff: '/opsx:ff',
+    verify: '/opsx:verify',
+    bulkArchive: '/opsx:bulk-archive',
+    onboard: '/opsx:onboard',
+  },
+  /**
+   * Scriptable CLI calls the flow uses directly instead of expanded-profile
+   * commands (all support --json; see docs/agent-contract.md).
+   */
+  cliCalls: {
+    doctor: 'openspec doctor --json',
+    list: 'openspec list --json',
+    status: 'openspec status --change <name> --json',
+    instructions: 'openspec instructions <artifact> --change <name> --json',
+    validate: 'openspec validate <name> --strict --json',
+    archive: 'openspec archive <name> --json --yes',
+  },
+  /** Exit-code contract (docs/agent-contract.md). */
+  exitCodes: { ok: 0, error: 1, promptCancelled: 130 },
+  /** Diagnostic codes the flow may see in --json error payloads. */
+  diagnosticCodes: [
+    'no_openspec_root',
+    'openspec_config_missing',
+    'archive_confirmation_required',
+  ],
+  /** Files OpenSpec scaffolds inside openspec/changes/<name>/. `specs/` is omitted when the change sets `skip_specs: true`. */
   changeFiles: ['proposal.md', 'design.md', 'tasks.md', 'specs/'],
 };
 
@@ -2807,7 +2865,10 @@ export function openDesignSpecContract(featurePath, systemIds, uiPackageDir = 'p
     changeDir,
     // Design DECISIONS: which system, why, overrides, and the source/target paths.
     designDoc: `${changeDir}/design.md`,
-    // UI design-system REQUIREMENTS as a delta-spec capability.
+    // UI design-system REQUIREMENTS as a delta-spec capability. This is the
+    // canonical WRITE path; OpenSpec 1.7+ also supports nested capability
+    // paths (specs/<area>/<capability>/spec.md) when reading existing specs,
+    // so consumers should not assume this exact depth when scanning.
     capabilityName: 'ui-design-system',
     capabilitySpec: `${changeDir}/specs/ui-design-system/spec.md`,
     systems: ids.map((id) => {
@@ -3112,10 +3173,14 @@ export function planArtifacts(state) {
     // the repo, decisions fold into design.md, and the UI requirements become a
     // `ui-design-system` delta spec — so there is no standalone design-system.md
     // here (designSystem: false), by design.
+    //
+    // When state.skipSpecs is true (infra/tooling/doc-only change, mirroring
+    // OpenSpec's skip_specs), the specs/ delta is dropped from the plan — the
+    // change set is proposal+design+tasks only.
     return {
       prd: false,
       proposal: true,
-      specs: true,
+      specs: !state.skipSpecs,
       design: true,
       tasks: true,
       userhistory: false,

@@ -1,9 +1,10 @@
-.claude/
 node_modules/
 .kiro/
 pensador-output/
 .pensador/
 .pensador-output/
-.openspec/ 
-openspec/ 
+.openspec/
+openspec/
 tmp-od/
+.claude/worktrees/
+.claude/settings.local.json
