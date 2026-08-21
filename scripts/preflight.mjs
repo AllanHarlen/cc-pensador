@@ -95,6 +95,15 @@ const OPENSPEC_CORE_SKILL_DIRS = [
 ];
 
 /**
+ * Context7 MCP — OPTIONAL. Preferred source for the version-currency phase of
+ * TECH_RESEARCH. Detection matches registered MCP server NAMES (below) or, for a
+ * server registered under some other name, the package spec / endpoint inside its
+ * definition.
+ */
+const CONTEXT7_SERVER_NAMES = ["context7", "context7-mcp", "ctx7"];
+const CONTEXT7_DEFINITION_MARKERS = ["@upstash/context7-mcp", "mcp.context7.com"];
+
+/**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
  * conditional design-system support. Detected via a registered MCP entry or a
  * non-coreutils `od` CLI on PATH. NOTE: GNU coreutils also ships an `od`
@@ -343,6 +352,102 @@ function checkAgy() {
 }
 
 /**
+ * Normalizes a filesystem path for comparison: forward slashes, no trailing
+ * separator, lower-cased. Claude Code stores the keys of `~/.claude.json`'s
+ * `projects` map with forward slashes, while `process.cwd()` on Windows yields
+ * backslashes — comparing them raw would never match.
+ */
+function normalizePathKey(value) {
+  return String(value ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Reads a JSON MCP config and returns the server maps that apply to `cwd`: the
+ * file's root `mcpServers`, plus the entry for the current project when the file
+ * is Claude Code's `~/.claude.json` (which nests per-project config under
+ * `projects[<absolute path>]`).
+ *
+ * Returns `[]` when the file is missing or unparseable — an unreadable config is
+ * not evidence either way. Total: never throws.
+ *
+ * @param {string} file
+ * @param {string} cwd
+ * @returns {{ servers: object, disabled: string[] }[]}
+ */
+function readMcpServerMaps(file, cwd) {
+  let json;
+  try {
+    if (!existsSync(file)) return [];
+    json = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return [];
+  }
+  if (!json || typeof json !== "object") return [];
+
+  const maps = [];
+  if (json.mcpServers && typeof json.mcpServers === "object") {
+    maps.push({ servers: json.mcpServers, disabled: [] });
+  }
+  if (json.projects && typeof json.projects === "object") {
+    const wanted = normalizePathKey(cwd);
+    for (const [key, project] of Object.entries(json.projects)) {
+      if (normalizePathKey(key) !== wanted) continue;
+      if (project?.mcpServers && typeof project.mcpServers === "object") {
+        maps.push({
+          servers: project.mcpServers,
+          disabled: Array.isArray(project.disabledMcpjsonServers)
+            ? project.disabledMcpjsonServers
+            : [],
+        });
+      }
+    }
+  }
+  return maps;
+}
+
+/**
+ * Finds an MCP server registration across `files`, matching either the server's
+ * NAME (against `names`) or a marker inside its definition (`markers` — package
+ * spec or endpoint, for a server registered under a custom name). Servers listed
+ * in `disabledMcpjsonServers` do not count.
+ *
+ * This parses the JSON rather than substring-scanning the raw text, which matters
+ * most for `~/.claude.json`: that file is Claude Code's entire user config
+ * (100+ KB) and carries per-project `allowedTools`, example file paths and other
+ * arbitrary data, so a bare substring hit there would report a server as
+ * registered when nothing is.
+ *
+ * @param {string[]} files
+ * @param {string} cwd
+ * @param {string[]} names
+ * @param {string[]} [markers]
+ * @returns {{ path: string, server: string }|null}
+ */
+function findMcpServer(files, cwd, names, markers = []) {
+  const wanted = names.map((n) => n.toLowerCase());
+  const wantedMarkers = markers.map((m) => m.toLowerCase());
+  for (const file of files) {
+    for (const { servers, disabled } of readMcpServerMaps(file, cwd)) {
+      const off = new Set(disabled.map((n) => String(n).toLowerCase()));
+      for (const [name, definition] of Object.entries(servers)) {
+        const key = name.toLowerCase();
+        if (off.has(key)) continue;
+        if (wanted.includes(key)) return { path: file, server: name };
+        if (wantedMarkers.length === 0) continue;
+        let blob = "";
+        try {
+          blob = JSON.stringify(definition ?? "").toLowerCase();
+        } catch {
+          blob = "";
+        }
+        if (wantedMarkers.some((m) => blob.includes(m))) return { path: file, server: name };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Returns true when `path` exists and its text content mentions `needle`.
  * Total: never throws (missing/unreadable file → false).
  */
@@ -417,9 +522,16 @@ function checkCodebaseMemory() {
  * above release notes / guides / community sources under the same
  * official-first tier ordering TECH_RESEARCH already uses.
  *
- * Detection mirrors codebase-memory: skill presence + known MCP config files
- * mentioning context7/ctx7/its endpoint. Absence never blocks the flow — the
- * phase falls back to whatever WebSearch/WebFetch can find.
+ * Detection: skill presence, plus a real MCP server registration found by
+ * PARSING the known config files (`findMcpServer`) rather than substring-scanning
+ * them. The strictness matters because a false positive is silent and costly:
+ * RESEARCH would elect Context7 as the preferred source for the version-currency
+ * phase and only discover it is not registered when `resolve-library-id` fails
+ * mid-flow. `~/.claude.json` in particular is Claude Code's whole user config and
+ * holds arbitrary per-project data, so a bare `ctx7`/`context7` substring there is
+ * not evidence of anything. Disabled servers do not count.
+ *
+ * Absence never blocks the flow — the phase falls back to WebSearch/WebFetch.
  */
 function checkContext7() {
   const evidence = [];
@@ -438,16 +550,14 @@ function checkContext7() {
     join(HOME, ".claude", "mcp.json"),
     join(HOME, ".config", "claude", "mcp.json"),
   ];
-  for (const file of configCandidates) {
-    if (!existsSync(file)) continue;
-    try {
-      const contents = readFileSync(file, "utf8");
-      if (/\bcontext7\b|@upstash\/context7-mcp|mcp\.context7\.com|ctx7/i.test(contents)) {
-        evidence.push({ type: "mcp-config", path: file });
-      }
-    } catch {
-      // Unreadable config is not evidence either way; skip it silently.
-    }
+  const hit = findMcpServer(
+    configCandidates,
+    process.cwd(),
+    CONTEXT7_SERVER_NAMES,
+    CONTEXT7_DEFINITION_MARKERS,
+  );
+  if (hit) {
+    evidence.push({ type: "mcp-config", path: hit.path, server: hit.server });
   }
 
   const available = evidence.length > 0;

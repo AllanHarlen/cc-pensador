@@ -32,6 +32,32 @@ simplesmente não existem, e o modo Spec falhava silenciosamente.
   localmente na 1.10.0 via `openspec update`. Ela **permanece ignorada pelo git** (`.claude/` no
   `.gitignore`): é artefato de ambiente, regenerável por `openspec update`, não conteúdo do plugin.
 
+### Correcoes do review
+
+- **Deteccao de perfil OpenSpec com tres estados.** `profile` reportava `"core"` mesmo sem nenhuma
+  skill `openspec-*` instalada — o INIT oferecia Spec e o `PRD_BASE` invocava um `/opsx:propose`
+  inexistente, exatamente a falha tardia que esta integracao existe para evitar. Agora e
+  `core` / `expanded` / `none`, sondando `.claude/skills/` do projeto **e** `~/.claude/skills/`, e
+  `available` exige `profile !== "none"`.
+- **`/opsx:sync` sai do FINAL.** `references/openspec.md` e `references/stages.md` mandavam
+  sincronizar antes de implementar, o que publicaria como spec vigente um comportamento ainda nao
+  construido e drenaria os deltas que o Orchestrador ingere — e contradiziam `commands/pensador.md`
+  e `SKILL.md`, que ja tinham a ordem certa. O Pensador planeja: roda `propose` + `validate` e faz
+  handoff de `apply` -> `sync` -> `archive`.
+- **`/opsx:propose` gera `specs/` tambem.** A documentacao afirmava apenas tres artefatos.
+- **Deteccao do Context7 passa a parsear o JSON** em vez de varrer o texto dos arquivos de config.
+  `~/.claude.json` e a config inteira do Claude Code (100+ KB com `allowedTools`, caminhos de exemplo
+  e historico por projeto), entao um `ctx7`/`context7` solto ali marcava o servidor como disponivel;
+  o RESEARCH elegia o Context7 como fonte preferida da fase de version-currency e so descobria o
+  engano quando a chamada MCP falhava. Agora casa nomes de servidor registrados em `mcpServers`
+  (raiz e do projeto atual), respeita `disabledMcpjsonServers`, e reconhece registro sob nome
+  customizado pelo pacote/endpoint. A chave de projeto e normalizada (barra normal vs invertida,
+  caixa, barra final) — sem isso o caso por projeto era um falso-negativo silencioso no Windows.
+- **`checks.optional.mcp.context7` -> `integrations.context7`** em `references/tech-research.md`: o
+  caminho documentado nao existia na saida do preflight.
+- Novo `test/preflight-detection.test.js` cobre os tres estados de perfil e oito cenarios de
+  deteccao do Context7 (ruido, servidor desabilitado, outro projeto, nome customizado, JSON invalido).
+
 ## [2.12.0] — 2026-08-19
 
 ### `handoff-contract.md` ressincronizado, byte-idêntico nos três plugins
