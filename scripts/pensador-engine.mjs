@@ -756,6 +756,14 @@ export function codebaseMemorySnapshotPath(featurePath) {
  * Returns the canonical ordered sequence of Code Base Memory tool calls the
  * Pensador uses to explore a project before generating the PRD/Spec base.
  *
+ * `index_status` is always first: it is a read-only gate that decides whether
+ * `index_repository` — a full repository scan — is actually needed, and that
+ * decision belongs to the user (AskUserQuestion), never fired automatically.
+ * `index_repository` still appears in the deterministic sequence because this
+ * function describes the canonical tool order, not a conditional executor;
+ * the gate itself is documented prose (references/codebase-memory.md), not
+ * something this pure function encodes.
+ *
  * Pure and total: same input → same output, never throws. When the demand is a
  * fix/change over existing code (`isFix`), `detect_changes` is appended to map
  * the git diff to affected symbols and blast radius.
@@ -766,6 +774,7 @@ export function codebaseMemorySnapshotPath(featurePath) {
 export function codebaseMemoryExplorationPlan(options = {}) {
   const t = CODEBASE_MEMORY.tools;
   const plan = [
+    t.indexStatus,
     t.indexRepository,
     t.getArchitecture,
     t.getGraphSchema,

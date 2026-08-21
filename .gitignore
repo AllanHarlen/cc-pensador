@@ -6,5 +6,6 @@ pensador-output/
 .openspec/
 openspec/
 tmp-od/
+.claude/
 .claude/worktrees/
 .claude/settings.local.json
