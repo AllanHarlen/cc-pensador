@@ -352,7 +352,7 @@ Registre a escolha e marque `status: SKIPPED` ou `PARTIAL` no snapshot correspon
 Quando o usuario escolheu Spec no INIT, este estagio **substitui o PRD base** acionando `/opsx:propose` (nunca escrevendo os arquivos manualmente):
 
 1. Confirme que os comandos `/opsx:*` estao disponiveis (perfil core, instalado por padrao por `openspec init`). Se nao estiverem, pergunte via `AskUserQuestion` se deve cair para o modo PRD ou abortar — nao monte a estrutura manualmente nem siga como Claude direto.
-2. Crie e monte o change set: `/opsx:propose <nome ou descricao>` (gera `proposal.md`, `design.md` e `tasks.md` de uma vez) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
+2. Crie e monte o change set: `/opsx:propose <nome ou descricao>` (gera `proposal.md`, `specs/<capability-path>/spec.md`, `design.md` e `tasks.md` de uma vez; `specs/` e omitido sob `skip_specs`) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
 3. Alimente os comandos com a demanda e o `<featurePath>/codebase-memory.md`; o que nao for inferivel fica como `"TBD"`.
 4. Todas as etapas seguintes (`ARCH`, `EXPAND`, `COMPLEXITY`, `BRAINSTORM_GERAL`, `CODEX`, `AGY`, `FINAL`) passam a raciocinar sobre a **spec** em vez do PRD, refinando os artefatos do change set.
 

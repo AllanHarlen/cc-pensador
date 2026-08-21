@@ -13,7 +13,7 @@ Quando o OpenSpec é detectado no preflight (versão ≥ `1.9.0`), o INIT oferec
 | Comando | Quando usar |
 |---|---|
 | `/opsx:explore` | Modo "thinking partner" para investigar antes de criar a mudança |
-| `/opsx:propose <descrição>` | Criar a mudança e gerar proposal.md + design.md + tasks.md de uma vez |
+| `/opsx:propose <descrição>` | Criar a mudança e gerar **todos** os artefatos de uma vez: proposal.md, specs/, design.md e tasks.md |
 | `/opsx:apply` | Implementar a partir do `tasks.md` |
 | `/opsx:update` | Revisar artefatos de planejamento já existentes sem implementar |
 | `/opsx:sync` | Sincronizar deltas de `specs/` com as specs principais do projeto |
@@ -47,12 +47,12 @@ Se o usuário rodou `openspec config profile` para o perfil expandido, comandos 
 O `preflight.mjs` reporta, no bloco `integrations.openspec`:
 
 - `version` / `meetsMinimum` / `belowRecommended`: versão do CLI e se atende ao piso (`1.9.0`) e à versão recomendada (`1.10.0`).
-- `available`: verdadeiro somente quando `meetsMinimum` é verdadeiro — abaixo do piso, o modo Spec **não é oferecido**, mesmo que o binário exista.
-- `initialized` / `doctorOk`: se a raiz `openspec/` existe e está saudável (via `openspec doctor --json`, com fallback estático para `existsSync`).
-- `profile`: `"core"` (padrão) ou `"expanded"`, conforme as skills instaladas em `.claude/skills/`.
-- `behavior`: a mensagem que o INIT deve apresentar — varia entre "apto e recomendado", "apto mas abaixo do recomendado" e "abaixo do piso, não oferecer".
+- `available`: verdadeiro somente quando o CLI atende ao piso **e** `profile !== "none"` — sem as skills `openspec-*` os comandos `/opsx:*` não existem, e oferecer Spec abortaria tarde no `PRD_BASE`.
+- `initialized` / `doctorOk`: se a raiz `openspec/` existe e está saudável (via `openspec doctor --json`, com fallback estático para `existsSync`). **Não** bloqueiam o modo Spec — quando falsos, o `behavior` instrui a rodar `openspec init --tools claude` antes do `/opsx:propose`.
+- `profile`: `"core"`, `"expanded"` ou `"none"`, conforme as skills encontradas em `.claude/skills/` do projeto **ou** em `~/.claude/skills/`.
+- `behavior`: a mensagem que o INIT deve apresentar — cobre "apto", "apto mas abaixo do recomendado", "CLI presente porém sem skills" e "abaixo do piso".
 
-Se o OpenSpec **não** for detectado, ou estiver abaixo de `1.9.0`, o fluxo permanece no modo PRD e a pergunta não é feita.
+Se o OpenSpec **não** for detectado, estiver abaixo de `1.9.0`, ou não houver nenhuma skill `openspec-*` instalada, o fluxo permanece no modo PRD e a pergunta não é feita.
 
 ---
 
@@ -85,20 +85,33 @@ No modo Spec, o estágio `PRD_BASE` mantém seu id na `STAGE_ORDER`, mas seu com
    /opsx:propose <nome ou descrição>
    ```
 
-   `<nome>` = `openspecChangeName(featurePath)` (ex.: `login-social-v1`). `/opsx:propose` cria a mudança e gera `proposal.md`, `design.md` e `tasks.md` num único passo — substitui o que antes exigia dois comandos separados no perfil expandido.
+   `<nome>` = `openspecChangeName(featurePath)` (ex.: `login-social-v1`). `/opsx:propose` cria a mudança e gera **todos** os artefatos do schema num único passo — `proposal.md`, `specs/<capability-path>/spec.md`, `design.md` e `tasks.md` — substituindo o que antes exigia dois comandos separados no perfil expandido. O `specs/` é omitido apenas quando a mudança declara `skip_specs` (ver passo 4).
 3. **Alimentar com contexto:** demanda e `<featurePath>/codebase-memory.md`; o que não for inferível fica como `"TBD"`.
 4. **Mudança sem impacto em specs (`skip_specs`):** quando a demanda é puramente infra/tooling/doc (não altera comportamento observável), marque `state.skipSpecs = true`. O change set sai sem `specs/`, e o arquivamento posterior deve usar `openspec archive <nome> --json --yes --skip-specs`.
 
 ### Fluxo canônico
 
+O Pensador executa **apenas os dois primeiros passos** — ele planeja. Implementação,
+sincronização e arquivamento pertencem aos estágios seguintes da cadeia
+(Orchestrador/Executor) e aparecem aqui só para fixar a ordem correta:
+
 ```text
+# --- Pensador (modo Spec) ---
 /opsx:propose <nome ou descrição>
 # Pensador conduz: planejamento, review, refinamento dos artefatos gerados
 openspec validate <nome> --strict --json
-/opsx:sync            # apenas se a mudança introduzir/alterar specs
-/opsx:apply
-openspec archive <nome> --json --yes
+
+# --- downstream: NAO executado pelo Pensador ---
+/opsx:apply                              # implementa a partir do tasks.md
+/opsx:sync                               # so DEPOIS de implementado
+openspec archive <nome> --json --yes     # (+ --skip-specs quando skip_specs)
 ```
+
+> **A ordem importa.** `/opsx:sync` publica os deltas de `specs/` como spec **vigente** do
+> projeto. Rodá-lo antes do `/opsx:apply` declararia como comportamento atual algo que ainda
+> não foi construído, e drenaria os deltas que o Orchestrador precisa ingerir. O
+> `openspec archive` já sincroniza ao final — `/opsx:sync` avulso só serve para publicar
+> specs sem arquivar a mudança.
 
 ---
 
@@ -154,8 +167,9 @@ No `FINAL`, em modo Spec:
 
 1. Finalize os artefatos do change set em `openspec/changes/<nome>/`.
 2. Rode `openspec validate <nome> --strict --json` — **não pule**; a validação estrita pega referências quebradas em spec e falha com exit `1` se algo estiver errado.
-3. Rode `/opsx:sync` sempre que a mudança introduzir specs novos ou ajustar specs existentes (move os deltas de `openspec/changes/<nome>/specs/` para `openspec/specs/`).
-4. Handoff: oriente os próximos passos com `/opsx:apply` (implementação) e `openspec archive <nome> --json --yes` (arquivamento).
+3. Handoff: aponte os próximos passos **nesta ordem** — `/opsx:apply` (implementação), depois `/opsx:sync` (publicar os deltas, quando não for arquivar em seguida) e `openspec archive <nome> --json --yes` (arquivamento, que já sincroniza).
+
+> O Pensador **não** roda `/opsx:apply`, `/opsx:sync` nem `openspec archive` — ele planeja. Sincronizar no FINAL publicaria como spec vigente um comportamento ainda não implementado e esvaziaria os deltas que o Orchestrador ingere.
 
 > Arquivamento **sempre** via `openspec archive <nome> --json --yes` (com `--skip-specs` quando a mudança não alterou specs). Nunca `mv`/`mkdir` manual — o comando de CLI já atualiza as specs principais e sai com código ≠ 0 em falha, permitindo tratamento programático do erro.
 

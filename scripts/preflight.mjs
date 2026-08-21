@@ -87,6 +87,12 @@ const OPENSPEC_EXPANDED_SKILL_DIRS = [
   "openspec-ff-change",
   "openspec-verify-change",
 ];
+/** Any of these signals the CORE profile is installed (what `openspec init` writes by default). */
+const OPENSPEC_CORE_SKILL_DIRS = [
+  "openspec-propose",
+  "openspec-apply-change",
+  "openspec-archive-change",
+];
 
 /**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
@@ -532,13 +538,18 @@ function checkWebResearch() {
  *      and the flow stays in PRD mode — OpenSpec stays optional and this
  *      check never affects the overall `status`.
  *   2) `openspec doctor --json` against the project root — exit 0 means an
- *      initialized, healthy root (config.yaml present). This is the
- *      authoritative "initialized" signal per the OpenSpec agent contract.
- *   3) which profile is installed: CORE (the default since OpenSpec 1.4 —
- *      `/opsx:explore|propose|apply|update|sync|archive`) vs EXPANDED (adds
+ *      initialized, healthy root (config.yaml present). This does NOT gate
+ *      availability: an uninitialized root is a one-command fix, so it is
+ *      reported (`initialized`/`doctorOk`) and surfaced in `behavior` as an
+ *      instruction to run `openspec init` before /opsx:propose.
+ *   3) which profile is installed, probing BOTH `.claude/skills/` and
+ *      `~/.claude/skills/`: CORE (the default since OpenSpec 1.4 —
+ *      `/opsx:explore|propose|apply|update|sync|archive`), EXPANDED (adds
  *      `/opsx:new|continue|ff|verify|bulk-archive|onboard`, opt-in via
- *      `openspec config profile`). The flow targets CORE and never requires
- *      EXPANDED; profile is reported for information only.
+ *      `openspec config profile`), or NONE. The flow targets CORE and never
+ *      requires EXPANDED, but `none` DOES suppress Spec mode — without the
+ *      skills the /opsx:* commands do not exist, and offering Spec would abort
+ *      late in PRD_BASE.
  *
  * When available, the Pensador asks (via AskUserQuestion) in INIT whether to
  * generate a PRD or a structured Spec.
@@ -578,22 +589,43 @@ function checkOpenSpec() {
     }
   }
 
-  const expandedSkillDir = (name) =>
-    join(process.cwd(), ".claude", "skills", name);
-  const profile = OPENSPEC_EXPANDED_SKILL_DIRS.some((name) => existsSync(expandedSkillDir(name)))
-    ? "expanded"
-    : "core";
+  // Skills may live in the project (.claude/skills/) or user-wide (~/.claude/skills/).
+  // Probing BOTH matters: a `none` verdict below suppresses Spec mode, so a
+  // project-only probe would false-negative on a user-wide install.
+  const skillInstalled = (name) =>
+    existsSync(join(process.cwd(), ".claude", "skills", name)) ||
+    existsSync(join(HOME, ".claude", "skills", name));
+
+  // Three states, not two. Reporting "core" when NOTHING is installed is the
+  // exact failure this integration exists to prevent: INIT would offer Spec,
+  // PRD_BASE would invoke /opsx:propose, and the flow would abort late.
+  let profile;
+  if (OPENSPEC_EXPANDED_SKILL_DIRS.some(skillInstalled)) {
+    profile = "expanded";
+  } else if (OPENSPEC_CORE_SKILL_DIRS.some(skillInstalled)) {
+    profile = "core";
+  } else {
+    profile = "none";
+  }
 
   const meetsMinimum = cli.ok;
   const belowRecommended = cli.ok && cli.meetsRecommended === false;
-  const available = meetsMinimum;
+  // Spec mode needs BOTH a usable CLI and the /opsx:* skills that drive it.
+  const available = meetsMinimum && profile !== "none";
 
   let behavior;
   if (available) {
-    behavior = belowRecommended
+    const rootNote = initialized
+      ? ""
+      : " The OpenSpec root is not initialized yet — if the user picks Spec, run `openspec init --tools claude` (add `--language \"Portuguese (pt-BR)\"` for pt-BR artifacts) before /opsx:propose.";
+    behavior = (belowRecommended
       ? `OpenSpec ${cli.version} detected (meets the ${OPENSPEC_MIN_VERSION}+ floor, below the recommended ${OPENSPEC_RECOMMENDED_VERSION}). ` +
         "INIT presents an AskUserQuestion offering PRD or Spec; consider `npm install -g @fission-ai/openspec@latest`."
-      : "OpenSpec detected. INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.";
+      : "OpenSpec detected. INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.") + rootNote;
+  } else if (meetsMinimum && profile === "none") {
+    behavior =
+      `OpenSpec CLI ${cli.version} is present but no \`openspec-*\` skills are installed, so the /opsx:* commands do not exist. ` +
+      "Spec mode is NOT offered; the flow stays in PRD mode. Run `openspec init --tools claude` to install them.";
   } else if (cli.error && cli.minVersion) {
     behavior =
       `OpenSpec CLI found but below the ${OPENSPEC_MIN_VERSION}+ floor (${cli.error}). ` +
@@ -939,6 +971,11 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
         `OpenSpec: detected (${openspec.version}, meets the ${openspec.minVersion}+ floor but below the recommended ` +
           `${openspec.recommendedVersion}) — INIT still offers PRD vs Spec; suggest ` +
           "`npm install -g @fission-ai/openspec@latest` when convenient.",
+      );
+    } else if (openspec.meetsMinimum && openspec.profile === "none") {
+      lines.push(
+        `OpenSpec: CLI ${openspec.version} present but no \`openspec-*\` skills installed — the /opsx:* commands do not exist, ` +
+          "so Spec mode is NOT offered and the flow stays in PRD mode. Run `openspec init --tools claude` to install them.",
       );
     } else if (openspec.cliCheck?.minVersion) {
       lines.push(

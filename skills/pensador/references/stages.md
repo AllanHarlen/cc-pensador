@@ -120,7 +120,7 @@ Protocolo completo em `references/tech-research.md`.
 
 ### Modo Spec (`artifactMode = 'spec'`, OpenSpec)
 
-- Acionar `/opsx:propose <nome ou descricao>` (nunca escrever os arquivos manualmente): cria `proposal.md`, `design.md` e `tasks.md` em `openspec/changes/<nome>/` (`<nome>` = `openspecChangeName(featurePath)`).
+- Acionar `/opsx:propose <nome ou descricao>` (nunca escrever os arquivos manualmente): cria `proposal.md`, `specs/<capability-path>/spec.md`, `design.md` e `tasks.md` em `openspec/changes/<nome>/` (`<nome>` = `openspecChangeName(featurePath)`; `specs/` e omitido sob `skip_specs`).
 - Alimentar com a demanda e o `codebase-memory.md`; usar `"TBD"` no que nao for inferivel.
 - Se os comandos `/opsx:*` nao estiverem disponiveis: perguntar via `AskUserQuestion` se deve cair para PRD ou abortar; nao montar a estrutura manualmente.
 - Todas as etapas seguintes raciocinam sobre a spec. Veja `references/openspec.md`.
@@ -310,7 +310,7 @@ Se um participante falhar:
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao (so no modo PRD; no modo Spec nao se aplica).
 3. Gerar artefatos conforme `artifactMode`:
    - Modo PRD: `prd.md` + `userhistory.md` (+ contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml` **e** `communication.md` quando ha back-end) (+ `design-system.md` quando ha front-end **e** o Open Design NAO foi usado — fallback inline) em `<featurePath>/`. O contrato maquina-legivel e a **fonte da verdade**; o `communication.md` e a visao legivel derivada. Quando um system do Open Design foi selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design — nao gere `design-system.md` redundante.
-   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `openspec validate <nome> --strict --json` (e `/opsx:sync` se introduziu/ajustou specs). O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
+   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `openspec validate <nome> --strict --json`. **Nao** rode `/opsx:sync` aqui: sincronizar publica como spec vigente um comportamento ainda nao implementado e drena os deltas que o Orchestrador ingere — isso e do estagio seguinte. O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
 5. Apresentar recap final e handoff. No modo Spec, orientar com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este altera specs principais: so apos confirmacao do usuario).
 
