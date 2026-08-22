@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -47,6 +47,8 @@ afterAll(() => rmSync(SANDBOX, { recursive: true, force: true }));
  *   claudeJson?: object | ((cwd: string) => object),
  *   projectSkills?: string[],
  *   homeSkills?: string[],
+ *   mcpJson?: object,  // written to <cwd>/.mcp.json (project-level MCP registration)
+ *   extraPath?: string,  // directory prepended to PATH (e.g. a fake `od` shim)
  * }} [setup]
  */
 function runPreflight(setup = {}) {
@@ -60,6 +62,8 @@ function runPreflight(setup = {}) {
     typeof setup.claudeJson === 'function' ? setup.claudeJson(cwd) : setup.claudeJson;
   if (config) writeFileSync(join(home, '.claude.json'), JSON.stringify(config));
 
+  if (setup.mcpJson) writeFileSync(join(cwd, '.mcp.json'), JSON.stringify(setup.mcpJson));
+
   for (const name of setup.projectSkills ?? []) {
     mkdirSync(join(cwd, '.claude', 'skills', name), { recursive: true });
   }
@@ -67,12 +71,34 @@ function runPreflight(setup = {}) {
     mkdirSync(join(home, '.claude', 'skills', name), { recursive: true });
   }
 
+  const path = setup.extraPath
+    ? `${setup.extraPath}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}`
+    : process.env.PATH;
+
   const out = execFileSync(process.execPath, [PREFLIGHT], {
     cwd,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path },
     encoding: 'utf8',
   });
   return JSON.parse(out);
+}
+
+/**
+ * Writes a fake `od` shim on PATH that prints a given first line for
+ * `--version`. Used to simulate GNU coreutils' unrelated `od` (octal-dump)
+ * binary, which collides by name with the Open Design CLI.
+ */
+function fakeOdBinary(versionLine) {
+  const dir = join(SANDBOX, `od-shim-${seq++}`);
+  mkdirSync(dir, { recursive: true });
+  if (process.platform === 'win32') {
+    writeFileSync(join(dir, 'od.cmd'), `@echo off\r\necho ${versionLine}\r\n`);
+  } else {
+    const script = join(dir, 'od');
+    writeFileSync(script, `#!/bin/sh\necho "${versionLine}"\n`);
+    chmodSync(script, 0o755);
+  }
+  return dir;
 }
 
 const TIMEOUT = 30_000;
@@ -212,5 +238,98 @@ describe('preflight: Context7 detection', () => {
   it('survives a malformed mcpServers without treating it as evidence', () => {
     const report = runPreflight({ claudeJson: { mcpServers: null } });
     expect(report.integrations.context7.available).toBe(false);
+  }, TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Open Design — checkOpenDesign() had NO test coverage at all: the coreutils
+// false-positive filter, the `available` formula and the full
+// integrations.openDesign payload shape were unguarded. See the OpenDesign
+// upgrade plan (Bucket A, item 9 / Workstream B).
+// ---------------------------------------------------------------------------
+
+describe('preflight: Open Design detection', () => {
+  it('reports unavailable/unconfigured with no od on PATH and no MCP registration', () => {
+    const od = runPreflight().integrations.openDesign;
+    expect(od.available).toBe(false);
+    expect(od.configured).toBe(false);
+    expect(od.configuredIn).toEqual([]);
+    expect(od.mcpFunctional).toBe(false);
+    expect(od.optional).toBe(true);
+    expect(od.relevantWhen).toBe('hasFrontend');
+  }, TIMEOUT);
+
+  it('never moves the overall status, available or not', () => {
+    const without = runPreflight();
+    const withMcp = runPreflight({ mcpJson: { mcpServers: { 'open-design': { command: 'node', args: [] } } } });
+    expect(without.integrations.openDesign.available).toBe(false);
+    expect(withMcp.integrations.openDesign.available).toBe(true);
+    expect(withMcp.status).toBe(without.status);
+  }, TIMEOUT * 2);
+
+  it('ignores GNU coreutils\' od (octal-dump) — the classic false positive', () => {
+    const shim = fakeOdBinary('od (GNU coreutils) 9.4');
+    const od = runPreflight({ extraPath: shim }).integrations.openDesign;
+    expect(od.cliCheck.ok).toBe(false);
+    expect(od.cliCheck.error).toMatch(/coreutils/i);
+    expect(od.available).toBe(false);
+    expect(od.mcpFunctional).toBe(false);
+  }, TIMEOUT);
+
+  it('treats a non-coreutils od on PATH as the real CLI: available AND mcpFunctional', () => {
+    const shim = fakeOdBinary('od (Open Design CLI) 0.20.2');
+    const od = runPreflight({ extraPath: shim }).integrations.openDesign;
+    expect(od.cliCheck.ok).toBe(true);
+    expect(od.available).toBe(true);
+    expect(od.mcpFunctional).toBe(true);
+  }, TIMEOUT);
+
+  it('configured via project .mcp.json is available but NOT mcpFunctional without a real od binary', () => {
+    // available = cli.ok || configured — a registered MCP entry makes the REST/
+    // daemon path usable, but the MCP stdio bridge (`od mcp`) still needs a
+    // real `od` binary on PATH, which this case does not provide.
+    const od = runPreflight({
+      mcpJson: { mcpServers: { 'open-design': { command: 'node', args: ['daemon.js'] } } },
+    }).integrations.openDesign;
+    expect(od.configured).toBe(true);
+    expect(od.configuredIn).toHaveLength(1);
+    expect(od.available).toBe(true);
+    expect(od.mcpFunctional).toBe(false);
+  }, TIMEOUT);
+
+  it('ignores an unrelated "open-design" mention outside mcpServers (the fileMentions substring bug this replaced)', () => {
+    // Before the fix, checkOpenDesign() used a raw String.includes over the
+    // whole file — any occurrence of the literal text "open-design" (a
+    // comment, an unrelated path/server name) reported configured:true.
+    const od = runPreflight({
+      mcpJson: {
+        mcpServers: { unrelated: { command: 'node', args: ['./open-design-notes.js'] } },
+        _comment: 'see open-design for context',
+      },
+    }).integrations.openDesign;
+    expect(od.configured).toBe(false);
+    expect(od.configuredIn).toEqual([]);
+  }, TIMEOUT);
+
+  it('reads ~/.claude/settings/mcp.json in addition to the three documented locations', () => {
+    // preflight.mjs probes 4 candidates; keep this in sync with the doc table
+    // in skills/pensador/references/open-design.md.
+    const base = join(SANDBOX, `case-${seq++}`);
+    const home = join(base, 'home');
+    const cwd = join(base, 'proj');
+    mkdirSync(join(home, '.claude', 'settings'), { recursive: true });
+    mkdirSync(cwd, { recursive: true });
+    writeFileSync(
+      join(home, '.claude', 'settings', 'mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-design': { command: 'node', args: [] } } }),
+    );
+    const out = execFileSync(process.execPath, [PREFLIGHT], {
+      cwd,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      encoding: 'utf8',
+    });
+    const od = JSON.parse(out).integrations.openDesign;
+    expect(od.configured).toBe(true);
+    expect(od.configuredIn.some((p) => p.includes(join('.claude', 'settings', 'mcp.json')))).toBe(true);
   }, TIMEOUT);
 });

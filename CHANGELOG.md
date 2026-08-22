@@ -1,5 +1,96 @@
 # Changelog
 
+## [2.14.0] — 2026-08-22
+
+### Integração Open Design atualizada contra o upstream v0.20.2 e drift interno corrigido
+
+A integração nasceu na 2.7.0 (2026-06-18) contra o Open Design ~0.4–0.9 e nunca foi revalidada.
+O upstream está hoje em v0.20.2 — 11 minors adiante — e o `CHANGELOG.md` da raiz do repo upstream
+(a fonte óbvia para checar isso) está **congelado em 0.9.0**: o changelog canônico migrou para
+`docs/CHANGELOG/v<versão>/<locale>.md`, então uma checagem ingênua perde tudo entre 0.10 e 0.20.2.
+Nesta revisão o Open Design não estava instalado localmente — os itens que dependiam de execução
+ao vivo (superfície `od design-systems`/`od get-file` após o rollback do release 0.20.0, `od lint`,
+`/api/version`, `/api/mcp/install-info`) foram implementados como **sondados em runtime, nunca
+pressupostos**, e ficam documentados como não verificados em `references/open-design.md`.
+
+**Drift interno (independe do upstream) — a documentação já não descrevia o próprio plugin:**
+
+- Treze lugares ainda afirmavam o modelo pré-2.8.6 ("Open Design gera `design-system.md`"), embora
+  desde a 2.8.6 `design-system.md` só seja escrito no **fallback** (Open Design indisponível). Corrigido
+  em `agent-stack.md`, `frontend-design/SKILL.md`, `ui-ux-pro-max/SKILL.md`, `prd-template.md`,
+  `askuserquestion-protocol.md`, `README.md`/`README.pt-BR.md`, `preflight.mjs` e nas descrições de
+  `package.json`/`plugin.json`/`marketplace.json`.
+- `SKILL.md` tinha duas linhas duplicadas e contraditórias para `od-fetch-system.mjs` (destinos
+  diferentes); `open-design.md` tinha `~72` e `~150` design systems no mesmo arquivo; READMEs
+  listavam 8 das 9 dimensões do brief (faltava `sectorContext`); `frontend-design/SKILL.md` listava
+  8 das 9 seções do `DESIGN.md` (faltava `brand`); a doc listava 3 locais de config MCP contra os 4
+  que o preflight sonda; o campo `mcpFunctional` não era documentado em lugar nenhum.
+- "exit 5" era citado em 3 lugares mas o script nunca o emitia (só `0`/`2`/`6`) — em vez de apagar
+  a citação, `od-fetch-system.mjs` passou a **emitir exit 5 de verdade** quando nenhuma fonte é
+  encontrada para um system (distinto de exit 6, quando uma fonte é encontrada mas
+  `tokens.css`/`DESIGN.md` seguem faltando).
+- `checkOpenDesign()` não tinha nenhum teste (o filtro coreutils, a fórmula `available` e o shape
+  completo de `integrations.openDesign` estavam desguardados). Novo `describe('preflight: Open
+  Design detection')` em `test/preflight-detection.test.js` cobre os seis casos, incluindo um shim
+  de `od` fake para simular o falso-positivo do coreutils sem depender de um binário real.
+
+**Contrato de design system dirigido por `manifest.json` (núcleo da atualização):**
+
+- `od-fetch-system.mjs` agora busca `manifest.json` primeiro, valida
+  `schemaVersion === "od-design-system-project/v1"` e deriva a lista de arquivos esperados dele
+  (`files.*`, `usage`, `componentsManifest`, `preview.pages[]`, `sourceFiles.*`) em vez de uma lista
+  fixa — a lista fixa (`OPEN_DESIGN.systemArtifacts`, agora com `design-tokens.json` e
+  `tailwind-v4.css` também) vira fallback só para systems legados sem manifest.
+- Novo campo `unexpectedMissing[]` no JSON de saída: todo arquivo que o manifest prometeu e não foi
+  copiado por nenhuma fonte aparece ali — antes isso era silêncio total (só `tokens.css`/`DESIGN.md`
+  eram reportados). Novo `test/fetch-system.test.js` (8 casos) exercita isso contra fixtures em
+  disco, sem depender de uma instalação real do Open Design.
+- Cadeia de aquisição **sondada, não pressuposta**: clone em disco primeiro (única fonte que não
+  depende de nenhuma superfície de CLI — por isso primária diante do rollback do 0.20.0), depois
+  `od get-file` (só se `od get-file --help` responder), depois REST. O JSON de saída registra qual
+  fonte serviu cada arquivo (`fileSource`).
+- Nova flag `--locale <bcp47>` baixa `DESIGN-<bcp47>.md` quando o system o oferece (upstream ships
+  até ~17 variantes, incluindo `DESIGN-pt-br.md`); não baixado por padrão.
+- O script ganhou um guard de entry-point (`invokedDirectly`, mesmo padrão de
+  `od-onboard-agents.mjs`) e exporta `deriveExpectedFiles()` — permite testar a derivação do
+  manifest sem tocar disco/rede.
+
+**Falhas silenciosas corrigidas (Workstream F):**
+
+- `preflight.mjs`: a detecção de config MCP do Open Design trocou `fileMentions()` (substring scan
+  do arquivo inteiro) por `findMcpServer()` (parse estruturado de `mcpServers`, o mesmo helper que a
+  detecção de Context7 já usava) — uma menção incidental à string `"open-design"` fora de
+  `mcpServers` não conta mais como `configured: true`.
+- `od-onboard-agents.mjs`: quando `--verify` roda e o daemon reporta **zero** dos agentes
+  encontrados localmente como disponíveis, isso agora vira exit code `8` (distinto do exit `7` de
+  "nada encontrado localmente") e uma nota explícita — antes o `ok: true` dependia só da detecção
+  local de PATH, ignorando o que a verificação dizia.
+- `onboard-open-design-agents.sh`/`.ps1`: o `catch {}` em volta do parse de `pathAdditions` agora
+  registra um warning em vez de descartar a falha em silêncio (uma mudança de shape upstream
+  derrubava o wiring do antigravity sem nenhum sinal).
+- `install-open-design.sh`: o gerador de token parava de tentar `openssl` e caía para
+  `od -An -tx1` (coreutils) — o mesmo binário que o resto do plugin trata como falso positivo do
+  Open Design. Trocado por um fallback em Node (`crypto.randomBytes`), que nunca colide com o `od`
+  que este mesmo script está instalando.
+
+**Instalador reduzido ao que o upstream mantém (Workstream E):**
+
+- `install-open-design.sh`/`.ps1` agora tentam `deploy/scripts/install.sh --non-interactive --port
+  <port>` (não verificado ao vivo) antes do caminho manual `docker compose up -d`, caindo de volta
+  para ele se o script upstream não existir ou falhar.
+- Comentários que afirmavam que `open-design.ai/install.sh` "responde 404" foram corrigidos — o
+  upstream **voltou a documentar** esse instalador hospedado; a decisão de não usá-lo (é opaco, e
+  este repo já clona o código-fonte, que é auditável) continua valendo, só não fica mais justificada
+  por uma alegação que deixou de ser verdadeira.
+
+**Documentação (Workstreams C, G, H):** `references/open-design.md` ganhou uma seção "Fontes
+canônicas" registrando o congelamento do `CHANGELOG.md` upstream e a versão validada (0.20.2);
+documenta o gate opcional `od lint` (0.20.0+, capability-probed); documenta o vocabulário de plugins
+(`od plugin`/`od marketplace`, 0.8.0+) e o AMR embutido (0.9.0+) como referência, sem uso ativo
+neste plugin. Decisão registrada: nenhum probe de versão do daemon foi adicionado ao preflight — o
+script é inteiramente síncrono e o custo de convertê-lo para async não se justificou para uma sonda
+opcional cujo endpoint tampouco foi confirmado ao vivo.
+
 ## [2.13.0] — 2026-08-21
 
 ### Integração OpenSpec atualizada para o perfil core (CLI 1.9.0+, recomendado 1.10.0)

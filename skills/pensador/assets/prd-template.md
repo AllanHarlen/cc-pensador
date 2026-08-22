@@ -113,7 +113,7 @@
 
 ## 8. Design System & UI/UX
 
-> **Instrução:** A camada de design — sem ela a UI vira template genérico. Detalhe tokens, tipografia, componentes e estados. Quando houver front-end, esta seção referencia o artefato `design-system.md` (gerado via Open Design). Não resuma com uma frase genérica.
+> **Instrução:** A camada de design — sem ela a UI vira template genérico. Detalhe tokens, tipografia, componentes e estados. Quando houver front-end, esta seção referencia os arquivos verbatim do Open Design em `design-systems/<id>/DESIGN.md` (ou, na ausência do Open Design, o `design-system.md` inline gerado a partir do mesmo schema de 9 seções). Não resuma com uma frase genérica.
 
 ### Identidade visual e tom
 

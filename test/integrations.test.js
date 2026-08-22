@@ -320,7 +320,11 @@ describe('Open Design descriptor', () => {
     expect(OPEN_DESIGN.commands.mcpConfigHelper).toContain('od-mcp-config.mjs');
     // Docker-friendly REST fallback the verbs wrap.
     expect(OPEN_DESIGN.commands.apiDesignSystems).toContain('/api/design-systems');
-    // The dead one-line installer must never come back.
+    // Upstream documents a hosted one-line installer (open-design.ai/install.sh),
+    // but this repo deliberately never drives it: it is opaque (nothing to
+    // review before running) and this repo already clones the source, which
+    // is auditable. This is a policy choice, not a claim that the URL is dead
+    // — do not "fix" this by re-adding it.
     expect(JSON.stringify(OPEN_DESIGN.installCommands)).not.toContain('open-design.ai/install.sh');
     expect(JSON.stringify(OPEN_DESIGN.commands)).not.toContain('open-design.ai/install.sh');
   });
@@ -362,12 +366,15 @@ describe('Open Design descriptor', () => {
       'USAGE.md',
       'DESIGN.md',
       'tokens.css',
+      'design-tokens.json',
+      'tailwind-v4.css',
       'components.html',
       'components.manifest.json',
       'assets/',
       'fonts/',
       'preview/',
     ]);
+    expect(OPEN_DESIGN.manifestSchemaVersion).toBe('od-design-system-project/v1');
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
     // Canonical file-access path: od get-file, then MCP get_file, then cloned repo.
     // The REST endpoint /api/design-systems/<id> returns metadata only, not raw file bodies.

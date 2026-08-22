@@ -88,7 +88,10 @@ if ($detectExit -ne 0) {
 }
 
 $report = $null
-try { $report = $reportJson | ConvertFrom-Json } catch { }
+# A parse failure here used to silently drop pathAdditions (antigravity's PATH
+# wiring) with no signal at all; it now warns, so a report-shape change
+# upstream is visible instead of just quietly not resolving `agy`.
+try { $report = $reportJson | ConvertFrom-Json } catch { Write-Warn "Falha ao parsear o report do onboarder (pathAdditions indisponivel): $($_.Exception.Message)" }
 $pathAdditions = @()
 if ($report -and $report.pathAdditions) { $pathAdditions = @($report.pathAdditions) }
 

@@ -797,7 +797,14 @@ function checkOpenDesign() {
     join(HOME, ".claude", ".mcp.json"),
     join(HOME, ".claude", "settings", "mcp.json"),
   ];
-  const configuredIn = configCandidates.filter((p) => fileMentions(p, OPEN_DESIGN_SERVER));
+  // Structured JSON parse of mcpServers, not a raw substring scan (fileMentions):
+  // a bare `String.includes(OPEN_DESIGN_SERVER)` would false-positive on any
+  // unrelated occurrence of the literal text "open-design" anywhere in the
+  // file (a comment, an unrelated path) — same class of bug the Context7
+  // check above already guards against.
+  const configuredIn = configCandidates.filter(
+    (p) => findMcpServer([p], process.cwd(), [OPEN_DESIGN_SERVER]) !== null,
+  );
   const configured = configuredIn.length > 0;
 
   // Because PATH-based `od` detection collides with coreutils, the reliable signal
@@ -813,13 +820,16 @@ function checkOpenDesign() {
   // `mcpFunctional` field makes this distinction explicit for the caller.
   const mcpFunctional = cli.ok;
 
-  // Open Design has no one-line `curl | sh` installer (the old
-  // open-design.ai/install.sh endpoint is gone — 404). It is a local-first daemon
-  // + web app, brought up via Docker or a pnpm dev environment (Node 24 +
-  // pnpm 10.33). This repo ships an installer script (scripts/install-open-design.*)
-  // that automates the Docker path; `od mcp install <agent>` is the real
-  // post-setup step that wires the daemon's MCP server into the agent.
-  // See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
+  // Upstream documents a one-line hosted installer (open-design.ai/install.sh
+  // | sh -s <agent>), but this repo deliberately does not use it (opaque,
+  // nothing to review before running) — it clones the source instead, which
+  // is auditable. Open Design is a local-first daemon + web app, brought up
+  // via Docker or a pnpm dev environment (Node 24 + pnpm 10.33). This repo
+  // ships an installer script (scripts/install-open-design.*) that automates
+  // the Docker path; `od mcp install <agent>` is the real post-setup step
+  // that wires the daemon's MCP server into the agent. See the
+  // canonical-sources note in skills/pensador/references/open-design.md —
+  // the root CHANGELOG.md upstream is stale.
   const installCommands = {
     repo: "https://github.com/nexu-io/open-design",
     scriptWindows: 'pwsh -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
@@ -844,9 +854,9 @@ function checkOpenDesign() {
     cliCheck: cli,
     configured,
     configuredIn,
-    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (design-system.md)",
+    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (verbatim design-systems/<id>/, or inline design-system.md when unused)",
     purpose:
-      "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade DESIGN.md the Pensador consolidates into design-system.md, so the front-end agent has a real visual target instead of a flat default theme.",
+      "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade, curated DESIGN.md + tokens.css the Pensador persists verbatim under <featurePath>/design-systems/<id>/, so the front-end agent has a real visual target instead of a flat default theme.",
     installCommands,
     fallbackBehavior:
       "When the demand has a front-end and Open Design is unavailable, offer installation via AskUserQuestion: " +

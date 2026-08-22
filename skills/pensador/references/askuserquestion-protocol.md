@@ -66,7 +66,7 @@ Exemplos:
 
 - COMPLEXITY: mostrar diferenca entre Lite e Completo.
 - Confirmacao de back-end: mostrar se `communication.md` sera gerado.
-- Brief de design (front-end): mostrar que `design-system.md` sera gerado via Open Design (ou inline) e a oferta de instalacao quando indisponivel.
+- Brief de design (front-end): mostrar que os arquivos verbatim do Open Design (`design-systems/<id>/`) serao persistidos (ou, na ausencia do Open Design, que um `design-system.md` inline sera escrito) e a oferta de instalacao quando indisponivel.
 - Sobrescrita: mostrar caminho do arquivo existente.
 - Handoff: mostrar artefatos finais e proximos passos.
 
@@ -127,7 +127,7 @@ O handoff e a orientacao final para quem vai implementar ou revisar o PRD. Ele d
 - `shared-agents/agent.response.md`.
 - Decisoes que precisam validacao humana antes de implementar.
 
-Se houver back-end confirmado, mencionar `communication.md`. Se nao houver, registrar que o artefato nao se aplica. Se houver front-end, mencionar `design-system.md` (gerado via Open Design ou inline); se nao houver, registrar que nao se aplica.
+Se houver back-end confirmado, mencionar `communication.md`. Se nao houver, registrar que o artefato nao se aplica. Se houver front-end, mencionar os arquivos verbatim em `design-systems/<id>/` (ou `design-system.md` inline, se o Open Design nao foi usado); se nao houver front-end, registrar que nao se aplica.
 
 ---
 

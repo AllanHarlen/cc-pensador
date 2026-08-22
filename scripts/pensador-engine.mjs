@@ -2552,12 +2552,16 @@ export const OPEN_DESIGN = {
    * How the user actually brings Open Design up when they accept the install
    * offer (made via AskUserQuestion when the demand has a front-end).
    *
-   * NOTE: Open Design has NO one-line `curl | sh` installer — the old
-   * `open-design.ai/install.sh` endpoint is gone (404). It is a local-first
-   * daemon + web/desktop app run via Docker or a pnpm dev environment
-   * (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist and is the real
-   * post-setup step that wires the daemon's stdio MCP server into the agent.
-   * See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
+   * NOTE: upstream now documents a one-line hosted installer
+   * (`open-design.ai/install.sh | sh -s <agent>`), but this repo deliberately
+   * does NOT use it — it is opaque (nothing to review before running it) and
+   * this repo already clones the source, which is auditable. Open Design is a
+   * local-first daemon + web/desktop app run via Docker or a pnpm dev
+   * environment (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist
+   * and is the real post-setup step that wires the daemon's stdio MCP server
+   * into the agent. See the canonical-sources note in
+   * skills/pensador/references/open-design.md — the root CHANGELOG.md is
+   * stale; do not re-derive install instructions from it.
    */
   installCommands: {
     /** Recommended: the repo's installer script offered via AskUserQuestion. */
@@ -2606,6 +2610,18 @@ export const OPEN_DESIGN = {
     odGetFile: 'od get-file design-systems/<id>/<file>',
     mcpGetFile: 'get_file (Open Design MCP tool) — pulls a system file verbatim (tokens.css, components.html, …)',
     clonedSystemsDir: 'open-design/design-systems/<id>/  (filesystem source when no REST/MCP file access)',
+    /**
+     * Deterministic artifact-quality gate (upstream 0.20.0+, unverified locally —
+     * see the "Suposições não verificadas" note in the implementation plan).
+     * Accepts a file or stdin, applies a failure threshold, returns readable or
+     * JSON findings WITHOUT invoking a model. Optional, capability-probed by
+     * checkOpenDesign() — never assumed present.
+     */
+    odLint: 'od lint <file> --json',
+    /** Plugin/marketplace vocabulary (upstream 0.8.0+; documentation-only here). */
+    pluginInstall: 'od plugin install github:<owner>/<repo>[@<version>][/<subfolder>]',
+    pluginDoctor: 'od plugin doctor',
+    marketplaceAdd: 'od marketplace add <url>',
   },
   /**
    * The verbatim artifacts every curated/imported system ships. Entries ending
@@ -2616,27 +2632,44 @@ export const OPEN_DESIGN = {
    * inventing tokens is forbidden by the Open Design skills protocol.
    *
    * Read order (agent consumption): manifest.json → USAGE.md → DESIGN.md →
-   * tokens.css (paste first) → components.html → components.manifest.json →
-   * assets/ → fonts/ (typography fidelity) → preview/ (visual sanity check).
+   * tokens.css (paste first) → design-tokens.json / tailwind-v4.css (alternate
+   * consumption forms of the same tokens) → components.html →
+   * components.manifest.json → assets/ → fonts/ (typography fidelity) →
+   * preview/ (visual sanity check).
+   *
+   * This list is the FALLBACK used when a system ships no manifest.json (legacy
+   * DESIGN.md-only systems). When manifest.json IS present, od-fetch-system.mjs
+   * derives the authoritative file list from its `files`/`usage`/
+   * `componentsManifest`/`preview.pages[]`/`sourceFiles` fields instead — see
+   * that script's `deriveExpectedFiles()`.
    */
   systemArtifacts: [
-    'manifest.json',         // machine-readable entry point
+    'manifest.json',         // machine-readable entry point — schemaVersion 'od-design-system-project/v1' when present; drives od-fetch-system.mjs's per-system file list
     'USAGE.md',              // router: how to consume the package (read first)
-    'DESIGN.md',             // intent: 9-section prose + anti-patterns
+    'DESIGN.md',             // intent: prose (>=7 H2 sections upstream; this repo targets the 9-section designSchema below) + anti-patterns
     'tokens.css',            // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
+    'design-tokens.json',    // machine-readable token export (same values as tokens.css, structured)
+    'tailwind-v4.css',       // Tailwind v4 @theme mapping onto the same custom properties
     'components.html',       // fixtures: real component HTML/CSS + states
     'components.manifest.json', // component inventory
     'assets/',               // optional brand assets directory
     'fonts/',                // optional webfont files — required for typography fidelity
     'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
   ],
+  /** Schema version manifest.json declares when present (upstream 'design-systems' contract). */
+  manifestSchemaVersion: 'od-design-system-project/v1',
   /** Eventual UI-package location the executor MATERIALIZES the verbatim files
    *  into during implementation. The Pensador itself persists them under
    *  <featurePath>/design-systems/<id>/ (see designSystemFilesRoot). */
   systemsDir: 'packages/ui/design-systems',
   /**
-   * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every
-   * section the Pensador parses from the design brief maps onto one of these.
+   * The 9-section DESIGN.md schema used as the brand contract for the INLINE
+   * fallback (Open Design unavailable/declined). Every section the Pensador
+   * parses from the design brief maps onto one of these.
+   *
+   * Upstream curated DESIGN.md files only require "at least seven substantive
+   * H2 sections" without a fixed template — this 9-section list is this repo's
+   * own canonical target, a superset that satisfies that minimum.
    */
   designSchema: [
     'color',

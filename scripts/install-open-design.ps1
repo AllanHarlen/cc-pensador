@@ -5,9 +5,11 @@
   para uso opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end.
 
 .DESCRIPTION
-  O Open Design e um app local-first (daemon + web) e NAO possui instalador de uma linha
-  (o antigo open-design.ai/install.sh responde 404). Este script automatiza o caminho
-  Docker do QUICKSTART oficial:
+  O Open Design e um app local-first (daemon + web). O upstream documenta um instalador
+  hospedado de uma linha (open-design.ai/install.sh | sh -s <agent>) mas este script
+  NAO o usa deliberadamente: e opaco (nao da para revisar o script antes de rodar) e
+  este repo ja clona o codigo-fonte de qualquer forma. Em vez disso, automatiza o
+  caminho Docker do QUICKSTART oficial a partir do clone:
 
     1. Verifica pre-requisitos (git, docker, docker compose v2).
     2. Clona (ou atualiza) nexu-io/open-design em -TargetDir.
@@ -137,6 +139,34 @@ function Start-Daemon {
   Write-Ok 'Container iniciado.'
 }
 
+# Prefer the upstream-maintained installer (deploy/scripts/install.sh) when the
+# clone has it and `bash` is on PATH (Git Bash/WSL): it already handles .env
+# prep + `docker compose up -d` in one command, so this script stops
+# reimplementing what upstream maintains. Falls back to the manual
+# Initialize-Env+Start-Daemon path when bash is unavailable, the script is
+# missing (older clone), or it fails/rejects these flags.
+# Not verified live against the current upstream release — see the
+# "Suposições não verificadas" note in the implementation plan.
+function Try-UpstreamInstaller {
+  param([string]$DeployDir, [int]$Port)
+  $upstreamInstaller = Join-Path $DeployDir 'scripts/install.sh'
+  $bash = Get-Command bash -ErrorAction SilentlyContinue
+  if (-not $bash -or -not (Test-Path $upstreamInstaller)) { return $false }
+  Write-Step "Usando o instalador upstream: deploy/scripts/install.sh --non-interactive --port $Port"
+  Push-Location $DeployDir
+  try {
+    & bash 'scripts/install.sh' --non-interactive --port $Port
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warn 'Instalador upstream falhou ou nao aceitou esses flags; caindo para o caminho manual (docker compose).'
+      return $false
+    }
+  } finally {
+    Pop-Location
+  }
+  Write-Ok 'Instalador upstream concluido.'
+  return $true
+}
+
 function Wait-Daemon {
   param([int]$Port, [int]$TimeoutSec = 120)
   $url = "http://localhost:$Port/api/health"
@@ -213,8 +243,14 @@ function Invoke-OnboardAgents {
 Assert-Prerequisites
 Sync-Repo
 $deployDir = Join-Path $TargetDir 'deploy'
-$token = Initialize-Env -DeployDir $deployDir
-Start-Daemon -DeployDir $deployDir
+if (Try-UpstreamInstaller -DeployDir $deployDir -Port $Port) {
+  # Upstream already prepared deploy/.env and started the container; just
+  # read the OD_API_TOKEN it generated so Register-Mcp can use it below.
+  $token = Initialize-Env -DeployDir $deployDir
+} else {
+  $token = Initialize-Env -DeployDir $deployDir
+  Start-Daemon -DeployDir $deployDir
+}
 $null = Wait-Daemon -Port $Port
 Register-Mcp -Agent $Agent -Port $Port -Token $token
 Invoke-OnboardAgents -TargetDir $TargetDir
