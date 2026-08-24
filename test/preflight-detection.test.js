@@ -65,10 +65,14 @@ function runPreflight(setup = {}) {
   if (setup.mcpJson) writeFileSync(join(cwd, '.mcp.json'), JSON.stringify(setup.mcpJson));
 
   for (const name of setup.projectSkills ?? []) {
-    mkdirSync(join(cwd, '.claude', 'skills', name), { recursive: true });
+    const dir = join(cwd, '.claude', 'skills', name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), `# ${name}\n`);
   }
   for (const name of setup.homeSkills ?? []) {
-    mkdirSync(join(home, '.claude', 'skills', name), { recursive: true });
+    const dir = join(home, '.claude', 'skills', name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), `# ${name}\n`);
   }
 
   const path = setup.extraPath
@@ -95,6 +99,20 @@ function fakeOdBinary(versionLine) {
     writeFileSync(join(dir, 'od.cmd'), `@echo off\r\necho ${versionLine}\r\n`);
   } else {
     const script = join(dir, 'od');
+    writeFileSync(script, `#!/bin/sh\necho "${versionLine}"\n`);
+    chmodSync(script, 0o755);
+  }
+  return dir;
+}
+
+/** Writes a fake binary shim on PATH that prints `versionLine` for `--version`. */
+function fakeBinary(name, versionLine) {
+  const dir = join(SANDBOX, `bin-shim-${seq++}`);
+  mkdirSync(dir, { recursive: true });
+  if (process.platform === 'win32') {
+    writeFileSync(join(dir, `${name}.cmd`), `@echo off\r\necho ${versionLine}\r\n`);
+  } else {
+    const script = join(dir, name);
     writeFileSync(script, `#!/bin/sh\necho "${versionLine}"\n`);
     chmodSync(script, 0o755);
   }
@@ -238,6 +256,75 @@ describe('preflight: Context7 detection', () => {
   it('survives a malformed mcpServers without treating it as evidence', () => {
     const report = runPreflight({ claudeJson: { mcpServers: null } });
     expect(report.integrations.context7.available).toBe(false);
+  }, TIMEOUT);
+
+  it('is available via a ctx7 binary on PATH even with no config registration at all', () => {
+    const shim = fakeBinary('ctx7', 'ctx7 0.4.0');
+    const report = runPreflight({ extraPath: shim });
+    expect(report.integrations.context7.available).toBe(true);
+    expect(report.integrations.context7.evidence.some((e) => e.type === 'binary')).toBe(true);
+  }, TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Codebase Memory — checkCodebaseMemory() used to rely on the raw-substring
+// fileMentions() (no JSON parse, no disabled-server exclusion): the exact
+// false-positive class the Context7 checks above already guard against.
+// findMcpServerAcrossCandidates() closes that gap here too.
+// ---------------------------------------------------------------------------
+
+describe('preflight: Codebase Memory detection', () => {
+  // These two assert `.configured` (the config-only signal), not `.available`
+  // (`cli.ok || configured`): a dev machine that happens to have the real
+  // `codebase-memory-mcp` binary on PATH would otherwise make `available`
+  // true regardless of what the config-detection logic under test decides.
+
+  it('does not count a server disabled for the project', () => {
+    const report = runPreflight({
+      claudeJson: (cwd) => ({
+        projects: {
+          [asProjectKey(cwd)]: {
+            mcpServers: { 'codebase-memory-mcp': { command: 'node' } },
+            disabledMcpjsonServers: ['codebase-memory-mcp'],
+          },
+        },
+      }),
+    });
+    expect(report.integrations.codebaseMemory.configured).toBe(false);
+  }, TIMEOUT);
+
+  it('ignores an unrelated "codebase-memory-mcp" mention outside mcpServers', () => {
+    const report = runPreflight({
+      claudeJson: {
+        mcpServers: { unrelated: { command: 'node', args: ['./codebase-memory-mcp-notes.js'] } },
+      },
+    });
+    expect(report.integrations.codebaseMemory.configured).toBe(false);
+  }, TIMEOUT);
+
+  it('detects a server registered only under .kiro/settings/mcp.json', () => {
+    const base = join(SANDBOX, `case-${seq++}`);
+    const home = join(base, 'home');
+    const cwd = join(base, 'proj');
+    mkdirSync(join(cwd, '.kiro', 'settings'), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(cwd, '.kiro', 'settings', 'mcp.json'),
+      JSON.stringify({ mcpServers: { 'codebase-memory-mcp': { command: 'node' } } }),
+    );
+    const out = execFileSync(process.execPath, [PREFLIGHT], {
+      cwd,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      encoding: 'utf8',
+    });
+    expect(JSON.parse(out).integrations.codebaseMemory.available).toBe(true);
+  }, TIMEOUT);
+
+  it('counts an installed codebase-memory skill as evidence even with no config entry', () => {
+    const report = runPreflight({ homeSkills: ['codebase-memory-mcp'] });
+    const cbm = report.integrations.codebaseMemory;
+    expect(cbm.available).toBe(true);
+    expect(cbm.evidence.some((e) => e.type === 'skill')).toBe(true);
   }, TIMEOUT);
 });
 

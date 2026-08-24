@@ -46,6 +46,20 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  CODEBASE_MEMORY_BINARY_NAMES,
+  CODEBASE_MEMORY_CONFIG_CANDIDATES,
+  CODEBASE_MEMORY_DEFINITION_MARKERS,
+  CODEBASE_MEMORY_SERVER_NAMES,
+  CODEBASE_MEMORY_SKILL_CANDIDATES,
+  CONTEXT7_BINARY_NAMES,
+  CONTEXT7_CONFIG_CANDIDATES,
+  CONTEXT7_DEFINITION_MARKERS,
+  CONTEXT7_MCP_DIRECTORY_CANDIDATES,
+  CONTEXT7_SERVER_NAMES,
+  CONTEXT7_SKILL_CANDIDATES,
+  resolveCandidate,
+} from "./lib/mcp-candidates.mjs";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -96,12 +110,12 @@ const OPENSPEC_CORE_SKILL_DIRS = [
 
 /**
  * Context7 MCP — OPTIONAL. Preferred source for the version-currency phase of
- * TECH_RESEARCH. Detection matches registered MCP server NAMES (below) or, for a
- * server registered under some other name, the package spec / endpoint inside its
- * definition.
+ * TECH_RESEARCH. Detection matches registered MCP server NAMES or, for a server
+ * registered under some other name, the package spec / endpoint inside its
+ * definition. Candidate locations and names/markers live in
+ * `scripts/lib/mcp-candidates.mjs` (canonical union shared with the sibling
+ * plugins — see that file's header).
  */
-const CONTEXT7_SERVER_NAMES = ["context7", "context7-mcp", "ctx7"];
-const CONTEXT7_DEFINITION_MARKERS = ["@upstash/context7-mcp", "mcp.context7.com"];
 
 /**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
@@ -448,6 +462,42 @@ function findMcpServer(files, cwd, names, markers = []) {
 }
 
 /**
+ * Same search as `findMcpServer()`, but over the `{ base, segments, format }`
+ * candidates of `scripts/lib/mcp-candidates.mjs` instead of plain paths.
+ * `"json"` candidates go through `findMcpServer()` (structured, disabled-aware).
+ * The one `"toml"` candidate (`~/.codex/config.toml`) has no structured parser
+ * here — matched by raw substring, same class of check as `fileMentions()` —
+ * see the header comment in `mcp-candidates.mjs` for why that is an accepted
+ * limitation rather than a gap to fix silently.
+ *
+ * @param {{base: string, segments: string[], format: "json"|"toml"}[]} candidates
+ * @param {{home: string, cwd: string}} ctx
+ * @param {string[]} names
+ * @param {string[]} [markers]
+ * @returns {{ path: string, server: string|null }|null}
+ */
+function findMcpServerAcrossCandidates(candidates, ctx, names, markers = []) {
+  const jsonPaths = candidates
+    .filter((c) => c.format !== "toml")
+    .map((c) => resolveCandidate(c, ctx));
+  const hit = findMcpServer(jsonPaths, ctx.cwd, names, markers);
+  if (hit) return hit;
+
+  const needles = [...names, ...markers].map((s) => s.toLowerCase());
+  for (const candidate of candidates.filter((c) => c.format === "toml")) {
+    const path = resolveCandidate(candidate, ctx);
+    let text = "";
+    try {
+      text = existsSync(path) ? readFileSync(path, "utf8").toLowerCase() : "";
+    } catch {
+      text = "";
+    }
+    if (text && needles.some((n) => text.includes(n))) return { path, server: null };
+  }
+  return null;
+}
+
+/**
  * Returns true when `path` exists and its text content mentions `needle`.
  * Total: never throws (missing/unreadable file → false).
  */
@@ -462,10 +512,14 @@ function fileMentions(path, needle) {
 /**
  * MANDATORY: Code Base Memory MCP availability.
  *
- * The server may be reachable either as a CLI binary on PATH or as a registered
- * MCP server in one of the common host config files (project `.mcp.json`, Kiro
- * `.kiro/settings/mcp.json`, or the user-level Claude `~/.claude/.mcp.json`).
- * Both signals are advisory in isolation; availability is their OR.
+ * The server may be reachable either as a CLI binary on PATH, as a registered
+ * MCP server in one of the canonical host config files, or as an installed
+ * skill — the full candidate list is `CODEBASE_MEMORY_CONFIG_CANDIDATES`/
+ * `CODEBASE_MEMORY_SKILL_CANDIDATES` in `scripts/lib/mcp-candidates.mjs`, kept
+ * in sync with the Orchestrator/Executor detection by
+ * `test/mcp-detection-parity.test.js`. Config evidence goes through
+ * `findMcpServerAcrossCandidates()` (structured JSON parse, disabled-aware —
+ * see `findMcpServer()`), not a raw substring scan.
  *
  * If unavailable, the Pensador asks (via AskUserQuestion) whether the user wants
  * to install the server now. If the user says yes, Claude runs the platform
@@ -473,14 +527,23 @@ function fileMentions(path, needle) {
  * is plain Read/Glob/Grep exploration.
  */
 function checkCodebaseMemory() {
-  const cli = checkCli(CODEBASE_MEMORY_SERVER);
-  const configCandidates = [
-    join(process.cwd(), ".mcp.json"),
-    join(process.cwd(), ".kiro", "settings", "mcp.json"),
-    join(HOME, ".claude", ".mcp.json"),
-    join(HOME, ".claude", "settings", "mcp.json"),
-  ];
-  const configuredIn = configCandidates.filter((p) => fileMentions(p, CODEBASE_MEMORY_SERVER));
+  const ctx = { home: HOME, cwd: process.cwd() };
+  const cli = checkCli(CODEBASE_MEMORY_BINARY_NAMES[0]);
+
+  const evidence = [];
+  for (const candidate of CODEBASE_MEMORY_SKILL_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "skill", path });
+  }
+  const hit = findMcpServerAcrossCandidates(
+    CODEBASE_MEMORY_CONFIG_CANDIDATES,
+    ctx,
+    CODEBASE_MEMORY_SERVER_NAMES,
+    CODEBASE_MEMORY_DEFINITION_MARKERS,
+  );
+  if (hit) evidence.push({ type: "mcp-config", path: hit.path, server: hit.server });
+
+  const configuredIn = evidence.map((e) => e.path);
   const configured = configuredIn.length > 0;
   const available = cli.ok || configured;
 
@@ -499,6 +562,7 @@ function checkCodebaseMemory() {
     cli,
     configured,
     configuredIn,
+    evidence,
     stage: "EXPLORE (pre-PRD_BASE/Spec exploration) + ARCH",
     purpose:
       "Explore the existing project before generating the PRD/Spec base, for an accurate understanding of the structure the feature/fix will act upon.",
@@ -522,37 +586,39 @@ function checkCodebaseMemory() {
  * above release notes / guides / community sources under the same
  * official-first tier ordering TECH_RESEARCH already uses.
  *
- * Detection: skill presence, plus a real MCP server registration found by
- * PARSING the known config files (`findMcpServer`) rather than substring-scanning
- * them. The strictness matters because a false positive is silent and costly:
- * RESEARCH would elect Context7 as the preferred source for the version-currency
- * phase and only discover it is not registered when `resolve-library-id` fails
- * mid-flow. `~/.claude.json` in particular is Claude Code's whole user config and
- * holds arbitrary per-project data, so a bare `ctx7`/`context7` substring there is
- * not evidence of anything. Disabled servers do not count.
+ * Detection: skill presence, an `ctx7` binary on PATH, a bundled MCP directory
+ * (the AGY/Gemini CLI ships Context7 under `~/.gemini/antigravity-cli/...`),
+ * plus a real MCP server registration found by PARSING the known config files
+ * (`findMcpServerAcrossCandidates`/`findMcpServer`) rather than substring-
+ * scanning them. The strictness matters because a false positive is silent and
+ * costly: RESEARCH would elect Context7 as the preferred source for the
+ * version-currency phase and only discover it is not registered when
+ * `resolve-library-id` fails mid-flow. `~/.claude.json` in particular is Claude
+ * Code's whole user config and holds arbitrary per-project data, so a bare
+ * `ctx7`/`context7` substring there is not evidence of anything. Disabled
+ * servers do not count. Candidate lists live in `scripts/lib/mcp-candidates.mjs`
+ * (canonical union shared with the sibling plugins).
  *
  * Absence never blocks the flow — the phase falls back to WebSearch/WebFetch.
  */
 function checkContext7() {
+  const ctx = { home: HOME, cwd: process.cwd() };
   const evidence = [];
-  const skillCandidates = [
-    join(HOME, ".claude", "skills", "context7", "SKILL.md"),
-    join(HOME, ".claude", "skills", "context7-mcp", "SKILL.md"),
-  ];
-  for (const file of skillCandidates) {
-    if (existsSync(file)) evidence.push({ type: "skill", path: file });
-  }
 
-  const configCandidates = [
-    join(process.cwd(), ".mcp.json"),
-    join(HOME, ".claude.json"),
-    join(HOME, ".claude", ".mcp.json"),
-    join(HOME, ".claude", "mcp.json"),
-    join(HOME, ".config", "claude", "mcp.json"),
-  ];
-  const hit = findMcpServer(
-    configCandidates,
-    process.cwd(),
+  for (const candidate of CONTEXT7_SKILL_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "skill", path });
+  }
+  for (const candidate of CONTEXT7_MCP_DIRECTORY_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "mcp-directory", path });
+  }
+  const cli = checkCli(CONTEXT7_BINARY_NAMES[0]);
+  if (cli.ok) evidence.push({ type: "binary", path: CONTEXT7_BINARY_NAMES[0] });
+
+  const hit = findMcpServerAcrossCandidates(
+    CONTEXT7_CONFIG_CANDIDATES,
+    ctx,
     CONTEXT7_SERVER_NAMES,
     CONTEXT7_DEFINITION_MARKERS,
   );
