@@ -240,13 +240,13 @@ Sem acesso à web, o Pensador pergunta por track: você informa concorrentes/ver
 
 ## OpenSpec (modo Spec opcional)
 
-O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**. Quando o preflight detecta o OpenSpec (CLI `openspec` no PATH ou diretório `openspec/`), o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
+O Pensador integra opcionalmente o **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** (perfil CORE, ≥ 1.9.0, recomendado 1.10.0). Quando o preflight detecta um CLI OpenSpec compatível, o **INIT** pergunta via `AskUserQuestion` se o usuário quer gerar um **PRD** (padrão) ou uma **Spec** estruturada.
 
-- Escolhendo **Spec**, o estágio `PRD_BASE` passa a escalar os **comandos `openspec-*`** (`/openspec-new-change`, `/openspec-ff-change`, …), que montam o change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) em `openspec/changes/<name>/`. O Pensador nunca escreve esses arquivos manualmente. Todas as fases seguintes raciocinam sobre a spec.
+- Escolhendo **Spec**, o estágio `PRD_BASE` passa a escalar **`/opsx:propose`**, que monta o change set (`proposal.md`, `design.md`, `tasks.md`, `specs/`) em `openspec/changes/<name>/` num único passo. O Pensador nunca escreve esses arquivos manualmente. Todas as fases seguintes raciocinam sobre a spec.
 - O modo Spec entrega **apenas** o change set OpenSpec — `userhistory.md` e `communication.md` não se aplicam.
 - A `STAGE_ORDER` não muda — `PRD_BASE` mantém o id e só seu comportamento/artefatos diferem (`artifactMode` ortogonal).
-- O FINAL roda `/openspec-verify-change` e orienta o handoff para `/openspec-apply-change` / `/openspec-sync-specs` / `/openspec-archive-change`.
-- Se os comandos `openspec-*` estiverem indisponíveis quando Spec for escolhido, o Pensador pergunta (via `AskUserQuestion`) se deve cair para o modo PRD ou abortar — não monta a estrutura manualmente. O prefixo legado `/opsx:*` está descontinuado.
+- O FINAL roda `openspec validate <name> --strict --json` e orienta o handoff para `/opsx:apply` / `/opsx:sync` / `openspec archive <name> --json --yes`.
+- Se os comandos `/opsx:*` estiverem indisponíveis quando Spec for escolhido, o Pensador pergunta (via `AskUserQuestion`) se deve cair para o modo PRD ou abortar — não monta a estrutura manualmente, e nunca roda `mkdir`/`mv` manual sobre `openspec/`.
 
 Instalação: `npm install -g @fission-ai/openspec@latest` e depois `openspec init`. Veja `skills/pensador/references/openspec.md`.
 
@@ -254,8 +254,8 @@ Instalação: `npm install -g @fission-ai/openspec@latest` e depois `openspec in
 
 O Pensador integra opcionalmente o **[Open Design](https://github.com/nexu-io/open-design)** (`od`, um servidor MCP + CLI) para fechar a lacuna de design que requisitos puramente funcionais deixam aberta. Sem ele, uma UI com antd no tema default vira template administrativo genérico; com ele, o agente de front-end ganha um alvo visual real.
 
-- Relevante apenas quando a demanda tem **front-end** (`hasFrontend`). No **BRAINSTORM_GERAL**, o Pensador parseia um **brief de design** via `AskUserQuestion` — tom visual, marca/referências, paleta de cores, tipografia, estados de componente, responsividade, acessibilidade (alvo WCAG) e microcopy.
-- No **FINAL**, esse brief alimenta o Open Design para gerar `design-system.md` (um `DESIGN.md` brand-grade: paleta, tipografia, espaçamento, layout, componentes, motion, voz, anti-padrões).
+- Relevante apenas quando a demanda tem **front-end** (`hasFrontend`). No **BRAINSTORM_GERAL**, o Pensador parseia um **brief de design** via `AskUserQuestion` — setor, tom visual, marca/referências, paleta de cores, tipografia, estados de componente, responsividade, acessibilidade (alvo WCAG) e microcopy (9 dimensões).
+- No **FINAL**, esse brief seleciona um ou mais systems curados e o Pensador persiste os arquivos **verbatim** em `<featurePath>/design-systems/<id>/` — o próprio `DESIGN.md` do system (paleta, tipografia, espaçamento, layout, componentes, motion, voz, marca, anti-padrões — 9 seções) **é** a decisão de design; não há reescrita em `design-system.md` standalone quando o Open Design é usado.
 - Detectado pelo preflight (entrada de MCP registrada; um `od` no PATH que **não** seja o octal-dump do GNU coreutils). Indisponível quando há front-end: o Pensador pergunta via `AskUserQuestion` se deve **instalar agora** (app local-first, sem instalador de uma linha) ou **cair** para um `design-system.md` inline a partir do mesmo schema de 9 seções — nunca bloqueia.
 
 Instalação: o Open Design é um app local-first (daemon + web); não há `curl | sh` de uma linha. O cc-pensador traz um script instalador que automatiza o caminho Docker — `scripts/install-open-design.ps1` (Windows) / `scripts/install-open-design.sh` (macOS/Linux): verifica git+docker, sobe o daemon (`docker compose up -d`, app em http://localhost:7456) e conecta o MCP via `od mcp install <agent>`. O Pensador oferece rodá-lo via `AskUserQuestion` quando a demanda tem front-end. Veja `skills/pensador/references/open-design.md`.

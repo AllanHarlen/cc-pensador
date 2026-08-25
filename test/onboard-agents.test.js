@@ -6,7 +6,7 @@
  * Only the pure helpers are exercised here; the fs/network shell in `main()`
  * runs solely when the file is invoked directly.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   AGENT_ONBOARDING,
   resolveOnPath,
@@ -14,6 +14,7 @@ import {
   buildAgentCliEnvPatch,
   pathAdditionsFor,
   mergeAppConfig,
+  verifyAgents,
 } from '../scripts/od-onboard-agents.mjs';
 
 describe('AGENT_ONBOARDING descriptors', () => {
@@ -181,5 +182,63 @@ describe('mergeAppConfig', () => {
       agentCliEnv: { codex: { CODEX_BIN: '/c' } },
     });
     expect(mergeAppConfig(undefined, {})).toEqual({});
+  });
+});
+
+/**
+ * verifyAgents() feeds main()'s verificationMismatch check — the fix for the
+ * silent failure where an app-config patch was accepted locally but the
+ * daemon's /api/agents never actually reflected it (a renamed agentCliEnv/
+ * *_BIN key upstream, for instance). This pins verifyAgents' own contract in
+ * isolation; the exit-code branching itself lives in main() and is not unit
+ * tested (matches this file's existing scope — only the pure helpers).
+ */
+describe('verifyAgents', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('reports per-agent availability from a bare-array /api/agents payload', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => [{ id: 'claude', available: true, version: '1.2.3' }],
+    }));
+    const result = await verifyAgents('http://localhost:7456', '', [{ id: 'claude' }, { id: 'codex' }]);
+    expect(result.ok).toBe(true);
+    expect(result.agents.claude).toEqual({ available: true, version: '1.2.3' });
+    expect(result.agents.codex).toEqual({ available: false });
+  });
+
+  it('reports per-agent availability from a { agents: [...] } payload', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ agents: [{ id: 'antigravity', available: true }] }),
+    }));
+    const result = await verifyAgents('http://localhost:7456', '', [{ id: 'antigravity' }]);
+    expect(result.agents.antigravity.available).toBe(true);
+  });
+
+  it('is non-fatal on HTTP failure — returns ok:false with a reason, never throws', async () => {
+    global.fetch = vi.fn(async () => ({ ok: false, status: 500 }));
+    const result = await verifyAgents('http://localhost:7456', '', [{ id: 'claude' }]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/500/);
+  });
+
+  it('is non-fatal when the daemon is unreachable', async () => {
+    global.fetch = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    const result = await verifyAgents('http://localhost:7456', '', [{ id: 'claude' }]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/unreachable/);
+  });
+
+  it('an id the daemon does not know about is reported unavailable, not thrown', async () => {
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ agents: [] }) }));
+    const result = await verifyAgents('http://localhost:7456', '', [{ id: 'claude' }]);
+    expect(result.ok).toBe(true);
+    expect(result.agents.claude.available).toBe(false);
   });
 });

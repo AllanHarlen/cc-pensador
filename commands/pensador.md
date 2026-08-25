@@ -211,7 +211,7 @@ Ao concluir FINAL, informe:
 - Caminho de `codebase-memory.md`, `market-research.md`, `tech-research.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
 - Caminho de `handoff.json` (manifesto de handoff para o Orquestrador).
-- Recap final e handoff. No modo Spec, oriente `/openspec-verify-change`, `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change`.
+- Recap final e handoff. No modo Spec, oriente `openspec validate <nome> --strict --json`, `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes`.
 - Proximo passo: `/cc-orchestrador-subagents:orquestrador implemente o plano destacado`, que ira ingerir `handoff.json`.
 
 ---

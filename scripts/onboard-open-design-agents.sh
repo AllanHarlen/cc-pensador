@@ -62,10 +62,14 @@ onboard_args=("--clone-dir" "${CLONE_DIR}")
 REPORT_JSON="$(node "${ONBOARDER}" "${onboard_args[@]}")" || warn "Nenhum agente detectado no host. Instale claude/codex/agy ou passe --*-bin."
 echo "${REPORT_JSON}"
 
-# Extract pathAdditions (newline-joined) without requiring jq.
+# Extract pathAdditions (newline-joined) without requiring jq. A parse failure
+# here used to silently drop pathAdditions (antigravity's PATH wiring) with no
+# signal at all; it now warns, so a report-shape change upstream is visible
+# instead of just quietly not resolving `agy`.
 PATH_ADDITIONS="$(node -e '
   let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
-    try { const r=JSON.parse(s); (r.pathAdditions||[]).forEach(d=>console.log(d)); } catch {}
+    try { const r=JSON.parse(s); (r.pathAdditions||[]).forEach(d=>console.log(d)); }
+    catch (e) { process.stderr.write("onboard-open-design-agents: failed to parse pathAdditions from onboarder report: " + e.message + "\n"); }
   });' <<< "${REPORT_JSON}")"
 
 if [ "${LAUNCH}" != "1" ]; then

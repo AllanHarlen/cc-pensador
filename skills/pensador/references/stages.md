@@ -108,7 +108,7 @@ Protocolo completo em `references/tech-research.md`.
 
 ## PRD_BASE
 
-**Proposito:** criar o artefato base — `PRD_Base` no modo PRD ou o change set OpenSpec (via comandos `openspec-*`) no modo Spec. A escolha vem de `artifactMode`, definido no INIT.
+**Proposito:** criar o artefato base — `PRD_Base` no modo PRD ou o change set OpenSpec (via `/opsx:propose`) no modo Spec. A escolha vem de `artifactMode`, definido no INIT.
 
 ### Modo PRD (`artifactMode = 'prd'`, padrao)
 
@@ -120,12 +120,12 @@ Protocolo completo em `references/tech-research.md`.
 
 ### Modo Spec (`artifactMode = 'spec'`, OpenSpec)
 
-- Acionar os comandos `openspec-*` (nunca escrever os arquivos manualmente): `/openspec-new-change <nome>` + `/openspec-ff-change <nome>` criam `proposal.md`, `design.md`, `tasks.md` e `specs/` em `openspec/changes/<nome>/` (`<nome>` = `openspecChangeName(featurePath)`).
+- Acionar `/opsx:propose <nome ou descricao>` (nunca escrever os arquivos manualmente): cria `proposal.md`, `specs/<capability-path>/spec.md`, `design.md` e `tasks.md` em `openspec/changes/<nome>/` (`<nome>` = `openspecChangeName(featurePath)`; `specs/` e omitido sob `skip_specs`).
 - Alimentar com a demanda e o `codebase-memory.md`; usar `"TBD"` no que nao for inferivel.
-- Se os comandos `openspec-*` nao estiverem disponiveis: perguntar via `AskUserQuestion` se deve cair para PRD ou abortar; nao montar a estrutura manualmente.
-- Todas as etapas seguintes raciocinam sobre a spec. O prefixo legado `/opsx:*` esta descontinuado. Veja `references/openspec.md`.
+- Se os comandos `/opsx:*` nao estiverem disponiveis: perguntar via `AskUserQuestion` se deve cair para PRD ou abortar; nao montar a estrutura manualmente.
+- Todas as etapas seguintes raciocinam sobre a spec. Veja `references/openspec.md`.
 
-**Gate:** modo PRD — PRD Base completo (secoes preenchidas ou `"TBD"`); modo Spec — change set OpenSpec criado pelos comandos `openspec-*` (ou fallback registrado). Sem perguntas alem do fallback.
+**Gate:** modo PRD — PRD Base completo (secoes preenchidas ou `"TBD"`); modo Spec — change set OpenSpec criado por `/opsx:propose` (ou fallback registrado). Sem perguntas alem do fallback.
 
 ---
 
@@ -310,9 +310,9 @@ Se um participante falhar:
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao (so no modo PRD; no modo Spec nao se aplica).
 3. Gerar artefatos conforme `artifactMode`:
    - Modo PRD: `prd.md` + `userhistory.md` (+ contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml` **e** `communication.md` quando ha back-end) (+ `design-system.md` quando ha front-end **e** o Open Design NAO foi usado — fallback inline) em `<featurePath>/`. O contrato maquina-legivel e a **fonte da verdade**; o `communication.md` e a visao legivel derivada. Quando um system do Open Design foi selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design — nao gere `design-system.md` redundante.
-   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `/openspec-verify-change <nome>` (e `/openspec-sync-specs <nome>` se introduziu/ajustou specs). O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
+   - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `openspec validate <nome> --strict --json`. **Nao** rode `/opsx:sync` aqui: sincronizar publica como spec vigente um comportamento ainda nao implementado e drena os deltas que o Orchestrador ingere — isso e do estagio seguinte. O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
-5. Apresentar recap final e handoff. No modo Spec, orientar com `/openspec-apply-change`, `/openspec-sync-specs` e `/openspec-archive-change` (este move pastas: so apos confirmacao do usuario).
+5. Apresentar recap final e handoff. No modo Spec, orientar com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este altera specs principais: so apos confirmacao do usuario).
 
 | Artefato | Condicao |
 |---|---|
@@ -322,7 +322,7 @@ Se um participante falhar:
 | `communication.md` (visao legivel derivada do contrato) | Modo PRD, quando ha back-end confirmado |
 | `design-system.md` | Modo PRD, quando ha front-end **e** o Open Design NAO foi usado (fallback inline). Com um system selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` substitui este doc. |
 | `design-systems/<id>/` (arquivos verbatim: `tokens.css`, `DESIGN.md`, `components.html`, …) | Modo PRD e Spec, quando ha front-end **e** um system do Open Design foi selecionado |
-| `openspec/changes/<nome>/` (`proposal.md` · `design.md` · `tasks.md` · `specs/`) | Modo Spec (via comandos `openspec-*`) |
+| `openspec/changes/<nome>/` (`proposal.md` · `design.md` · `tasks.md` · `specs/`) | Modo Spec (via `/opsx:propose`) |
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados, recap final e handoff entregues.
 
@@ -341,7 +341,7 @@ Estado terminal. Sem perguntas ou acoes pendentes.
 | `INIT` | Demanda presente, `artifactMode` definido, `featurePath` definido e retomada/novo fluxo resolvido |
 | `EXPLORE` | `codebase-memory.md` gravado (exploracao do Code Base Memory ou fallback registrado) |
 | `RESEARCH` | `market-research.md` **e** `tech-research.md` gravados (`DONE`/`PARTIAL`/`DEFERRED`/`SKIPPED`) e perguntas `web-research` fechadas |
-| `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado pelos comandos `openspec-*` (ou fallback) |
+| `PRD_BASE` | Modo PRD: PRD Base completo; modo Spec: change set OpenSpec criado por `/opsx:propose` (ou fallback) |
 | `ARCH` | `architecture.md` gravado com baseline tecnico; top-up tecnico concluido quando estava `DEFERRED` |
 | `EXPAND` | Perguntas respondidas ou diferidas |
 | `COMPLEXITY` | Modo Lite/Completo escolhido |

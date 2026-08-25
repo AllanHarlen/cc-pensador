@@ -36,7 +36,13 @@
  *        [--claude-bin <path>] [--codex-bin <path>] [--agy-bin <path>]
  *        [--verify <daemon-url>] [--token <bearer>] [--dry-run]
  *
- * Exit codes: 0 ok (≥1 agent detected) · 2 usage · 7 no agent detected.
+ * Exit codes: 0 ok (≥1 agent detected) · 2 usage · 7 no agent detected ·
+ * 8 wrote/matched an app-config patch but --verify's /api/agents call shows
+ * NONE of the locally-detected agents as available — the write was accepted
+ * but the daemon does not actually see them (e.g. an upstream rename of the
+ * agentCliEnv/*_BIN allowlist keys this patch targets). Previously this case
+ * was silent: the tool reported ok:true based on local PATH detection alone,
+ * never inspecting what --verify came back with.
  */
 import {
   existsSync,
@@ -222,7 +228,7 @@ function resolveConfigPath() {
   return join(dataDir, "app-config.json");
 }
 
-async function verifyAgents(daemonUrl, token, detected) {
+export async function verifyAgents(daemonUrl, token, detected) {
   const base = String(daemonUrl).replace(/\/$/, "");
   const url = `${base}/api/agents`;
   let payload;
@@ -303,8 +309,19 @@ async function main() {
     );
   }
 
+  // The write/merge above only proves the app-config PATCH was accepted
+  // locally — it does not prove the daemon actually honors it. When --verify
+  // ran successfully but reports zero of the locally-found agents as
+  // available, the patch's keys likely no longer match what the daemon
+  // reads (e.g. an upstream rename of agentCliEnv/*_BIN). This used to be
+  // invisible: ok:true regardless of what verification said.
+  const verificationMismatch =
+    verification?.ok === true &&
+    found.length > 0 &&
+    Object.values(verification.agents).every((a) => !a.available);
+
   const report = {
-    ok: found.length > 0,
+    ok: found.length > 0 && !verificationMismatch,
     detected: detected.map((a) => ({
       id: a.id,
       label: a.label,
@@ -326,11 +343,16 @@ async function main() {
       pathAdditions.length
         ? `Launch the host daemon with these dirs prepended to PATH: ${pathAdditions.join(delimiter)}`
         : "No PATH additions required.",
+      ...(verificationMismatch
+        ? [
+            "MISMATCH: agents found locally but the daemon's /api/agents reports none available — the app-config patch may target keys the daemon no longer reads. Check for an upstream agentCliEnv/*_BIN rename.",
+          ]
+        : []),
     ],
   };
 
   console.log(JSON.stringify(report, null, 2));
-  process.exit(found.length > 0 ? 0 : 7);
+  process.exit(found.length === 0 ? 7 : verificationMismatch ? 8 : 0);
 }
 
 // Only run the shell when invoked directly, so tests can import the pure helpers.

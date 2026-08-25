@@ -46,6 +46,20 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  CODEBASE_MEMORY_BINARY_NAMES,
+  CODEBASE_MEMORY_CONFIG_CANDIDATES,
+  CODEBASE_MEMORY_DEFINITION_MARKERS,
+  CODEBASE_MEMORY_SERVER_NAMES,
+  CODEBASE_MEMORY_SKILL_CANDIDATES,
+  CONTEXT7_BINARY_NAMES,
+  CONTEXT7_CONFIG_CANDIDATES,
+  CONTEXT7_DEFINITION_MARKERS,
+  CONTEXT7_MCP_DIRECTORY_CANDIDATES,
+  CONTEXT7_SERVER_NAMES,
+  CONTEXT7_SKILL_CANDIDATES,
+  resolveCandidate,
+} from "./lib/mcp-candidates.mjs";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -77,6 +91,31 @@ const CODEBASE_MEMORY_SERVER = "codebase-memory-mcp";
 /** OpenSpec (https://github.com/Fission-AI/OpenSpec) — OPTIONAL spec workflow. */
 const OPENSPEC_CLI = "openspec";
 const OPENSPEC_DIR = "openspec";
+const OPENSPEC_CONFIG_FILE = "config.yaml";
+/** 1.9.0: honest root resolution (non-zero exit outside a root) + reliable archive exit codes. */
+const OPENSPEC_MIN_VERSION = "1.9.0";
+const OPENSPEC_RECOMMENDED_VERSION = "1.10.0";
+/** Any of these under .claude/skills/ signals the EXPANDED profile is also installed (opt-in via `openspec config profile`). */
+const OPENSPEC_EXPANDED_SKILL_DIRS = [
+  "openspec-new-change",
+  "openspec-ff-change",
+  "openspec-verify-change",
+];
+/** Any of these signals the CORE profile is installed (what `openspec init` writes by default). */
+const OPENSPEC_CORE_SKILL_DIRS = [
+  "openspec-propose",
+  "openspec-apply-change",
+  "openspec-archive-change",
+];
+
+/**
+ * Context7 MCP — OPTIONAL. Preferred source for the version-currency phase of
+ * TECH_RESEARCH. Detection matches registered MCP server NAMES or, for a server
+ * registered under some other name, the package spec / endpoint inside its
+ * definition. Candidate locations and names/markers live in
+ * `scripts/lib/mcp-candidates.mjs` (canonical union shared with the sibling
+ * plugins — see that file's header).
+ */
 
 /**
  * Open Design (https://github.com/nexu-io/open-design) — OPTIONAL, front-end-
@@ -141,11 +180,14 @@ function parseModeArg(argv) {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Check whether a CLI binary is present on PATH and responsive.
- * @param {string} cli  Binary name (e.g. "codex", "agy", "kiro-cli")
- * @returns {{ ok: boolean, version?: string, error?: string }}
+ * Check whether a CLI binary is present on PATH and responsive. Optionally
+ * enforces a minimum semver and flags whether it meets a recommended one.
+ * @param {string} cli  Binary name (e.g. "codex", "agy", "kiro-cli", "openspec")
+ * @param {{ minVersion?: string, recommendedVersion?: string }} [options]
+ * @returns {{ ok: boolean, version?: string, minVersion?: string|null,
+ *   recommendedVersion?: string|null, meetsRecommended?: boolean|null, error?: string }}
  */
-function checkCli(cli) {
+function checkCli(cli, options = {}) {
   try {
     const out = execSync(`${cli} --version`, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -153,10 +195,73 @@ function checkCli(cli) {
     })
       .toString()
       .trim();
-    return { ok: true, version: out.split(/\r?\n/)[0] };
+    const versionLine = out.split(/\r?\n/)[0];
+    const version = versionLine.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/)?.[0] ?? null;
+    if (options.minVersion && (!version || compareSemver(version, options.minVersion) < 0)) {
+      return {
+        ok: false,
+        version: version ?? versionLine,
+        minVersion: options.minVersion,
+        error: `${cli} ${options.minVersion}+ is required (found ${version ?? versionLine})`,
+      };
+    }
+    return {
+      ok: true,
+      version: version ?? versionLine,
+      minVersion: options.minVersion ?? null,
+      recommendedVersion: options.recommendedVersion ?? null,
+      meetsRecommended: options.recommendedVersion && version
+        ? compareSemver(version, options.recommendedVersion) >= 0
+        : null,
+    };
   } catch (err) {
     return { ok: false, error: err.message?.split(/\r?\n/)[0] ?? "not found" };
   }
+}
+
+/**
+ * Parses a strict semver string (core + optional prerelease). Returns null on
+ * anything that doesn't match `x.y.z(-prerelease)?`.
+ * @param {string} version
+ */
+function parseSemver(version) {
+  const match = String(version ?? "").match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) return null;
+  return {
+    core: match.slice(1, 4).map((part) => Number(part)),
+    prerelease: match[4]?.split(".") ?? [],
+  };
+}
+
+/**
+ * Strict semver comparison (core numeric, then prerelease per semver.org
+ * precedence rules). Returns null when either input fails to parse.
+ * @param {string} left
+ * @param {string} right
+ */
+function compareSemver(left, right) {
+  const a = parseSemver(left);
+  const b = parseSemver(right);
+  if (!a || !b) return null;
+
+  for (let i = 0; i < 3; i += 1) {
+    if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i];
+  }
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let i = 0; i < length; i += 1) {
+    if (a.prerelease[i] == null) return -1;
+    if (b.prerelease[i] == null) return 1;
+    if (a.prerelease[i] === b.prerelease[i]) continue;
+    const aNumber = /^\d+$/.test(a.prerelease[i]);
+    const bNumber = /^\d+$/.test(b.prerelease[i]);
+    if (aNumber && bNumber) return Number(a.prerelease[i]) - Number(b.prerelease[i]);
+    if (aNumber !== bNumber) return aNumber ? -1 : 1;
+    return a.prerelease[i].localeCompare(b.prerelease[i]);
+  }
+  return 0;
 }
 
 /**
@@ -264,6 +369,138 @@ function checkAgy() {
 }
 
 /**
+ * Normalizes a filesystem path for comparison: forward slashes, no trailing
+ * separator, lower-cased. Claude Code stores the keys of `~/.claude.json`'s
+ * `projects` map with forward slashes, while `process.cwd()` on Windows yields
+ * backslashes — comparing them raw would never match.
+ */
+function normalizePathKey(value) {
+  return String(value ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Reads a JSON MCP config and returns the server maps that apply to `cwd`: the
+ * file's root `mcpServers`, plus the entry for the current project when the file
+ * is Claude Code's `~/.claude.json` (which nests per-project config under
+ * `projects[<absolute path>]`).
+ *
+ * Returns `[]` when the file is missing or unparseable — an unreadable config is
+ * not evidence either way. Total: never throws.
+ *
+ * @param {string} file
+ * @param {string} cwd
+ * @returns {{ servers: object, disabled: string[] }[]}
+ */
+function readMcpServerMaps(file, cwd) {
+  let json;
+  try {
+    if (!existsSync(file)) return [];
+    json = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return [];
+  }
+  if (!json || typeof json !== "object") return [];
+
+  const maps = [];
+  if (json.mcpServers && typeof json.mcpServers === "object") {
+    maps.push({ servers: json.mcpServers, disabled: [] });
+  }
+  if (json.projects && typeof json.projects === "object") {
+    const wanted = normalizePathKey(cwd);
+    for (const [key, project] of Object.entries(json.projects)) {
+      if (normalizePathKey(key) !== wanted) continue;
+      if (project?.mcpServers && typeof project.mcpServers === "object") {
+        maps.push({
+          servers: project.mcpServers,
+          disabled: Array.isArray(project.disabledMcpjsonServers)
+            ? project.disabledMcpjsonServers
+            : [],
+        });
+      }
+    }
+  }
+  return maps;
+}
+
+/**
+ * Finds an MCP server registration across `files`, matching either the server's
+ * NAME (against `names`) or a marker inside its definition (`markers` — package
+ * spec or endpoint, for a server registered under a custom name). Servers listed
+ * in `disabledMcpjsonServers` do not count.
+ *
+ * This parses the JSON rather than substring-scanning the raw text, which matters
+ * most for `~/.claude.json`: that file is Claude Code's entire user config
+ * (100+ KB) and carries per-project `allowedTools`, example file paths and other
+ * arbitrary data, so a bare substring hit there would report a server as
+ * registered when nothing is.
+ *
+ * @param {string[]} files
+ * @param {string} cwd
+ * @param {string[]} names
+ * @param {string[]} [markers]
+ * @returns {{ path: string, server: string }|null}
+ */
+function findMcpServer(files, cwd, names, markers = []) {
+  const wanted = names.map((n) => n.toLowerCase());
+  const wantedMarkers = markers.map((m) => m.toLowerCase());
+  for (const file of files) {
+    for (const { servers, disabled } of readMcpServerMaps(file, cwd)) {
+      const off = new Set(disabled.map((n) => String(n).toLowerCase()));
+      for (const [name, definition] of Object.entries(servers)) {
+        const key = name.toLowerCase();
+        if (off.has(key)) continue;
+        if (wanted.includes(key)) return { path: file, server: name };
+        if (wantedMarkers.length === 0) continue;
+        let blob = "";
+        try {
+          blob = JSON.stringify(definition ?? "").toLowerCase();
+        } catch {
+          blob = "";
+        }
+        if (wantedMarkers.some((m) => blob.includes(m))) return { path: file, server: name };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Same search as `findMcpServer()`, but over the `{ base, segments, format }`
+ * candidates of `scripts/lib/mcp-candidates.mjs` instead of plain paths.
+ * `"json"` candidates go through `findMcpServer()` (structured, disabled-aware).
+ * The one `"toml"` candidate (`~/.codex/config.toml`) has no structured parser
+ * here — matched by raw substring, same class of check as `fileMentions()` —
+ * see the header comment in `mcp-candidates.mjs` for why that is an accepted
+ * limitation rather than a gap to fix silently.
+ *
+ * @param {{base: string, segments: string[], format: "json"|"toml"}[]} candidates
+ * @param {{home: string, cwd: string}} ctx
+ * @param {string[]} names
+ * @param {string[]} [markers]
+ * @returns {{ path: string, server: string|null }|null}
+ */
+function findMcpServerAcrossCandidates(candidates, ctx, names, markers = []) {
+  const jsonPaths = candidates
+    .filter((c) => c.format !== "toml")
+    .map((c) => resolveCandidate(c, ctx));
+  const hit = findMcpServer(jsonPaths, ctx.cwd, names, markers);
+  if (hit) return hit;
+
+  const needles = [...names, ...markers].map((s) => s.toLowerCase());
+  for (const candidate of candidates.filter((c) => c.format === "toml")) {
+    const path = resolveCandidate(candidate, ctx);
+    let text = "";
+    try {
+      text = existsSync(path) ? readFileSync(path, "utf8").toLowerCase() : "";
+    } catch {
+      text = "";
+    }
+    if (text && needles.some((n) => text.includes(n))) return { path, server: null };
+  }
+  return null;
+}
+
+/**
  * Returns true when `path` exists and its text content mentions `needle`.
  * Total: never throws (missing/unreadable file → false).
  */
@@ -278,10 +515,14 @@ function fileMentions(path, needle) {
 /**
  * MANDATORY: Code Base Memory MCP availability.
  *
- * The server may be reachable either as a CLI binary on PATH or as a registered
- * MCP server in one of the common host config files (project `.mcp.json`, Kiro
- * `.kiro/settings/mcp.json`, or the user-level Claude `~/.claude/.mcp.json`).
- * Both signals are advisory in isolation; availability is their OR.
+ * The server may be reachable either as a CLI binary on PATH, as a registered
+ * MCP server in one of the canonical host config files, or as an installed
+ * skill — the full candidate list is `CODEBASE_MEMORY_CONFIG_CANDIDATES`/
+ * `CODEBASE_MEMORY_SKILL_CANDIDATES` in `scripts/lib/mcp-candidates.mjs`, kept
+ * in sync with the Orchestrator/Executor detection by
+ * `test/mcp-detection-parity.test.js`. Config evidence goes through
+ * `findMcpServerAcrossCandidates()` (structured JSON parse, disabled-aware —
+ * see `findMcpServer()`), not a raw substring scan.
  *
  * If unavailable, the Pensador asks (via AskUserQuestion) whether the user wants
  * to install the server now. If the user says yes, Claude runs the platform
@@ -289,14 +530,23 @@ function fileMentions(path, needle) {
  * is plain Read/Glob/Grep exploration.
  */
 function checkCodebaseMemory() {
-  const cli = checkCli(CODEBASE_MEMORY_SERVER);
-  const configCandidates = [
-    join(process.cwd(), ".mcp.json"),
-    join(process.cwd(), ".kiro", "settings", "mcp.json"),
-    join(HOME, ".claude", ".mcp.json"),
-    join(HOME, ".claude", "settings", "mcp.json"),
-  ];
-  const configuredIn = configCandidates.filter((p) => fileMentions(p, CODEBASE_MEMORY_SERVER));
+  const ctx = { home: HOME, cwd: process.cwd() };
+  const cli = checkCli(CODEBASE_MEMORY_BINARY_NAMES[0]);
+
+  const evidence = [];
+  for (const candidate of CODEBASE_MEMORY_SKILL_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "skill", path });
+  }
+  const hit = findMcpServerAcrossCandidates(
+    CODEBASE_MEMORY_CONFIG_CANDIDATES,
+    ctx,
+    CODEBASE_MEMORY_SERVER_NAMES,
+    CODEBASE_MEMORY_DEFINITION_MARKERS,
+  );
+  if (hit) evidence.push({ type: "mcp-config", path: hit.path, server: hit.server });
+
+  const configuredIn = evidence.map((e) => e.path);
   const configured = configuredIn.length > 0;
   const available = cli.ok || configured;
 
@@ -315,6 +565,7 @@ function checkCodebaseMemory() {
     cli,
     configured,
     configuredIn,
+    evidence,
     stage: "EXPLORE (pre-PRD_BASE/Spec exploration) + ARCH",
     purpose:
       "Explore the existing project before generating the PRD/Spec base, for an accurate understanding of the structure the feature/fix will act upon.",
@@ -338,37 +589,44 @@ function checkCodebaseMemory() {
  * above release notes / guides / community sources under the same
  * official-first tier ordering TECH_RESEARCH already uses.
  *
- * Detection mirrors codebase-memory: skill presence + known MCP config files
- * mentioning context7/ctx7/its endpoint. Absence never blocks the flow — the
- * phase falls back to whatever WebSearch/WebFetch can find.
+ * Detection: skill presence, an `ctx7` binary on PATH, a bundled MCP directory
+ * (the AGY/Gemini CLI ships Context7 under `~/.gemini/antigravity-cli/...`),
+ * plus a real MCP server registration found by PARSING the known config files
+ * (`findMcpServerAcrossCandidates`/`findMcpServer`) rather than substring-
+ * scanning them. The strictness matters because a false positive is silent and
+ * costly: RESEARCH would elect Context7 as the preferred source for the
+ * version-currency phase and only discover it is not registered when
+ * `resolve-library-id` fails mid-flow. `~/.claude.json` in particular is Claude
+ * Code's whole user config and holds arbitrary per-project data, so a bare
+ * `ctx7`/`context7` substring there is not evidence of anything. Disabled
+ * servers do not count. Candidate lists live in `scripts/lib/mcp-candidates.mjs`
+ * (canonical union shared with the sibling plugins).
+ *
+ * Absence never blocks the flow — the phase falls back to WebSearch/WebFetch.
  */
 function checkContext7() {
+  const ctx = { home: HOME, cwd: process.cwd() };
   const evidence = [];
-  const skillCandidates = [
-    join(HOME, ".claude", "skills", "context7", "SKILL.md"),
-    join(HOME, ".claude", "skills", "context7-mcp", "SKILL.md"),
-  ];
-  for (const file of skillCandidates) {
-    if (existsSync(file)) evidence.push({ type: "skill", path: file });
-  }
 
-  const configCandidates = [
-    join(process.cwd(), ".mcp.json"),
-    join(HOME, ".claude.json"),
-    join(HOME, ".claude", ".mcp.json"),
-    join(HOME, ".claude", "mcp.json"),
-    join(HOME, ".config", "claude", "mcp.json"),
-  ];
-  for (const file of configCandidates) {
-    if (!existsSync(file)) continue;
-    try {
-      const contents = readFileSync(file, "utf8");
-      if (/\bcontext7\b|@upstash\/context7-mcp|mcp\.context7\.com|ctx7/i.test(contents)) {
-        evidence.push({ type: "mcp-config", path: file });
-      }
-    } catch {
-      // Unreadable config is not evidence either way; skip it silently.
-    }
+  for (const candidate of CONTEXT7_SKILL_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "skill", path });
+  }
+  for (const candidate of CONTEXT7_MCP_DIRECTORY_CANDIDATES) {
+    const path = resolveCandidate(candidate, ctx);
+    if (existsSync(path)) evidence.push({ type: "mcp-directory", path });
+  }
+  const cli = checkCli(CONTEXT7_BINARY_NAMES[0]);
+  if (cli.ok) evidence.push({ type: "binary", path: CONTEXT7_BINARY_NAMES[0] });
+
+  const hit = findMcpServerAcrossCandidates(
+    CONTEXT7_CONFIG_CANDIDATES,
+    ctx,
+    CONTEXT7_SERVER_NAMES,
+    CONTEXT7_DEFINITION_MARKERS,
+  );
+  if (hit) {
+    evidence.push({ type: "mcp-config", path: hit.path, server: hit.server });
   }
 
   const available = evidence.length > 0;
@@ -452,25 +710,124 @@ function checkWebResearch() {
 /**
  * OPTIONAL: OpenSpec availability.
  *
- * Detected via the `openspec` CLI on PATH or an existing `openspec/` directory in
- * the working tree (created by `openspec init`). When present, the Pensador asks
- * (via AskUserQuestion) in INIT whether to generate a PRD or a structured Spec.
+ * Detected via three independent signals:
+ *   1) the `openspec` CLI on PATH, gated on OPENSPEC_MIN_VERSION (1.9.0 — the
+ *      version that made root resolution and archive exit codes reliable
+ *      enough to script against). Below the floor, Spec mode is NOT offered
+ *      and the flow stays in PRD mode — OpenSpec stays optional and this
+ *      check never affects the overall `status`.
+ *   2) `openspec doctor --json` against the project root — exit 0 means an
+ *      initialized, healthy root (config.yaml present). This does NOT gate
+ *      availability: an uninitialized root is a one-command fix, so it is
+ *      reported (`initialized`/`doctorOk`) and surfaced in `behavior` as an
+ *      instruction to run `openspec init` before /opsx:propose.
+ *   3) which profile is installed, probing BOTH `.claude/skills/` and
+ *      `~/.claude/skills/`: CORE (the default since OpenSpec 1.4 —
+ *      `/opsx:explore|propose|apply|update|sync|archive`), EXPANDED (adds
+ *      `/opsx:new|continue|ff|verify|bulk-archive|onboard`, opt-in via
+ *      `openspec config profile`), or NONE. The flow targets CORE and never
+ *      requires EXPANDED, but `none` DOES suppress Spec mode — without the
+ *      skills the /opsx:* commands do not exist, and offering Spec would abort
+ *      late in PRD_BASE.
+ *
+ * When available, the Pensador asks (via AskUserQuestion) in INIT whether to
+ * generate a PRD or a structured Spec.
  */
 function checkOpenSpec() {
-  const cli = checkCli(OPENSPEC_CLI);
+  const cli = checkCli(OPENSPEC_CLI, {
+    minVersion: OPENSPEC_MIN_VERSION,
+    recommendedVersion: OPENSPEC_RECOMMENDED_VERSION,
+  });
+
+  const configPath = join(process.cwd(), OPENSPEC_DIR, OPENSPEC_CONFIG_FILE);
   const dirPath = join(process.cwd(), OPENSPEC_DIR);
-  const initialized = existsSync(dirPath);
-  const available = cli.ok || initialized;
+  let initialized = existsSync(configPath) || existsSync(dirPath);
+  let doctorOk = null;
+  if (cli.ok) {
+    try {
+      const out = execSync("openspec doctor --json", {
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 10_000,
+        env: { ...process.env, NO_COLOR: "1", OPENSPEC_NO_UPDATE_CHECK: "1" },
+      }).toString();
+      const report = JSON.parse(out);
+      doctorOk = report?.root?.healthy === true;
+      initialized = doctorOk || initialized;
+    } catch (err) {
+      // Non-zero exit (e.g. no_openspec_root) still emits the null-shape JSON
+      // report on stdout per the agent contract — parse it if present so
+      // doctorOk reflects "confirmed unhealthy" (false) rather than "unknown"
+      // (null, reserved for a genuine CLI failure with no parseable output).
+      try {
+        const report = JSON.parse(String(err.stdout ?? ""));
+        doctorOk = report?.root?.healthy === true;
+      } catch {
+        // No parseable stdout — leave doctorOk as null (unknown); fall back
+        // to the static existsSync signal above.
+      }
+    }
+  }
+
+  // Skills may live in the project (.claude/skills/) or user-wide (~/.claude/skills/).
+  // Probing BOTH matters: a `none` verdict below suppresses Spec mode, so a
+  // project-only probe would false-negative on a user-wide install.
+  const skillInstalled = (name) =>
+    existsSync(join(process.cwd(), ".claude", "skills", name)) ||
+    existsSync(join(HOME, ".claude", "skills", name));
+
+  // Three states, not two. Reporting "core" when NOTHING is installed is the
+  // exact failure this integration exists to prevent: INIT would offer Spec,
+  // PRD_BASE would invoke /opsx:propose, and the flow would abort late.
+  let profile;
+  if (OPENSPEC_EXPANDED_SKILL_DIRS.some(skillInstalled)) {
+    profile = "expanded";
+  } else if (OPENSPEC_CORE_SKILL_DIRS.some(skillInstalled)) {
+    profile = "core";
+  } else {
+    profile = "none";
+  }
+
+  const meetsMinimum = cli.ok;
+  const belowRecommended = cli.ok && cli.meetsRecommended === false;
+  // Spec mode needs BOTH a usable CLI and the /opsx:* skills that drive it.
+  const available = meetsMinimum && profile !== "none";
+
+  let behavior;
+  if (available) {
+    const rootNote = initialized
+      ? ""
+      : " The OpenSpec root is not initialized yet — if the user picks Spec, run `openspec init --tools claude` (add `--language \"Portuguese (pt-BR)\"` for pt-BR artifacts) before /opsx:propose.";
+    behavior = (belowRecommended
+      ? `OpenSpec ${cli.version} detected (meets the ${OPENSPEC_MIN_VERSION}+ floor, below the recommended ${OPENSPEC_RECOMMENDED_VERSION}). ` +
+        "INIT presents an AskUserQuestion offering PRD or Spec; consider `npm install -g @fission-ai/openspec@latest`."
+      : "OpenSpec detected. INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.") + rootNote;
+  } else if (meetsMinimum && profile === "none") {
+    behavior =
+      `OpenSpec CLI ${cli.version} is present but no \`openspec-*\` skills are installed, so the /opsx:* commands do not exist. ` +
+      "Spec mode is NOT offered; the flow stays in PRD mode. Run `openspec init --tools claude` to install them.";
+  } else if (cli.error && cli.minVersion) {
+    behavior =
+      `OpenSpec CLI found but below the ${OPENSPEC_MIN_VERSION}+ floor (${cli.error}). ` +
+      "Spec mode is not offered; the flow stays in PRD mode. Run `npm install -g @fission-ai/openspec@latest` to enable it.";
+  } else {
+    behavior = "OpenSpec not detected. The flow stays in PRD mode and the question is not asked.";
+  }
 
   return {
     cli: OPENSPEC_CLI,
     optional: true,
     available,
+    version: cli.version ?? null,
+    meetsMinimum,
+    belowRecommended,
+    minVersion: OPENSPEC_MIN_VERSION,
+    recommendedVersion: OPENSPEC_RECOMMENDED_VERSION,
     cliCheck: cli,
     initialized,
+    doctorOk,
+    profile,
     stage: "INIT",
-    behavior:
-      "When available, INIT presents an AskUserQuestion offering PRD or Spec. If the user picks Spec, PRD_BASE is repurposed into OpenSpec assembly and later stages reason over the spec.",
+    behavior,
   };
 }
 
@@ -509,7 +866,14 @@ function checkOpenDesign() {
     join(HOME, ".claude", ".mcp.json"),
     join(HOME, ".claude", "settings", "mcp.json"),
   ];
-  const configuredIn = configCandidates.filter((p) => fileMentions(p, OPEN_DESIGN_SERVER));
+  // Structured JSON parse of mcpServers, not a raw substring scan (fileMentions):
+  // a bare `String.includes(OPEN_DESIGN_SERVER)` would false-positive on any
+  // unrelated occurrence of the literal text "open-design" anywhere in the
+  // file (a comment, an unrelated path) — same class of bug the Context7
+  // check above already guards against.
+  const configuredIn = configCandidates.filter(
+    (p) => findMcpServer([p], process.cwd(), [OPEN_DESIGN_SERVER]) !== null,
+  );
   const configured = configuredIn.length > 0;
 
   // Because PATH-based `od` detection collides with coreutils, the reliable signal
@@ -525,13 +889,16 @@ function checkOpenDesign() {
   // `mcpFunctional` field makes this distinction explicit for the caller.
   const mcpFunctional = cli.ok;
 
-  // Open Design has no one-line `curl | sh` installer (the old
-  // open-design.ai/install.sh endpoint is gone — 404). It is a local-first daemon
-  // + web app, brought up via Docker or a pnpm dev environment (Node 24 +
-  // pnpm 10.33). This repo ships an installer script (scripts/install-open-design.*)
-  // that automates the Docker path; `od mcp install <agent>` is the real
-  // post-setup step that wires the daemon's MCP server into the agent.
-  // See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
+  // Upstream documents a one-line hosted installer (open-design.ai/install.sh
+  // | sh -s <agent>), but this repo deliberately does not use it (opaque,
+  // nothing to review before running) — it clones the source instead, which
+  // is auditable. Open Design is a local-first daemon + web app, brought up
+  // via Docker or a pnpm dev environment (Node 24 + pnpm 10.33). This repo
+  // ships an installer script (scripts/install-open-design.*) that automates
+  // the Docker path; `od mcp install <agent>` is the real post-setup step
+  // that wires the daemon's MCP server into the agent. See the
+  // canonical-sources note in skills/pensador/references/open-design.md —
+  // the root CHANGELOG.md upstream is stale.
   const installCommands = {
     repo: "https://github.com/nexu-io/open-design",
     scriptWindows: 'pwsh -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
@@ -556,9 +923,9 @@ function checkOpenDesign() {
     cliCheck: cli,
     configured,
     configuredIn,
-    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (design-system.md)",
+    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (verbatim design-systems/<id>/, or inline design-system.md when unused)",
     purpose:
-      "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade DESIGN.md the Pensador consolidates into design-system.md, so the front-end agent has a real visual target instead of a flat default theme.",
+      "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade, curated DESIGN.md + tokens.css the Pensador persists verbatim under <featurePath>/design-systems/<id>/, so the front-end agent has a real visual target instead of a flat default theme.",
     installCommands,
     fallbackBehavior:
       "When the demand has a front-end and Open Design is unavailable, offer installation via AskUserQuestion: " +
@@ -783,9 +1150,26 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
   }
 
   if (openspec) {
-    if (openspec.available) {
+    if (openspec.available && !openspec.belowRecommended) {
       lines.push(
-        "OpenSpec: detected — INIT should ask (via AskUserQuestion) whether to generate a PRD or a structured Spec.",
+        `OpenSpec: detected (${openspec.version}, ${openspec.profile} profile) — INIT should ask (via AskUserQuestion) ` +
+          "whether to generate a PRD or a structured Spec.",
+      );
+    } else if (openspec.available && openspec.belowRecommended) {
+      lines.push(
+        `OpenSpec: detected (${openspec.version}, meets the ${openspec.minVersion}+ floor but below the recommended ` +
+          `${openspec.recommendedVersion}) — INIT still offers PRD vs Spec; suggest ` +
+          "`npm install -g @fission-ai/openspec@latest` when convenient.",
+      );
+    } else if (openspec.meetsMinimum && openspec.profile === "none") {
+      lines.push(
+        `OpenSpec: CLI ${openspec.version} present but no \`openspec-*\` skills installed — the /opsx:* commands do not exist, ` +
+          "so Spec mode is NOT offered and the flow stays in PRD mode. Run `openspec init --tools claude` to install them.",
+      );
+    } else if (openspec.cliCheck?.minVersion) {
+      lines.push(
+        `OpenSpec: CLI found but below the ${openspec.minVersion}+ floor — Spec mode is NOT offered, flow stays in PRD mode. ` +
+          "Run `npm install -g @fission-ai/openspec@latest` to enable it.",
       );
     } else {
       lines.push("OpenSpec: not detected — flow stays in PRD mode (no PRD-vs-Spec question).");

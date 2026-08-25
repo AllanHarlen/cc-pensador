@@ -146,9 +146,9 @@ AGY roda sempre como varredura final de produto, considerando o consolidado ate 
 
 ## Open Design (motor de design)
 
-O Open Design (`od`, MCP/CLI) nao e uma lente de perguntas como Codex/AGY: e o **motor de design** acionado quando `hasFrontend = true`. No `BRAINSTORM_GERAL`, o Pensador parseia o **brief de design** (tom visual, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) via `AskUserQuestion`; no `FINAL`, esse brief alimenta o Open Design para gerar o artefato `design-system.md` (DESIGN.md de 9 secoes).
+O Open Design (`od`, MCP/CLI) nao e uma lente de perguntas como Codex/AGY: e o **motor de design** acionado quando `hasFrontend = true`. No `BRAINSTORM_GERAL`, o Pensador parseia o **brief de design** (setor, tom visual, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy — 9 dimensoes) via `AskUserQuestion`; no `FINAL`, esse brief seleciona um ou mais systems e o Pensador persiste os arquivos **verbatim** (`tokens.css`, `DESIGN.md`, `components.html`, …) em `<featurePath>/design-systems/<id>/` — o `DESIGN.md` do system **e** a decisao de design, sem re-escrita.
 
-Fallback (decidido via `AskUserQuestion`): instalar o Open Design agora (app local-first; o cc-pensador traz um script Docker — `scripts/install-open-design.ps1|.sh` — que verifica git+docker, sobe o daemon e conecta o MCP via `od mcp install <agent>`) ou escrever um `design-system.md` inline a partir do schema de 9 secoes. Com o Open Design no ar, o Pensador puxa o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Detalhes em `references/open-design.md`.
+Fallback (decidido via `AskUserQuestion`, so quando o Open Design nao esta disponivel): instalar o Open Design agora (app local-first; o cc-pensador traz um script Docker — `scripts/install-open-design.ps1|.sh` — que verifica git+docker, sobe o daemon e conecta o MCP via `od mcp install <agent>`) ou escrever um `design-system.md` inline a partir do schema de 9 secoes. Com o Open Design no ar, o Pensador puxa o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Detalhes em `references/open-design.md`.
 
 ---
 
@@ -171,5 +171,5 @@ Nos estagios `CODEX` e `AGY`, o fallback bloqueia o gate do proprio estagio ate 
 - `references/stages.md`: gates e comportamento por estagio.
 - `references/feature-isolation.md`: layout de `shared-agents/` e retomada.
 - `references/skill-stack.md`: skills como lentes de dominio.
-- `references/open-design.md`: Open Design como motor de design (brief + `design-system.md`).
+- `references/open-design.md`: Open Design como motor de design (brief + arquivos verbatim do system).
 - `references/askuserquestion-protocol.md`: canal unico, autoria, previews e handoff.

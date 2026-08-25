@@ -281,6 +281,10 @@ export function initState(demanda) {
     // Output mode: 'prd' (default) or 'spec' (OpenSpec). When OpenSpec is
     // detected at preflight, INIT asks the user and may switch this to 'spec'.
     artifactMode: DEFAULT_ARTIFACT_MODE,
+    // Spec mode only: true when the change does not alter any spec (pure
+    // infra/tooling/doc change) — mirrors OpenSpec's `skip_specs: true` /
+    // `openspec archive --skip-specs`. Drops the specs/ artifact from the plan.
+    skipSpecs: false,
     // RESEARCH: product category detected from the demand (detectProductArchetype),
     // confirmed with the user, and used to drive the web/market benchmark.
     productArchetype: DEFAULT_PRODUCT_ARCHETYPE,
@@ -2403,37 +2407,91 @@ export function withArtifactMode(state, mode) {
  * OpenSpec (https://github.com/Fission-AI/OpenSpec) descriptor.
  *
  * In spec mode the Pensador does NOT hand-write the change files: it drives the
- * `openspec-*` skills/commands, which scaffold and manage the change set under
- * `openspec/changes/<name>/`. The legacy `/opsx:*` prefix is DEPRECATED — always
- * use `openspec-*`. Detection (CLI on PATH, an `openspec/` directory, or the
- * openspec plugin) lives in preflight.mjs.
+ * `/opsx:*` slash commands (the CORE profile, the default since OpenSpec 1.4 —
+ * `openspec init` never installs the expanded profile unless explicitly
+ * configured), which scaffold and manage the change set under
+ * `openspec/changes/<name>/`. `expandedCommands` are opportunistic extras,
+ * never a requirement. Detection (CLI on PATH + version floor, an initialized
+ * `openspec/` root, installed skill directories) lives in preflight.mjs.
  *
- * If the `openspec-*` commands are unavailable when spec mode is chosen, the
+ * If the `/opsx:*` commands are unavailable when spec mode is chosen, the
  * Pensador must NOT create the structure manually nor proceed as plain Claude:
  * it asks (via AskUserQuestion) whether to fall back to PRD mode or abort.
+ *
+ * Archiving is ALWAYS done via `openspec archive <name> --json --yes` (and
+ * `--skip-specs` when applicable) — never a hand-rolled `mkdir`/`mv`. The
+ * OpenSpec agent contract explicitly forbids manually creating, moving, or
+ * deleting anything under `openspec/`.
  */
 export const OPENSPEC = {
   cli: 'openspec',
   package: '@fission-ai/openspec',
   repo: 'https://github.com/Fission-AI/OpenSpec',
+  /** Lowest CLI version this integration is written against (1.9.0: honest root resolution, reliable archive exit codes). */
+  minVersion: '1.9.0',
+  /** Version the docs/flow are written against; below this, features work but are undertested here. */
+  recommendedVersion: '1.10.0',
+  minNodeVersion: '20.19.0',
   dir: 'openspec',
+  /** Root config written by `openspec init` (schema + optional context/rules/operations). */
+  configFile: 'openspec/config.yaml',
   specsDir: 'openspec/specs',
   changesDir: 'openspec/changes',
   optional: true,
-  /** openspec-* slash commands (the legacy /opsx:* prefix is deprecated). */
+  /** The profile this integration targets. `openspec init` installs this by default. */
+  profile: 'core',
+  /** /opsx:* slash commands from the CORE profile (installed by `openspec init` by default). */
   commands: {
-    onboard: '/openspec-onboard',
-    explore: '/openspec-explore',
-    newChange: '/openspec-new-change',
-    ffChange: '/openspec-ff-change',
-    continueChange: '/openspec-continue-change',
-    applyChange: '/openspec-apply-change',
-    verifyChange: '/openspec-verify-change',
-    syncSpecs: '/openspec-sync-specs',
-    archiveChange: '/openspec-archive-change',
-    bulkArchiveChange: '/openspec-bulk-archive-change',
+    explore: '/opsx:explore',
+    propose: '/opsx:propose',
+    apply: '/opsx:apply',
+    update: '/opsx:update',
+    sync: '/opsx:sync',
+    archive: '/opsx:archive',
   },
-  /** Files OpenSpec scaffolds inside openspec/changes/<name>/. */
+  /** Skill directory names backing each core command (`.claude/skills/<name>/SKILL.md`). */
+  skills: {
+    explore: 'openspec-explore',
+    propose: 'openspec-propose',
+    apply: 'openspec-apply-change',
+    update: 'openspec-update-change',
+    sync: 'openspec-sync-specs',
+    archive: 'openspec-archive-change',
+  },
+  /**
+   * /opsx:* slash commands from the EXPANDED profile. Only present when the
+   * user ran `openspec config profile` to opt in; the flow must never require
+   * them — `commands`/`cliCalls` above are always sufficient.
+   */
+  expandedCommands: {
+    new: '/opsx:new',
+    continue: '/opsx:continue',
+    ff: '/opsx:ff',
+    verify: '/opsx:verify',
+    bulkArchive: '/opsx:bulk-archive',
+    onboard: '/opsx:onboard',
+  },
+  /**
+   * Scriptable CLI calls the flow uses directly instead of expanded-profile
+   * commands (all support --json; see docs/agent-contract.md).
+   */
+  cliCalls: {
+    doctor: 'openspec doctor --json',
+    list: 'openspec list --json',
+    status: 'openspec status --change <name> --json',
+    instructions: 'openspec instructions <artifact> --change <name> --json',
+    validate: 'openspec validate <name> --strict --json',
+    archive: 'openspec archive <name> --json --yes',
+  },
+  /** Exit-code contract (docs/agent-contract.md). */
+  exitCodes: { ok: 0, error: 1, promptCancelled: 130 },
+  /** Diagnostic codes the flow may see in --json error payloads. */
+  diagnosticCodes: [
+    'no_openspec_root',
+    'openspec_config_missing',
+    'archive_confirmation_required',
+  ],
+  /** Files OpenSpec scaffolds inside openspec/changes/<name>/. `specs/` is omitted when the change sets `skip_specs: true`. */
   changeFiles: ['proposal.md', 'design.md', 'tasks.md', 'specs/'],
 };
 
@@ -2499,12 +2557,16 @@ export const OPEN_DESIGN = {
    * How the user actually brings Open Design up when they accept the install
    * offer (made via AskUserQuestion when the demand has a front-end).
    *
-   * NOTE: Open Design has NO one-line `curl | sh` installer — the old
-   * `open-design.ai/install.sh` endpoint is gone (404). It is a local-first
-   * daemon + web/desktop app run via Docker or a pnpm dev environment
-   * (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist and is the real
-   * post-setup step that wires the daemon's stdio MCP server into the agent.
-   * See https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md
+   * NOTE: upstream now documents a one-line hosted installer
+   * (`open-design.ai/install.sh | sh -s <agent>`), but this repo deliberately
+   * does NOT use it — it is opaque (nothing to review before running it) and
+   * this repo already clones the source, which is auditable. Open Design is a
+   * local-first daemon + web/desktop app run via Docker or a pnpm dev
+   * environment (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist
+   * and is the real post-setup step that wires the daemon's stdio MCP server
+   * into the agent. See the canonical-sources note in
+   * skills/pensador/references/open-design.md — the root CHANGELOG.md is
+   * stale; do not re-derive install instructions from it.
    */
   installCommands: {
     /** Recommended: the repo's installer script offered via AskUserQuestion. */
@@ -2553,6 +2615,18 @@ export const OPEN_DESIGN = {
     odGetFile: 'od get-file design-systems/<id>/<file>',
     mcpGetFile: 'get_file (Open Design MCP tool) — pulls a system file verbatim (tokens.css, components.html, …)',
     clonedSystemsDir: 'open-design/design-systems/<id>/  (filesystem source when no REST/MCP file access)',
+    /**
+     * Deterministic artifact-quality gate (upstream 0.20.0+, unverified locally —
+     * see the "Suposições não verificadas" note in the implementation plan).
+     * Accepts a file or stdin, applies a failure threshold, returns readable or
+     * JSON findings WITHOUT invoking a model. Optional, capability-probed by
+     * checkOpenDesign() — never assumed present.
+     */
+    odLint: 'od lint <file> --json',
+    /** Plugin/marketplace vocabulary (upstream 0.8.0+; documentation-only here). */
+    pluginInstall: 'od plugin install github:<owner>/<repo>[@<version>][/<subfolder>]',
+    pluginDoctor: 'od plugin doctor',
+    marketplaceAdd: 'od marketplace add <url>',
   },
   /**
    * The verbatim artifacts every curated/imported system ships. Entries ending
@@ -2563,27 +2637,44 @@ export const OPEN_DESIGN = {
    * inventing tokens is forbidden by the Open Design skills protocol.
    *
    * Read order (agent consumption): manifest.json → USAGE.md → DESIGN.md →
-   * tokens.css (paste first) → components.html → components.manifest.json →
-   * assets/ → fonts/ (typography fidelity) → preview/ (visual sanity check).
+   * tokens.css (paste first) → design-tokens.json / tailwind-v4.css (alternate
+   * consumption forms of the same tokens) → components.html →
+   * components.manifest.json → assets/ → fonts/ (typography fidelity) →
+   * preview/ (visual sanity check).
+   *
+   * This list is the FALLBACK used when a system ships no manifest.json (legacy
+   * DESIGN.md-only systems). When manifest.json IS present, od-fetch-system.mjs
+   * derives the authoritative file list from its `files`/`usage`/
+   * `componentsManifest`/`preview.pages[]`/`sourceFiles` fields instead — see
+   * that script's `deriveExpectedFiles()`.
    */
   systemArtifacts: [
-    'manifest.json',         // machine-readable entry point
+    'manifest.json',         // machine-readable entry point — schemaVersion 'od-design-system-project/v1' when present; drives od-fetch-system.mjs's per-system file list
     'USAGE.md',              // router: how to consume the package (read first)
-    'DESIGN.md',             // intent: 9-section prose + anti-patterns
+    'DESIGN.md',             // intent: prose (>=7 H2 sections upstream; this repo targets the 9-section designSchema below) + anti-patterns
     'tokens.css',            // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
+    'design-tokens.json',    // machine-readable token export (same values as tokens.css, structured)
+    'tailwind-v4.css',       // Tailwind v4 @theme mapping onto the same custom properties
     'components.html',       // fixtures: real component HTML/CSS + states
     'components.manifest.json', // component inventory
     'assets/',               // optional brand assets directory
     'fonts/',                // optional webfont files — required for typography fidelity
     'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
   ],
+  /** Schema version manifest.json declares when present (upstream 'design-systems' contract). */
+  manifestSchemaVersion: 'od-design-system-project/v1',
   /** Eventual UI-package location the executor MATERIALIZES the verbatim files
    *  into during implementation. The Pensador itself persists them under
    *  <featurePath>/design-systems/<id>/ (see designSystemFilesRoot). */
   systemsDir: 'packages/ui/design-systems',
   /**
-   * The 9-section DESIGN.md schema Open Design uses as the brand contract. Every
-   * section the Pensador parses from the design brief maps onto one of these.
+   * The 9-section DESIGN.md schema used as the brand contract for the INLINE
+   * fallback (Open Design unavailable/declined). Every section the Pensador
+   * parses from the design brief maps onto one of these.
+   *
+   * Upstream curated DESIGN.md files only require "at least seven substantive
+   * H2 sections" without a fixed template — this 9-section list is this repo's
+   * own canonical target, a superset that satisfies that minimum.
    */
   designSchema: [
     'color',
@@ -2821,7 +2912,10 @@ export function openDesignSpecContract(featurePath, systemIds, uiPackageDir = 'p
     changeDir,
     // Design DECISIONS: which system, why, overrides, and the source/target paths.
     designDoc: `${changeDir}/design.md`,
-    // UI design-system REQUIREMENTS as a delta-spec capability.
+    // UI design-system REQUIREMENTS as a delta-spec capability. This is the
+    // canonical WRITE path; OpenSpec 1.7+ also supports nested capability
+    // paths (specs/<area>/<capability>/spec.md) when reading existing specs,
+    // so consumers should not assume this exact depth when scanning.
     capabilityName: 'ui-design-system',
     capabilitySpec: `${changeDir}/specs/ui-design-system/spec.md`,
     systems: ids.map((id) => {
@@ -3126,10 +3220,14 @@ export function planArtifacts(state) {
     // the repo, decisions fold into design.md, and the UI requirements become a
     // `ui-design-system` delta spec — so there is no standalone design-system.md
     // here (designSystem: false), by design.
+    //
+    // When state.skipSpecs is true (infra/tooling/doc-only change, mirroring
+    // OpenSpec's skip_specs), the specs/ delta is dropped from the plan — the
+    // change set is proposal+design+tasks only.
     return {
       prd: false,
       proposal: true,
-      specs: true,
+      specs: !state.skipSpecs,
       design: true,
       tasks: true,
       userhistory: false,

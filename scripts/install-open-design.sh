@@ -3,9 +3,11 @@
 # Instalador local do Open Design (https://github.com/nexu-io/open-design) via Docker,
 # para uso opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end.
 #
-# O Open Design e um app local-first (daemon + web) e NAO possui instalador de uma linha
-# (o antigo open-design.ai/install.sh responde 404). Este script automatiza o caminho
-# Docker do QUICKSTART oficial:
+# O Open Design e um app local-first (daemon + web). O upstream documenta um instalador
+# hospedado de uma linha (open-design.ai/install.sh | sh -s <agent>) mas este script
+# NAO o usa deliberadamente: e opaco (nao dá para revisar o script antes de rodar) e
+# este repo ja clona o codigo-fonte de qualquer forma. Em vez disso, automatiza o
+# caminho Docker do QUICKSTART oficial a partir do clone:
 #
 #   1. Verifica pre-requisitos (git, docker, docker compose v2).
 #   2. Clona (ou atualiza) nexu-io/open-design em --target-dir.
@@ -71,10 +73,15 @@ sync_repo() {
 }
 
 gen_token() {
+  # NOTE: deliberately does NOT fall back to `od` (octal-dump). If a real Open
+  # Design `od` binary is first on PATH (this script's whole job is putting one
+  # there) and openssl is absent, `od -An -tx1` would break this pipeline under
+  # `set -euo pipefail`. `node` is a hard requirement of cc-pensador already,
+  # so it is a safe fallback that never collides with the CLI this script installs.
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
-  elif [ -r /dev/urandom ]; then
-    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  elif command -v node >/dev/null 2>&1; then
+    node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
   else
     date +%s | sha256sum | head -c 64
   fi
@@ -110,6 +117,28 @@ start_daemon() {
   step "Subindo o Open Design (docker compose up -d)"
   ( cd "${deploy_dir}" && docker compose up -d )
   ok "Container iniciado."
+}
+
+# Prefer the upstream-maintained installer (deploy/scripts/install.sh) when the
+# clone has it: it already handles .env prep + `docker compose up -d` +
+# systemd registration in one command, so this script stops reimplementing
+# what upstream maintains. Falls back to the manual init_env+start_daemon path
+# (kept for older clones or if the upstream script's flags change).
+# Not verified live against the current upstream release — see the
+# "Suposições não verificadas" note in the implementation plan.
+try_upstream_installer() {
+  local deploy_dir="$1"
+  local upstream_installer="${deploy_dir}/scripts/install.sh"
+  if [ ! -f "${upstream_installer}" ]; then
+    return 1
+  fi
+  step "Usando o instalador upstream: deploy/scripts/install.sh --non-interactive --port ${PORT}"
+  if ( cd "${deploy_dir}" && bash "scripts/install.sh" --non-interactive --port "${PORT}" ); then
+    ok "Instalador upstream concluido."
+    return 0
+  fi
+  warn "Instalador upstream falhou ou nao aceitou esses flags; caindo para o caminho manual (docker compose)."
+  return 1
 }
 
 wait_daemon() {
@@ -183,8 +212,14 @@ onboard_agents() {
 assert_prerequisites
 sync_repo
 DEPLOY_DIR="${TARGET_DIR}/deploy"
-init_env "${DEPLOY_DIR}"
-start_daemon "${DEPLOY_DIR}"
+if try_upstream_installer "${DEPLOY_DIR}"; then
+  # Upstream already prepared deploy/.env and started the container; just
+  # read the OD_API_TOKEN it generated so register_mcp can use it below.
+  init_env "${DEPLOY_DIR}"
+else
+  init_env "${DEPLOY_DIR}"
+  start_daemon "${DEPLOY_DIR}"
+fi
 wait_daemon
 register_mcp
 onboard_agents

@@ -128,20 +128,53 @@ describe('artifact mode (PRD vs OpenSpec)', () => {
 // ---------------------------------------------------------------------------
 
 describe('OpenSpec descriptor', () => {
-  it('pins CLI, dir and openspec-* commands (legacy /opsx:* is deprecated)', () => {
+  it('pins CLI, dir, version floor, profile and /opsx:* commands (CORE profile)', () => {
     expect(OPENSPEC.cli).toBe('openspec');
     expect(OPENSPEC.dir).toBe('openspec');
     expect(OPENSPEC.changesDir).toBe('openspec/changes');
     expect(OPENSPEC.optional).toBe(true);
     expect(OPENSPEC.changeFiles).toEqual(['proposal.md', 'design.md', 'tasks.md', 'specs/']);
-    expect(OPENSPEC.commands.newChange).toBe('/openspec-new-change');
-    expect(OPENSPEC.commands.ffChange).toBe('/openspec-ff-change');
-    expect(OPENSPEC.commands.verifyChange).toBe('/openspec-verify-change');
-    // No deprecated /opsx:* prefix anywhere in the command set.
+    expect(OPENSPEC.minVersion).toBe('1.9.0');
+    expect(OPENSPEC.recommendedVersion).toBe('1.10.0');
+    expect(OPENSPEC.profile).toBe('core');
+    expect(OPENSPEC.configFile).toBe('openspec/config.yaml');
+    expect(OPENSPEC.commands.propose).toBe('/opsx:propose');
+    expect(OPENSPEC.commands.apply).toBe('/opsx:apply');
+    expect(OPENSPEC.commands.sync).toBe('/opsx:sync');
+    expect(OPENSPEC.commands.archive).toBe('/opsx:archive');
+    // Every core command uses the current /opsx:* prefix.
     for (const cmd of Object.values(OPENSPEC.commands)) {
-      expect(cmd.startsWith('/openspec-')).toBe(true);
-      expect(cmd).not.toContain('opsx');
+      expect(cmd.startsWith('/opsx:')).toBe(true);
     }
+    // Skill directory names back each core command, matching openspec-*.
+    for (const dir of Object.values(OPENSPEC.skills)) {
+      expect(dir.startsWith('openspec-')).toBe(true);
+    }
+  });
+
+  it('exposes expanded-profile commands as opt-in extras, never required', () => {
+    expect(OPENSPEC.expandedCommands.new).toBe('/opsx:new');
+    expect(OPENSPEC.expandedCommands.verify).toBe('/opsx:verify');
+    expect(OPENSPEC.expandedCommands.bulkArchive).toBe('/opsx:bulk-archive');
+    for (const cmd of Object.values(OPENSPEC.expandedCommands)) {
+      expect(cmd.startsWith('/opsx:')).toBe(true);
+    }
+  });
+
+  it('pins scriptable CLI calls used instead of expanded-profile commands', () => {
+    expect(OPENSPEC.cliCalls.validate).toContain('--strict');
+    expect(OPENSPEC.cliCalls.validate).toContain('--json');
+    expect(OPENSPEC.cliCalls.archive).toContain('--json');
+    expect(OPENSPEC.cliCalls.archive).toContain('--yes');
+    // Archiving is always via the CLI, never a hand-rolled mkdir/mv.
+    for (const call of Object.values(OPENSPEC.cliCalls)) {
+      expect(call).not.toMatch(/\bmv\s/);
+      expect(call).not.toMatch(/\bmkdir\s/);
+    }
+  });
+
+  it('pins the exit-code contract', () => {
+    expect(OPENSPEC.exitCodes).toEqual({ ok: 0, error: 1, promptCancelled: 130 });
   });
 
   it('derives the change name and directory from the feature path', () => {
@@ -197,6 +230,19 @@ describe('planArtifacts in spec mode', () => {
     expect(plan.proposal).toBe(false);
     expect(plan.prd).toBe(false);
   });
+
+  it('drops specs/ when skipSpecs is set (infra/tooling/doc-only change)', () => {
+    const state = { ...finalState('spec', [frontendReq]), skipSpecs: true };
+    const plan = planArtifacts(state);
+    expect(plan.specs).toBe(false);
+    expect(plan.proposal).toBe(true);
+    expect(plan.design).toBe(true);
+    expect(plan.tasks).toBe(true);
+  });
+
+  it('defaults skipSpecs to false (initState)', () => {
+    expect(initState('demanda').skipSpecs).toBe(false);
+  });
 });
 
 describe('buildArtifactList in spec mode', () => {
@@ -221,6 +267,14 @@ describe('buildArtifactList in spec mode', () => {
       expect(a.path.startsWith('openspec/changes/')).toBe(true);
       expect(a.managedBy).toBe('openspec');
     }
+  });
+
+  it('omits specs/ when skipSpecs is set (3-artifact change set)', () => {
+    const state = { ...finalState('spec', [backendReq]), skipSpecs: true };
+    const kinds = buildArtifactList(state).map((a) => a.kind);
+    expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks']));
+    expect(kinds).not.toContain('specs');
+    expect(kinds).toHaveLength(3);
   });
 
   it('prd mode emits design-system for a front-end demand (prd + userhistory + design-system)', () => {
@@ -266,7 +320,11 @@ describe('Open Design descriptor', () => {
     expect(OPEN_DESIGN.commands.mcpConfigHelper).toContain('od-mcp-config.mjs');
     // Docker-friendly REST fallback the verbs wrap.
     expect(OPEN_DESIGN.commands.apiDesignSystems).toContain('/api/design-systems');
-    // The dead one-line installer must never come back.
+    // Upstream documents a hosted one-line installer (open-design.ai/install.sh),
+    // but this repo deliberately never drives it: it is opaque (nothing to
+    // review before running) and this repo already clones the source, which
+    // is auditable. This is a policy choice, not a claim that the URL is dead
+    // — do not "fix" this by re-adding it.
     expect(JSON.stringify(OPEN_DESIGN.installCommands)).not.toContain('open-design.ai/install.sh');
     expect(JSON.stringify(OPEN_DESIGN.commands)).not.toContain('open-design.ai/install.sh');
   });
@@ -308,12 +366,15 @@ describe('Open Design descriptor', () => {
       'USAGE.md',
       'DESIGN.md',
       'tokens.css',
+      'design-tokens.json',
+      'tailwind-v4.css',
       'components.html',
       'components.manifest.json',
       'assets/',
       'fonts/',
       'preview/',
     ]);
+    expect(OPEN_DESIGN.manifestSchemaVersion).toBe('od-design-system-project/v1');
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
     // Canonical file-access path: od get-file, then MCP get_file, then cloned repo.
     // The REST endpoint /api/design-systems/<id> returns metadata only, not raw file bodies.
