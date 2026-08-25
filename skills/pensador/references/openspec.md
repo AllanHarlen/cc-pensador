@@ -53,7 +53,7 @@ Opção B: PRD
 Impacto: fluxo clássico do Pensador; gera prd.md + userhistory.md (+ communication.md se houver back-end) (+ design-system.md se houver front-end).
 ```
 
-A escolha é registrada em `artifactMode` com `withArtifactMode(state, escolha)` (`'prd'` ou `'spec'`). O `artifactMode` é **ortogonal** ao modo de execução (`--modo`) e às lentes de domínio.
+A escolha é registrada em `artifactMode` com `withArtifactMode(state, escolha)` (`'prd'` ou `'spec'`). O `artifactMode` é **ortogonal** ao modo de execução (`--mode`) e às lentes de domínio.
 
 ---
 

@@ -1,6 +1,6 @@
 # cc-pensador
 
-> Plugin de Claude Code que conduz uma demanda em linguagem natural por **doze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--modo`, economizando tokens do Claude.
+> Plugin de Claude Code que conduz uma demanda em linguagem natural por **doze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--mode`, economizando tokens do Claude.
 
 `versão 2.7.1` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
@@ -12,7 +12,7 @@
 - [Isolamento por feature](#isolamento-por-feature)
 - [Instalação](#instalação)
 - [Uso](#uso)
-- [Modos de execução (`--modo`)](#modos-de-execução---modo)
+- [Modos de execução (`--mode`)](#modos-de-execução---mode)
 - [Code Base Memory (exploração obrigatória)](#code-base-memory-exploração-obrigatória)
 - [Open Design (sistema de design opcional)](#open-design-sistema-de-design-opcional)
 - [OpenSpec (modo Spec opcional)](#openspec-modo-spec-opcional)
@@ -29,7 +29,7 @@ O `cc-pensador` distribui o **Pensador v2**: a skill `pensador` e o comando `/pe
 
 **Invariante central:** todo diálogo entre os agentes e o usuário passa **exclusivamente** pela ferramenta `AskUserQuestion`. Nenhum estágio conversa por outro canal.
 
-Por padrão (`--modo claude`), o Claude Code executa o fluxo com os próprios tokens. Com `--modo agy`, `--modo kiro` ou `--modo codex`, o Claude vira um orquestrador fino e delega o trabalho pesado a uma CLI externa — veja [Modos de execução](#modos-de-execução---modo).
+Por padrão (`--mode claude`), o Claude Code executa o fluxo com os próprios tokens. Com `--mode agy`, `--mode kiro` ou `--mode codex`, o Claude vira um orquestrador fino e delega o trabalho pesado a uma CLI externa — veja [Modos de execução](#modos-de-execução---mode).
 
 ## Fluxo de estágios
 
@@ -70,7 +70,7 @@ Todos gravados diretamente sob `.pensador/<slug-da-demanda>-vN/`. Confirma sobre
 - `market-research.md` — Snapshot do track de negócio: setor, arquétipo, concorrentes, matriz de funcionalidades com tiers, exigências legais do setor e fontes. *(sempre, em `<featurePath>/`)*
 - `tech-research.md` — Snapshot do track técnico: stack com a **versão atual pesquisada**, estrutura de projeto idiomática, padrões de arquitetura/design com status de adoção, convenções, baseline de segurança e testes, anti-padrões desencorajados e a URL oficial de cada decisão. *(sempre, em `<featurePath>/`)*
 - `architecture.md` — Retrato da arquitetura detectada no estágio ARCH, mais o baseline técnico pesquisado. *(sempre, em `<featurePath>/`)*
-- `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orchestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
+- `handoff.json` — Manifesto de handoff para o `/cc-orchestrador-subagents:orquestrador` (ancora de descoberta dos artefatos; veja `references/handoff-contract.md`). *(sempre)*
 
 ## Isolamento por atualização
 
@@ -127,9 +127,9 @@ O Pensador delega aos subagentes **Codex** (estágios BRAINSTORM_GERAL e CODEX) 
 
 > Se um subagente estiver ausente, o Pensador detecta no [preflight](#preflight) e pergunta (via `AskUserQuestion`) se deve prosseguir sem ele.
 
-### 3 · Opcional: Kiro (para `--modo kiro`)
+### 3 · Opcional: Kiro (para `--mode kiro`)
 
-O modo de execução `--modo kiro` delega o trabalho pesado ao **Kiro CLI** via o plugin `cc-kiro-plugin`:
+O modo de execução `--mode kiro` delega o trabalho pesado ao **Kiro CLI** via o plugin `cc-kiro-plugin`:
 
 ```text
 /plugin marketplace add AllanHarlen/cc-kiro-plugin
@@ -137,41 +137,45 @@ O modo de execução `--modo kiro` delega o trabalho pesado ao **Kiro CLI** via 
 /reload-plugins
 ```
 
-Instale e autentique a Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash` ou, no Windows, `irm 'https://cli.kiro.dev/install.ps1' | iex`; depois `kiro-cli login`). Os modos `--modo agy` e `--modo codex` reaproveitam os plugins `cc-antigravity-plugin` e `openai-codex` já instalados acima.
+Instale e autentique a Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash` ou, no Windows, `irm 'https://cli.kiro.dev/install.ps1' | iex`; depois `kiro-cli login`). Os modos `--mode agy` e `--mode codex` reaproveitam os plugins `cc-antigravity-plugin` e `openai-codex` já instalados acima.
 
-> Os três plugins (`cc-antigravity-plugin`, `openai-codex`, `cc-kiro-plugin`) são declarados como dependências cross-marketplace. Se o motor do `--modo` escolhido estiver ausente, o Pensador oferece cair para `--modo claude` via `AskUserQuestion`.
+> Os três plugins (`cc-antigravity-plugin`, `openai-codex`, `cc-kiro-plugin`) são declarados como dependências cross-marketplace. Se o motor do `--mode` escolhido estiver ausente, o Pensador oferece cair para `--mode claude` via `AskUserQuestion`.
 
 ## Uso
 
 ```text
-/pensador [--modo claude|agy|kiro|codex] [--model <id>] [--effort <nível>] <demanda>
+/pensador [--mode claude|agy|kiro|codex] [--model <id>] [--effort <nível>] <demanda>
 ```
+
+Subcomandos: `help`, `preflight`, `status`, `resume [slug]`, `config`.
 
 Exemplo:
 
 ```text
 /pensador Crie uma tela de login para os usuários
-/pensador --modo kiro Crie uma tela de login para os usuários
-/pensador --modo agy --model claude-4.6-opus-thinking Construir API de pagamentos
+/pensador --mode kiro Crie uma tela de login para os usuários
+/pensador --mode agy --model claude-4.6-opus-thinking Construir API de pagamentos
+/pensador status
 ```
 
 Se `<demanda>` for omitida, o Pensador a solicita via `AskUserQuestion` antes de iniciar o estágio **PRD_BASE**.
 
-## Modos de execução (`--modo`)
+## Modos de execução (`--mode`)
 
 O **modo de execução** define **qual motor executa o trabalho pesado** do fluxo (redigir o PRD base, expandir requisitos, sintetizar análises e gerar artefatos). É **ortogonal** às lentes de domínio (Codex/AGY/skills dentro dos estágios). Por padrão, o Claude Code faz tudo e gasta os próprios tokens; um modo delegado transfere esse custo para a quota da CLI externa, mantendo o Claude apenas como orquestrador.
 
 | Modo | Quem trabalha | Slash command de delegação | Parâmetro padrão |
 |---|---|---|---|
-| `--modo claude` (padrão) | Claude Code | — | — |
-| `--modo agy` | Antigravity CLI | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
-| `--modo kiro` | Kiro CLI | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
-| `--modo codex` | Codex CLI | `/codex:rescue` | `--effort high` |
+| `--mode claude` (padrão) | Claude Code | — | — |
+| `--mode agy` | Antigravity CLI | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
+| `--mode kiro` | Kiro CLI | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
+| `--mode codex` | Codex CLI | `/codex:rescue` | `--effort high` |
 
 - **Invariante preservada:** em qualquer modo, todo diálogo com o usuário continua passando **exclusivamente** por `AskUserQuestion`. O motor externo só produz rascunhos/análises; o Pensador relê, consolida e transforma decisões em perguntas.
 - Sobrescritas: `--model <id>` (agy/kiro) e `--effort <nível>` (kiro/codex; `xhigh`/`extrahigh` → `high`).
-- `--modo` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
-- O preflight é executado com `--modo <modo>`; se o motor estiver indisponível, o Pensador oferece cair para `--modo claude`.
+- `--mode` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
+- O preflight é executado com `--mode <modo>`; se o motor estiver indisponível, o Pensador oferece cair para `--mode claude`.
+- `--modo` continua aceito como alias legado silencioso de `--mode`, com comportamento idêntico.
 
 Detalhes completos em `skills/pensador/references/execution-modes.md`. Mapeamento determinístico em `scripts/pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
 
@@ -228,7 +232,7 @@ Veja `skills/pensador/references/tech-research.md`.
 
 ### Comum aos dois: o Prompt System reaproveitável
 
-`buildResearchPromptSystem()` empacota os dois tracks em `PROMPT_SYSTEM_SECTIONS`, agrupados por `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), e o bloco é injetado verbatim no PRD base, no EXPAND, no `context-pack.md`, em **todo prompt delegado** em `--modo agy|kiro|codex`, no brief do Open Design, no CODEX e no handoff. Cada consumidor injeta apenas o grupo de que precisa — o brief de design não tem uso para convenções de ORM, a lente de back-end não tem uso para precificação de concorrente.
+`buildResearchPromptSystem()` empacota os dois tracks em `PROMPT_SYSTEM_SECTIONS`, agrupados por `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), e o bloco é injetado verbatim no PRD base, no EXPAND, no `context-pack.md`, em **todo prompt delegado** em `--mode agy|kiro|codex`, no brief do Open Design, no CODEX e no handoff. Cada consumidor injeta apenas o grupo de que precisa — o brief de design não tem uso para convenções de ORM, a lente de back-end não tem uso para precificação de concorrente.
 
 Conformidade de conteúdo é obrigatória nos dois tracks: citar a URL de toda fonte, nunca reproduzir mais de 30 palavras consecutivas, parafrasear e jamais copiar assets/textos/código de terceiros. A saída é análise, não cópia.
 
@@ -280,10 +284,10 @@ No estágio **COMPLEXITY**, o Pensador calcula um score (0–4) com base em quat
 O comando `/pensador` executa um preflight antes de iniciar o fluxo, informando o modo de execução escolhido:
 
 ```bash
-node scripts/preflight.mjs --modo <claude|agy|kiro|codex>
+node scripts/preflight.mjs --mode <claude|agy|kiro|codex>
 ```
 
-Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade dos subagentes de domínio (Codex e AGY) e do **motor de execução** do `--modo` (Antigravity, Kiro ou Codex), e emite um JSON com o bloco `executionMode`, o bloco `integrations` (obrigatório `codebaseMemory` + opcional `openspec` + opcional `openDesign`) e o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
+Ele inspeciona o cache de plugins do Claude Code para verificar a disponibilidade dos subagentes de domínio (Codex e AGY) e do **motor de execução** do `--mode` (Antigravity, Kiro ou Codex), e emite um JSON com o bloco `executionMode`, o bloco `integrations` (obrigatório `codebaseMemory` + opcional `openspec` + opcional `openDesign`) e o campo `status` (`ok` | `partial` | `unavailable`). O script **sempre sai com código 0**.
 
 ## Gates de avanço
 
@@ -308,7 +312,7 @@ cc-pensador/
 │  ├─ plugin.json            # manifesto do plugin (nome, versão, dependências)
 │  └─ marketplace.json       # entrada de marketplace
 ├─ commands/
-│  └─ pensador.md            # comando /pensador (orquestra os 12 estágios + --modo)
+│  └─ pensador.md            # comando /pensador (orquestra os 12 estágios + --mode)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature + modos de execução
@@ -317,7 +321,7 @@ cc-pensador/
 │  │  │  ├─ feature-isolation.md         # .pensador/<slug-da-demanda>-vN/, allocateFeatureDir(), shared-agents/
 │  │  │  ├─ agent-stack.md               # Codex/AGY/Kiro, roteamento BRAINSTORM_GERAL, motores de execução
 │  │  │  ├─ skill-stack.md               # skills como lentes de domínio
-│  │  │  ├─ execution-modes.md           # modos --modo (claude/agy/kiro/codex), parsing, preflight, delegação
+│  │  │  ├─ execution-modes.md           # modos --mode (claude/agy/kiro/codex), parsing, preflight, delegação
 │  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) obrigatório: exploração antes do PRD/Spec
 │  │  │  ├─ web-research.md              # RESEARCH track de negócio: arquétipos, plano de consultas, tiers, Prompt System
 │  │  │  ├─ tech-research.md             # RESEARCH track técnico: detecção de stack, versão atual, padrões, convenções
@@ -339,7 +343,7 @@ cc-pensador/
 │  ├─ feature-isolation.test.js    # allocateFeatureDir, buildFeaturePath
 │  ├─ consolidate.test.js          # consolidate, withConsolidated
 │  ├─ artifacts.test.js            # isFullstack, planArtifacts, buildArtifactList
-│  ├─ execution-modes.test.js      # --modo: parse/resolve/buildDelegationInvocation
+│  ├─ execution-modes.test.js      # --mode: parse/resolve/buildDelegationInvocation
 │  ├─ integrations.test.js         # Code Base Memory + OpenSpec (modo Spec) + Open Design
 │  ├─ web-research.test.js         # RESEARCH track de negócio: arquétipos, consultas, tiers
 │  ├─ tech-research.test.js        # RESEARCH track técnico: stack, lacunas, fases do orçamento, adoção

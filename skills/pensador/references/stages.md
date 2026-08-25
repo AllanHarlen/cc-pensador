@@ -14,7 +14,7 @@ A sequencia e fixa e nunca reordenada. O avanco e controlado por gate: o Pensado
 
 Funil v2: **iniciar/retomar** -> **explorar (Code Base Memory)** -> **pesquisar mercado (web)** -> **PRD/Spec base** -> **arquitetura** -> **expandir** -> **calibrar complexidade** -> **brainstorm geral por dominio** -> **varredura tecnica** -> **varredura de produto** -> **consolidar** -> **entregar**.
 
-> **Modo de execucao.** O trabalho pesado de cada estagio (redigir PRD base, expandir, sintetizar analises, gerar artefatos) e executado pelo motor escolhido em `--modo`. Em `--modo claude` (padrao) o Claude Code redige inline; em `--modo agy|kiro|codex` o Pensador delega cada unidade de trabalho via slash command e so orquestra. Em qualquer modo, os gates e o canal `AskUserQuestion` permanecem identicos. Veja `references/execution-modes.md`.
+> **Modo de execucao.** O trabalho pesado de cada estagio (redigir PRD base, expandir, sintetizar analises, gerar artefatos) e executado pelo motor escolhido em `--mode`. Em `--mode claude` (padrao) o Claude Code redige inline; em `--mode agy|kiro|codex` o Pensador delega cada unidade de trabalho via slash command e so orquestra. Em qualquer modo, os gates e o canal `AskUserQuestion` permanecem identicos. Veja `references/execution-modes.md`.
 
 ---
 
@@ -22,7 +22,7 @@ Funil v2: **iniciar/retomar** -> **explorar (Code Base Memory)** -> **pesquisar 
 
 **Proposito:** obter demanda, resolver modo de execucao, resolver retomada e definir isolamento por atualizacao.
 
-- `parseExecutionMode($ARGUMENTS)` separa `--modo` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Modo desconhecido cai para `claude` com aviso via `AskUserQuestion`. Veja `references/execution-modes.md`.
+- `parseExecutionMode($ARGUMENTS)` separa `--mode` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Modo desconhecido cai para `claude` com aviso via `AskUserQuestion`. Veja `references/execution-modes.md`.
 - Checkpoints v2 ficam em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
 - Checkpoint valido: perguntar via `AskUserQuestion` se o usuario quer retomar ou criar nova atualizacao.
 - Checkpoint v1 em `pensador-output/.pensador-progress.json`: incompativel. Perguntar se deve iniciar fluxo v2 novo.
@@ -100,7 +100,7 @@ Protocolo completo em `references/tech-research.md`.
 
 ### Prompt System
 
-`buildResearchPromptSystem()` empacota os dois tracks em `PROMPT_SYSTEM_SECTIONS`, agrupados por `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), e o bloco e injetado verbatim nos consumidores de `WEB_RESEARCH.promptSystemConsumers` + `TECH_RESEARCH.consumers`: PRD base, EXPAND, `context-pack.md`, prompts delegados em `--modo`, brief do Open Design, CODEX e handoff. Injete apenas o grupo pertinente a cada consumidor.
+`buildResearchPromptSystem()` empacota os dois tracks em `PROMPT_SYSTEM_SECTIONS`, agrupados por `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), e o bloco e injetado verbatim nos consumidores de `WEB_RESEARCH.promptSystemConsumers` + `TECH_RESEARCH.consumers`: PRD base, EXPAND, `context-pack.md`, prompts delegados em `--mode`, brief do Open Design, CODEX e handoff. Injete apenas o grupo pertinente a cada consumidor.
 
 **Gate:** `market-research.md` **e** `tech-research.md` gravados (`DONE`/`PARTIAL`/`DEFERRED`/`SKIPPED` com motivo) e perguntas `web-research` — benchmark e lacunas de stack — respondidas ou diferidas.
 

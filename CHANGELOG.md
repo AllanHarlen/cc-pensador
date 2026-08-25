@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.13.0] — 2026-08-19
+
+### Superfície de comando unificada e legível
+
+Os três plugins do pipeline (`/pensador` → `/orquestrador` → `/executor`) passam a compartilhar a mesma gramática de subcomandos e o mesmo vocabulário de flags, em inglês. O `commands/pensador.md` foi reorganizado para começar pela interface — Sinopse, Subcomandos reservados e Flags — com a narrativa dos doze estágios comprimida numa tabela que aponta para `references/stages.md`.
+
+- **`--modo` → `--mode`.** O nome antigo continua aceito em silêncio, com efeito idêntico e sem aviso de depreciação. O alias vale tanto em `parseExecutionMode()` quanto no `preflight.mjs`.
+- **Novos subcomandos:** `help`, `preflight`, `status`, `resume [slug]` e `config`. `status` e `resume` expõem como comando a lógica de checkpoint que só existia como pergunta dentro do INIT; `config` é read-only (o Pensador não persiste configuração — quem grava a stack do projeto é `/orquestrador project-config`).
+- `argument-hint` passa a declarar a superfície completa.
+- O handoff aponta para `/cc-orchestrador-subagents:orquestrador` (o alias em português foi renomeado de `/orchestrador`); `handoff-contract.md` acompanha nas três cópias byte-idênticas.
+
+> **Nota de implementação.** `--mode` é prefixo estrito de `--model`, então a alternância `mode|modo` poderia engolir o flag de modelo. O separador obrigatório (`=` ou espaço) é o que impede isso: `--mode` seguido de `l` falha e o texto cai no extrator de `--model`. `test/execution-modes.test.js` cobre as duas ordens de aparição, já que o extrator de modo roda antes do de modelo.
+
 ## [2.12.0] — 2026-08-19
 
 ### `handoff-contract.md` ressincronizado, byte-idêntico nos três plugins

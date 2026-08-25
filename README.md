@@ -1,6 +1,6 @@
 # cc-pensador
 
-> Claude Code plugin that conducts a natural language request through **twelve stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--modo`, saving Claude tokens.
+> Claude Code plugin that conducts a natural language request through **twelve stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--mode`, saving Claude tokens.
 
 `version 2.7.2` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
@@ -12,7 +12,7 @@ The `cc-pensador` distributes **Pensador v2**: the `pensador` skill and the `/pe
 
 **Central invariant:** all dialogue between agents and user passes **exclusively** through the `AskUserQuestion` tool. No stage communicates through any other channel.
 
-By default (`--modo claude`), Claude Code runs the flow on its own tokens. With `--modo agy`, `--modo kiro`, or `--modo codex`, Claude becomes a thin orchestrator and delegates the heavy work to an external CLI — see [Execution Modes](#execution-modes---modo).
+By default (`--mode claude`), Claude Code runs the flow on its own tokens. With `--mode agy`, `--mode kiro`, or `--mode codex`, Claude becomes a thin orchestrator and delegates the heavy work to an external CLI — see [Execution Modes](#execution-modes---mode).
 
 ## Quick Start
 
@@ -40,9 +40,9 @@ Pensador delegates to subagents **Codex** and **AGY**.
 
 > If a subagent is missing, Pensador detects it during preflight and asks via `AskUserQuestion` whether to proceed without it.
 
-### Optional: Kiro (for `--modo kiro`)
+### Optional: Kiro (for `--mode kiro`)
 
-The `--modo kiro` execution mode delegates the heavy work to the **Kiro CLI** via the `cc-kiro-plugin`:
+The `--mode kiro` execution mode delegates the heavy work to the **Kiro CLI** via the `cc-kiro-plugin`:
 
 ```bash
 /plugin marketplace add AllanHarlen/cc-kiro-plugin
@@ -50,40 +50,44 @@ The `--modo kiro` execution mode delegates the heavy work to the **Kiro CLI** vi
 /reload-plugins
 ```
 
-Install and authenticate the Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash`, or on Windows `irm 'https://cli.kiro.dev/install.ps1' | iex`; then `kiro-cli login`). The `--modo agy` and `--modo codex` modes reuse the `cc-antigravity-plugin` and `openai-codex` plugins installed above.
+Install and authenticate the Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash`, or on Windows `irm 'https://cli.kiro.dev/install.ps1' | iex`; then `kiro-cli login`). The `--mode agy` and `--mode codex` modes reuse the `cc-antigravity-plugin` and `openai-codex` plugins installed above.
 
-> The three plugins (`cc-antigravity-plugin`, `openai-codex`, `cc-kiro-plugin`) are declared as cross-marketplace dependencies. If the chosen `--modo` engine is missing, Pensador offers to fall back to `--modo claude` via `AskUserQuestion`.
+> The three plugins (`cc-antigravity-plugin`, `openai-codex`, `cc-kiro-plugin`) are declared as cross-marketplace dependencies. If the chosen `--mode` engine is missing, Pensador offers to fall back to `--mode claude` via `AskUserQuestion`.
 
 ### Usage
 
 ```bash
-/pensador [--modo claude|agy|kiro|codex] [--model <id>] [--effort <level>] <natural language request>
+/pensador [--mode claude|agy|kiro|codex] [--model <id>] [--effort <level>] <natural language request>
 ```
+
+Sub-commands: `help`, `preflight`, `status`, `resume [slug]`, `config`.
 
 Example:
 ```bash
 /pensador Create a login screen for users
-/pensador --modo kiro Create a login screen for users
-/pensador --modo agy --model claude-4.6-opus-thinking Build a payments API
+/pensador --mode kiro Create a login screen for users
+/pensador --mode agy --model claude-4.6-opus-thinking Build a payments API
+/pensador status
 ```
 
 If `<request>` is omitted, Pensador prompts for it via `AskUserQuestion` before starting the **PRD_BASE** stage.
 
-## Execution Modes (`--modo`)
+## Execution Modes (`--mode`)
 
 The **execution mode** defines **which engine performs the heavy work** of the flow (drafting the base PRD, expanding requirements, synthesizing analyses, and generating artifacts). It is **orthogonal** to the domain lenses (Codex/AGY/skills inside the stages). By default, Claude Code does everything and spends its own tokens; a delegated mode shifts that cost to the external CLI's quota, keeping Claude only as the orchestrator.
 
 | Mode | Who works | Delegation slash command | Default parameter |
 |---|---|---|---|
-| `--modo claude` (default) | Claude Code | — | — |
-| `--modo agy` | Antigravity CLI | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
-| `--modo kiro` | Kiro CLI | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
-| `--modo codex` | Codex CLI | `/codex:rescue` | `--effort high` |
+| `--mode claude` (default) | Claude Code | — | — |
+| `--mode agy` | Antigravity CLI | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` |
+| `--mode kiro` | Kiro CLI | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
+| `--mode codex` | Codex CLI | `/codex:rescue` | `--effort high` |
 
 - **Preserved invariant:** in any mode, all user dialogue still passes **exclusively** through `AskUserQuestion`. The external engine only produces drafts/analyses; Pensador re-reads, consolidates, and turns decisions into questions.
 - Overrides: `--model <id>` (agy/kiro) and `--effort <level>` (kiro/codex; `xhigh`/`extrahigh` → `high`).
-- An unknown `--modo` falls back to `claude` with a warning via `AskUserQuestion`.
-- Preflight runs with `--modo <mode>`; if the engine is unavailable, Pensador offers to fall back to `--modo claude`.
+- An unknown `--mode` falls back to `claude` with a warning via `AskUserQuestion`.
+- Preflight runs with `--mode <mode>`; if the engine is unavailable, Pensador offers to fall back to `--mode claude`.
+- `--modo` remains accepted as a silent legacy alias of `--mode`, with identical behavior.
 
 Full details in `skills/pensador/references/execution-modes.md`. Deterministic mapping in `scripts/pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
 
@@ -140,7 +144,7 @@ See `skills/pensador/references/tech-research.md`.
 
 ### Shared: the reusable Prompt System
 
-`buildResearchPromptSystem()` packages both tracks into `PROMPT_SYSTEM_SECTIONS`, grouped by `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), and the block is injected verbatim into the PRD base, EXPAND, `context-pack.md`, every delegated prompt in `--modo agy|kiro|codex`, the Open Design brief, CODEX and the handoff. Consumers inject only the group they need — the design brief has no use for ORM conventions, the backend lens has no use for competitor pricing.
+`buildResearchPromptSystem()` packages both tracks into `PROMPT_SYSTEM_SECTIONS`, grouped by `PROMPT_SYSTEM_SECTION_GROUPS` (`business` / `technical`), and the block is injected verbatim into the PRD base, EXPAND, `context-pack.md`, every delegated prompt in `--mode agy|kiro|codex`, the Open Design brief, CODEX and the handoff. Consumers inject only the group they need — the design brief has no use for ORM conventions, the backend lens has no use for competitor pricing.
 
 Content compliance is enforced on both tracks: cite every source URL, never reproduce more than 30 consecutive words, paraphrase, never copy third-party assets/copy/code. The output is an analysis, not a copy.
 
@@ -180,7 +184,7 @@ INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY �
 
 | Stage | Purpose | Delegates | Always runs |
 |---|---|---|---|
-| **INIT** | Resolve execution mode (`--modo`), check v2 checkpoint resumption, allocate feature dir, obtain request, ask PRD-vs-Spec when OpenSpec is detected | — | ✓ |
+| **INIT** | Resolve execution mode (`--mode`), check v2 checkpoint resumption, allocate feature dir, obtain request, ask PRD-vs-Spec when OpenSpec is detected | — | ✓ |
 | **EXPLORE** | Explore the project with Code Base Memory (`index_repository → get_architecture → search_graph → trace_path`); write `codebase-memory.md`. Falls back to Read/Glob/Grep if unavailable. | MCP `codebase-memory-mcp` | ✓ |
 | **RESEARCH** | Look outward, two tracks. *business*: collect `sectorContext`, confirm the product archetype, run the bounded query plan, inventory and tier competitor features → `market-research.md`. *technical*: detect the stack, close its gaps, research current versions/architecture/patterns/conventions → `tech-research.md`. Both feed the reusable Prompt System. | `WebSearch` · `WebFetch` | except no-product-surface requests |
 | **PRD_BASE** | Generate base PRD via `Strict_PRD_Schema` (or scaffold the OpenSpec change set via `openspec-*` commands in spec mode). No user questions; auto-advance. | skill `prd` / `openspec-*` | ✓ |
@@ -207,7 +211,7 @@ All saved directly under `.pensador/<slug-vN>/`. Confirms overwrite via `AskUser
 - `market-research.md` — Business-track snapshot: sector, archetype, competitors, feature matrix with tiers, sector compliance and sources. *(always, in `<featurePath>/`)*
 - `tech-research.md` — Technical-track snapshot: stack with the **researched current version**, idiomatic project structure, architecture/design patterns with adoption status, conventions, security and testing baselines, discouraged anti-patterns and the official doc URL behind each. *(always, in `<featurePath>/`)*
 - `architecture.md` — Detected architecture portrait plus the researched technical baseline. *(always, in `<featurePath>/`)*
-- `handoff.json` — Handoff manifest for `/cc-orchestrador-subagents:orchestrador` (artifact discovery anchor; see `references/handoff-contract.md`). *(always)*
+- `handoff.json` — Handoff manifest for `/cc-orchestrador-subagents:orquestrador` (artifact discovery anchor; see `references/handoff-contract.md`). *(always)*
 
 ## Lite vs. Full Mode
 
@@ -229,10 +233,10 @@ In the **COMPLEXITY** stage, Pensador calculates a score (0–4) based on four s
 The `/pensador` command runs a preflight before starting the flow, passing the chosen execution mode:
 
 ```bash
-node scripts/preflight.mjs --modo <claude|agy|kiro|codex>
+node scripts/preflight.mjs --mode <claude|agy|kiro|codex>
 ```
 
-It inspects the Claude Code plugin cache to verify the availability of the domain subagents (Codex and AGY) and the `--modo` **execution engine** (Antigravity, Kiro, or Codex), and emits JSON with an `executionMode` block, an `integrations` block (mandatory `codebaseMemory` + optional `openspec` + optional `openDesign`), and a `status` field (`ok` | `partial` | `unavailable`). The script **always exits with code 0**.
+It inspects the Claude Code plugin cache to verify the availability of the domain subagents (Codex and AGY) and the `--mode` **execution engine** (Antigravity, Kiro, or Codex), and emits JSON with an `executionMode` block, an `integrations` block (mandatory `codebaseMemory` + optional `openspec` + optional `openDesign`), and a `status` field (`ok` | `partial` | `unavailable`). The script **always exits with code 0**.
 
 ## Project Structure
 
@@ -242,7 +246,7 @@ cc-pensador/
 │  ├─ plugin.json            # plugin manifest
 │  └─ marketplace.json       # marketplace entry
 ├─ commands/
-│  └─ pensador.md            # /pensador command (orchestrates the 12 stages + --modo)
+│  └─ pensador.md            # /pensador command (orchestrates the 12 stages + --mode)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md
@@ -251,7 +255,7 @@ cc-pensador/
 │  │  │  ├─ feature-isolation.md
 │  │  │  ├─ agent-stack.md
 │  │  │  ├─ skill-stack.md
-│  │  │  ├─ execution-modes.md           # --modo (claude/agy/kiro/codex): parsing, preflight, delegation
+│  │  │  ├─ execution-modes.md           # --mode (claude/agy/kiro/codex): parsing, preflight, delegation
 │  │  │  ├─ codebase-memory.md           # Code Base Memory (MCP) mandatory exploration before PRD/Spec
 │  │  │  ├─ web-research.md              # RESEARCH business track: product archetypes, query plan, feature tiers, Prompt System
 │  │  │  ├─ tech-research.md             # RESEARCH technical track: stack detection, current versions, patterns, conventions
@@ -273,7 +277,7 @@ cc-pensador/
 │  ├─ feature-isolation.test.js
 │  ├─ consolidate.test.js
 │  ├─ artifacts.test.js
-│  ├─ execution-modes.test.js            # --modo: parse/resolve/buildDelegationInvocation
+│  ├─ execution-modes.test.js            # --mode: parse/resolve/buildDelegationInvocation
 │  ├─ integrations.test.js               # Code Base Memory + OpenSpec spec mode + Open Design
 │  ├─ web-research.test.js               # RESEARCH business track: archetypes, query plan, feature tiers
 │  ├─ tech-research.test.js              # RESEARCH technical track: stack detection, gaps, budget phases, adoption

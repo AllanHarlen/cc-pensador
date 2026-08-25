@@ -21,7 +21,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/feature-isolation.md` | Isolamento por feature, `allocateFeatureDir()`, checkpoints e contrato `shared-agents/` |
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Roteamento Codex/AGY/Kiro e contrato `shared-agents/` |
-| `skills/pensador/references/execution-modes.md` | Modos de execucao `--modo` (claude/agy/kiro/codex) e contrato de delegacao |
+| `skills/pensador/references/execution-modes.md` | Modos de execucao `--mode` (claude/agy/kiro/codex) e contrato de delegacao |
 | `skills/pensador/references/codebase-memory.md` | Code Base Memory (MCP) obrigatorio: exploracao do projeto antes do PRD/Spec |
 | `skills/pensador/references/web-research.md` | RESEARCH, track de negocio: arquetipos de produto, plano de consultas, classificacao de funcionalidades e o Prompt System reaproveitavel |
 | `skills/pensador/references/tech-research.md` | RESEARCH, track tecnico: deteccao de stack, lacunas, versao atual, padroes de arquitetura/design, convencoes e anti-padroes vigentes |
@@ -121,12 +121,12 @@ O idioma padrao e PT-BR. Cada pergunta deve oferecer uma opcao recomendada quand
 
 ---
 
-## Modos de execucao (`--modo`)
+## Modos de execucao (`--mode`)
 
 O modo de execucao define **qual motor executa o trabalho pesado** do fluxo (redigir o PRD base, expandir requisitos, sintetizar analises e gerar artefatos). E ortogonal a delegacao por estagio (Codex/AGY/skills como lentes de dominio).
 
-- `--modo claude` (padrao, ou ausente): o Claude Code faz o trabalho e gasta os proprios tokens.
-- `--modo agy` | `--modo kiro` | `--modo codex`: o Claude Code vira um orquestrador fino e **delega** cada unidade de trabalho para a CLI externa via slash command, fazendo o custo recair sobre a quota daquele motor. Barateia a geracao dos artefatos.
+- `--mode claude` (padrao, ou ausente): o Claude Code faz o trabalho e gasta os proprios tokens.
+- `--mode agy` | `--mode kiro` | `--mode codex`: o Claude Code vira um orquestrador fino e **delega** cada unidade de trabalho para a CLI externa via slash command, fazendo o custo recair sobre a quota daquele motor. Barateia a geracao dos artefatos.
 
 | Modo | Slash command | Parametro padrao |
 |---|---|---|
@@ -138,10 +138,10 @@ O modo de execucao define **qual motor executa o trabalho pesado** do fluxo (red
 Regras centrais:
 
 - **Invariante preservada:** em qualquer modo, todo dialogo com o usuario continua passando exclusivamente por `AskUserQuestion`. O motor externo nunca conversa com o usuario; ele so produz rascunhos/analises que o Pensador relê e consolida.
-- Parsing: `parseExecutionMode($ARGUMENTS)` extrai `--modo`, `--model` e `--effort` e devolve o restante como `demanda`. `--modo` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
-- Preflight: rode `preflight.mjs --modo <modo>`; se o motor escolhido estiver indisponivel, pergunte via `AskUserQuestion` se deve cair para `--modo claude` ou abortar.
+- Parsing: `parseExecutionMode($ARGUMENTS)` extrai `--mode`, `--model` e `--effort` e devolve o restante como `demanda`. `--mode` desconhecido cai para `claude` com aviso via `AskUserQuestion`.
+- Preflight: rode `preflight.mjs --mode <modo>`; se o motor escolhido estiver indisponivel, pergunte via `AskUserQuestion` se deve cair para `--mode claude` ou abortar.
 - Decisoes que exigem o usuario nunca sao delegadas: viram perguntas `AskUserQuestion` feitas pelo proprio Pensador.
-- O modo de execucao e independente das lentes de dominio: mesmo em `--modo kiro`, os estagios `CODEX` e `AGY` continuam usando `codex:codex-rescue` e `cc-antigravity-plugin:antigravity-agent` como lentes (salvo fallback).
+- O modo de execucao e independente das lentes de dominio: mesmo em `--mode kiro`, os estagios `CODEX` e `AGY` continuam usando `codex:codex-rescue` e `cc-antigravity-plugin:antigravity-agent` como lentes (salvo fallback).
 
 Detalhes completos, parsing, fallback e contrato de delegacao em `references/execution-modes.md`. Mapeamento deterministico em `pensador-engine.mjs` (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`).
 
@@ -162,7 +162,7 @@ O Pensador nunca avanca para o proximo estagio enquanto existir pergunta sem des
 
 ```text
 INIT
-  Resolve modo de execucao (--modo), verifica demanda, checkpoint v2 e aloca featurePath.
+  Resolve modo de execucao (--mode), verifica demanda, checkpoint v2 e aloca featurePath.
   Se OpenSpec for detectado, pergunta PRD vs Spec (artifactMode).
 
 EXPLORE
@@ -228,7 +228,7 @@ DONE
 
 ## INIT
 
-1. Execute `parseExecutionMode($ARGUMENTS)` para separar `--modo` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Registre o modo de execucao no estado. Se `--modo` for desconhecido, avise via `AskUserQuestion` e use `claude`.
+1. Execute `parseExecutionMode($ARGUMENTS)` para separar `--mode` (claude/agy/kiro/codex), `--model`/`--effort` e a `demanda`. Registre o modo de execucao no estado. Se `--mode` for desconhecido, avise via `AskUserQuestion` e use `claude`.
 2. Verifique se ha checkpoints v2 em `.pensador/<slug-da-demanda>-vN/.pensador-progress.json`.
 3. Se houver checkpoint v2 valido, pergunte via `AskUserQuestion` se o usuario quer retomar do estagio salvo ou iniciar nova atualizacao. A opcao recomendada deve ser retomar quando o checkpoint estiver consistente.
 4. Se houver apenas checkpoint v1 em `pensador-output/.pensador-progress.json`, trate como incompativel. Pergunte se deve iniciar um fluxo v2 novo, deixando claro que o checkpoint antigo nao sera reutilizado.
@@ -319,7 +319,7 @@ Protocolo completo, registro de tecnologias, angulos por categoria e anti-padroe
 - **`technical`:** `techStack`, `architectureBaseline`, `designPatterns`, `codingConventions`, `securityBaseline`, `testingBaseline`, `technicalAntiPatterns`
 - **compartilhado:** `openQuestions`
 
-Esse bloco e injetado **verbatim** nos consumidores de `WEB_RESEARCH.promptSystemConsumers` e `TECH_RESEARCH.consumers`: PRD base, EXPAND, `context-pack.md` do BRAINSTORM_GERAL, **toda unidade de trabalho delegada** em `--modo agy|kiro|codex`, o brief do Open Design, o CODEX e o recap/handoff. Injete apenas o **grupo pertinente** a cada consumidor — o brief do Open Design nao tem uso para convencoes de ORM, e a lente de back-end nao tem uso para precificacao de concorrente.
+Esse bloco e injetado **verbatim** nos consumidores de `WEB_RESEARCH.promptSystemConsumers` e `TECH_RESEARCH.consumers`: PRD base, EXPAND, `context-pack.md` do BRAINSTORM_GERAL, **toda unidade de trabalho delegada** em `--mode agy|kiro|codex`, o brief do Open Design, o CODEX e o recap/handoff. Injete apenas o **grupo pertinente** a cada consumidor — o brief do Open Design nao tem uso para convencoes de ORM, e a lente de back-end nao tem uso para precificacao de concorrente.
 
 Assim toda lente raciocina sobre o mesmo contexto de negocio **e** o mesmo baseline tecnico pesquisado, em vez de re-inferir dominio e stack a partir da demanda crua.
 

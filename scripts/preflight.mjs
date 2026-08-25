@@ -9,7 +9,7 @@
  *      - Codex (codex:codex-rescue)                       — CODEX / BRAINSTORM_GERAL
  *      - AGY   (cc-antigravity-plugin:antigravity-agent)  — AGY   / BRAINSTORM_GERAL
  *
- * 2) EXECUTION MODE (--modo) — who performs the heavy generative work of the
+ * 2) EXECUTION MODE (--mode) — who performs the heavy generative work of the
  *    flow. `claude` (default) spends Claude Code tokens; `agy` | `kiro` | `codex`
  *    delegate the work to an external CLI plugin (via a slash command) so the
  *    cost is billed to that engine's quota instead, while Claude orchestrates and
@@ -33,7 +33,7 @@
  * global CLI, so a missing binary must not produce a false-negative.
  *
  * Usage:
- *   node preflight.mjs [--modo claude|agy|kiro|codex]
+ *   node preflight.mjs [--mode claude|agy|kiro|codex]
  *
  * Output: JSON to stdout. Always exits 0 — the /pensador command reads the
  * `status` field to decide whether to fall back (to user questions for a stage,
@@ -92,7 +92,7 @@ const OPEN_DESIGN_CLI = "od";
 const OPEN_DESIGN_SERVER = "open-design";
 
 /**
- * Execution modes recognized by --modo. Mirrors EXECUTION_MODES in
+ * Execution modes recognized by --mode. Mirrors EXECUTION_MODES in
  * pensador-engine.mjs. `claude` is the default and needs no plugin.
  */
 const EXECUTION_MODES = {
@@ -120,12 +120,15 @@ const EXECUTION_MODES = {
 // ── Arguments ──────────────────────────────────────────────────────────────
 
 /**
- * Parses `--modo <value>` / `--modo=<value>` from argv. Unknown / absent →
+ * Parses `--mode <value>` / `--mode=<value>` from argv. Unknown / absent →
  * `claude`. Returns the resolved mode plus whether the requested value was valid.
+ *
+ * `--modo` is kept as a silent legacy alias. The mandatory `=`/space separator
+ * keeps the alternation from swallowing an unrelated `--model` argument.
  */
 function parseModeArg(argv) {
   const joined = argv.join(" ");
-  const m = joined.match(/--modo(?:=|\s+)([a-zA-Z]+)/);
+  const m = joined.match(/--(?:mode|modo)(?:=|\s+)([a-zA-Z]+)/);
   const requested = m ? m[1].toLowerCase() : null;
   const known = requested !== null && Object.prototype.hasOwnProperty.call(EXECUTION_MODES, requested);
   return {
@@ -565,13 +568,13 @@ function checkOpenDesign() {
 }
 
 /**
- * Availability check for the selected execution mode (--modo). For the default
+ * Availability check for the selected execution mode (--mode). For the default
  * `claude` mode, always available (no external plugin needed). For a delegating
  * mode, checks the plugin cache for the engine plugin; the matching CLI binary is
  * probed as advisory only.
  *
  * @param {string} mode  Resolved execution mode key.
- * @param {boolean} modeValid  Whether the requested --modo value was recognized.
+ * @param {boolean} modeValid  Whether the requested --mode value was recognized.
  * @param {string|null} requestedMode  Raw requested value (for guidance).
  */
 function checkExecutionMode(mode, modeValid, requestedMode) {
@@ -607,7 +610,7 @@ function checkExecutionMode(mode, modeValid, requestedMode) {
     cliAdvisory: true,
     fallbackBehavior:
       `If the ${mode} engine plugin is unavailable, the Pensador asks (via AskUserQuestion) whether to ` +
-      `fall back to --modo claude (run on Claude Code tokens) or abort.`,
+      `fall back to --mode claude (run on Claude Code tokens) or abort.`,
   };
 }
 
@@ -638,7 +641,7 @@ const allAvailable =
  *
  * Fields:
  *   status         "ok" | "partial" | "unavailable"
- *   executionMode  selected --modo engine availability
+ *   executionMode  selected --mode engine availability
  *   subagents      domain-lens subagent checks (codex, agy)
  *   generatedAt    ISO timestamp
  *   guidance       human-readable summary for the LLM/command
@@ -685,21 +688,21 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
   // Execution mode summary first — it is the most impactful decision.
   if (!executionMode.modeValid) {
     lines.push(
-      `Execution mode: requested --modo "${executionMode.requestedMode}" is unknown; falling back to --modo claude.`,
+      `Execution mode: requested --mode "${executionMode.requestedMode}" is unknown; falling back to --mode claude.`,
     );
   }
 
   if (executionMode.delegates) {
     if (executionMode.available) {
       lines.push(
-        `Execution mode: --modo ${executionMode.mode} — engine available. ` +
+        `Execution mode: --mode ${executionMode.mode} — engine available. ` +
           `Delegating work via ${executionMode.command}${
             executionMode.defaultParam ? " " + executionMode.defaultParam : ""
           }. Claude orchestrates and owns AskUserQuestion.`,
       );
     } else {
       lines.push(
-        `Execution mode: --modo ${executionMode.mode} — engine NOT available (plugin not found).`,
+        `Execution mode: --mode ${executionMode.mode} — engine NOT available (plugin not found).`,
       );
       if (executionMode.plugin && !executionMode.plugin.ok) {
         lines.push(`  Plugin: ${executionMode.plugin.error}`);
@@ -707,7 +710,7 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
       lines.push(`  → ${executionMode.fallbackBehavior}`);
     }
   } else {
-    lines.push("Execution mode: --modo claude (default) — Claude Code performs the workflow itself.");
+    lines.push("Execution mode: --mode claude (default) — Claude Code performs the workflow itself.");
   }
 
   lines.push("");
@@ -845,7 +848,7 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
 
   lines.push("");
   lines.push(
-    "The Pensador handles unavailable subagents/engines at their respective points by asking the user (via AskUserQuestion) whether to proceed without them or fall back to --modo claude.",
+    "The Pensador handles unavailable subagents/engines at their respective points by asking the user (via AskUserQuestion) whether to proceed without them or fall back to --mode claude.",
   );
 
   return lines.join("\n");
