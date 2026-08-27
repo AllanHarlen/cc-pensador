@@ -1,5 +1,89 @@
 # Changelog
 
+## [2.17.0] — 2026-08-24
+
+### `requirements.json` (role `requirements-index`) — materia-prima do gate de cobertura RF/CA do Orquestrador
+
+Achado de auditoria: a premissa "o Orquestrador e obrigado a atender todos os criterios de aceite"
+nao tinha nenhum respaldo deterministico rio abaixo — mas a materia-prima ja existia aqui: o PRD
+gera tabelas `RF-XX`/`CA-XX` estaveis (secoes 6 e 14 de `prd-template.md`), com o vinculo `CA -> RF`
+explicito, e o handoff nunca extraia esse conjunto de IDs — o Orquestrador tinha de re-derivar a
+lista de requisitos lendo prosa, sem checagem contra a fonte.
+
+- `scripts/lib/requirements-extractor.mjs` (novo): `extractRequirements(prdMarkdown)` — parser puro
+  (sem I/O, sem estado do engine) das tabelas RF/CA reais do PRD, com fallback a `warnings[]` (nunca
+  throw) para secao ausente, tabela vazia ou referencia `CA -> RF` pendurada. Ignora as linhas de
+  template (`RF-N`/`CA-N`).
+- `scripts/pensador-engine.mjs`: novo role `requirements-index` (`requirements.json`) em
+  `buildArtifactList`, **somente modo PRD** — modo Spec expoe o equivalente ao vivo via
+  `openspec status --change <nome> --json`, um caminho de extracao diferente que este modulo nao
+  tenta espelhar.
+- `skills/pensador/references/handoff-contract.md` (canonico, replicado byte-identico nos tres
+  plugins) e `scripts/lib/handoff-validator.mjs` (idem): novo role documentado/validado.
+- `SKILL.md` FINAL passo 5: instrucao para gerar `requirements.json` a partir do `prd.md` recem
+  escrito, apos `project-baseline.json`.
+- `test/requirements-extractor.test.js` (novo, 15 testes): caminho positivo (extracao completa,
+  inclusive contra o `prd-template.md` real) e negativo (secao ausente, tabela vazia, referencia
+  pendurada, linha malformada — tudo degrada com warning, nunca lanca excecao).
+
+## [2.16.0] — 2026-08-24
+
+### Schema + validador do envelope `handoff.json` (`validate-handoff.mjs`)
+
+Achado de auditoria: `handoff.json` e a "ancora unica de descoberta" entre os tres plugins do
+workflow (handoff-contract.md secao 4) — o unico sinal que distingue modo conjunto de modo
+independente — mas nenhum codigo em nenhum dos tres repositorios escrevia, lia ou validava esse
+arquivo (`grep -rn handoffVersion --include=*.mjs --include=*.json` nos tres retornava zero). Um
+produtor podia divergir do contrato em silencio sem nenhum teste pegar — como ja tinha acontecido
+com o proprio `feature-isolation.md` (2.15.0).
+
+- `scripts/lib/handoff-validator.mjs` (novo, canonico, byte-identico nos tres plugins):
+  `validateHandoff(handoff)` colige todas as violacoes do envelope numa passada — campos
+  obrigatorios, enums de `stage`/`status`, e o vocabulario de `role` **por stage** (o que teria
+  pego o drift do `feature-isolation.md` corrigido em 2.15.0), incluindo o caso de um role valido
+  para outro estagio ser reivindicado pelo estagio errado.
+- `scripts/validate-handoff.mjs` (novo, CLI): `node validate-handoff.mjs --file <path>`, JSON
+  `{ ok, file, errors[] }`, exit 0 somente com `ok: true`.
+- `skills/pensador/assets/handoff.schema.json` (novo): schema formal documentando o envelope, sem
+  dependencia de biblioteca de JSON Schema — so o validador escrito a mao.
+- `skills/pensador/references/handoff-contract.md` (canonico, replicado byte-identico nos tres
+  plugins): nova secao 9 documentando o validador e quando roda-lo.
+- `test/handoff-validator.test.js` (novo, 38 testes): caminho positivo (handoff bem formado por
+  estagio, cada role valido aceito) e negativo (cada violacao especifica com o codigo certo,
+  incluindo o role cruzado entre estagios) + round-trip do CLI + guarda que fixa
+  `HANDOFF_ROLES_BY_STAGE` contra as tabelas de `handoff-contract.md` secao 5.
+
+## [2.15.0] — 2026-08-24
+
+### Baseline do projeto existente vira artefato de primeira classe do handoff (brownfield)
+
+Achado de auditoria: `architecture.md` e `codebase-memory.md` — os dois artefatos que carregam a
+exploração real do projeto (domínios descobertos, mapa de código, baseline do contrato de API
+existente, convenções que o Executor deveria preservar) — eram classificados no motor como
+"working files" e explicitamente excluídos de `buildArtifactList`, embora `handoff-contract.md`
+já os declarasse roles válidos do Pensador e o Orchestrador já fosse instruído a ingeri-los nessa
+ordem. O consumidor procurava um artefato que o produtor nunca emitia — em brownfield, exatamente
+o conteúdo que mais importa nunca chegava ao handoff.
+
+- `scripts/pensador-engine.mjs`: `planArtifacts`/`buildArtifactList` agora emitem `architecture`,
+  `codebase-memory` e o novo `project-baseline` (papel `project-baseline.json`, resumo
+  máquina-legível de `isGreenfield`/`techStack`/`apiStyle`/`uiPackageDir`/
+  `existingApiContractGlobs`) incondicionalmente em FINAL/DONE, nos dois `artifactMode` — EXPLORE e
+  ARCH sempre rodam na ordem fixa do `STAGE_ORDER`, independente de `hasBackend`/`hasFrontend`.
+  Novo `state.isGreenfield` (via `withGreenfieldSignal`) e `buildProjectBaseline(state)`.
+- `skills/pensador/references/handoff-contract.md` (canônico, replicado byte-idêntico em
+  `cc-orchestrador-subagents` e `cc-executor-subagents`): tabela de roles do Pensador atualizada —
+  `architecture`/`codebase-memory` passam de "opcional"/"quando houver ARCH" para "sim, sempre";
+  novo role `project-baseline`; ordem de ingestão da Fase 1 do Orchestrador atualizada.
+- `skills/pensador/references/feature-isolation.md`: lista de roles corrigida — estava sem
+  `api-contract` e `openspec-change` (drift pré-existente) e sem o novo `project-baseline`.
+- `test/handoff-roles-consistency.test.js` (novo): guarda que compara a lista de roles de
+  `feature-isolation.md` contra a tabela do Pensador em `handoff-contract.md`, com prova de que a
+  extração de fato pega drift (não só combina trivialmente).
+- `test/artifacts.test.js`, `test/integrations.test.js`: cobertura de caminho positivo (os três
+  artefatos presentes independente de back/front-end, em ambos os modos PRD/Spec, com filename e
+  path corretos) e negativo (ausentes fora de FINAL/DONE, mesmo gate de prd/userhistory).
+
 ## [2.14.0] — 2026-08-22
 
 ### Integração Open Design atualizada contra o upstream v0.20.2 e drift interno corrigido

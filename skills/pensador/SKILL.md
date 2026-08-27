@@ -79,6 +79,8 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   market-research.md
   tech-research.md
   architecture.md
+  project-baseline.json
+  requirements.json           # somente modo PRD (role requirements-index)
   shared-agents/
     context-pack.md
     backend-development.response.md
@@ -96,7 +98,7 @@ Antes de gerar qualquer artefato persistente do fluxo, chame conceitualmente `al
   design-systems/<id>/          # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
 ```
 
-> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `codebase-memory.md` e o snapshot da exploracao do Code Base Memory feita no EXPLORE e `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do RESEARCH (todos arquivos de trabalho, fora de `buildArtifactList`). `design-system.md` so e gravado no modo PRD quando ha front-end **e o Open Design NAO foi usado** (fallback inline) — quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
+> No modo Spec (OpenSpec), `prd.md` e substituido por `proposal.md`, `specs.md`, `design.md` e `tasks.md`. `market-research.md` e `tech-research.md` sao os snapshots dos dois tracks do RESEARCH (arquivos de trabalho, fora de `buildArtifactList` — nao viajam no handoff). `codebase-memory.md`, `architecture.md` e `project-baseline.json`, ao contrario, **sao artefatos do handoff** (roles `codebase-memory`, `architecture`, `project-baseline` — sempre emitidos em FINAL/DONE, nos dois `artifactMode`, independente de `hasBackend`/`hasFrontend`): carregam a exploracao real do projeto (dominios, mapa de codigo, baseline do contrato de API existente, convencoes a preservar) e um resumo estruturado (`isGreenfield`/`techStack`/`apiStyle`/`uiPackageDir`) que o Orchestrador/Executor consomem em vez de re-derivar — essencial em brownfield. `requirements.json` (role `requirements-index`) e emitido **somente no modo PRD** — a materia-prima do gate de cobertura RF/CA do Orquestrador, extraida deterministicamente das tabelas `RF-XX`/`CA-XX` do `prd.md`. `design-system.md` so e gravado no modo PRD quando ha front-end **e o Open Design NAO foi usado** (fallback inline) — quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Os arquivos verbatim do Open Design ficam em `design-systems/<id>/` dentro da pasta da feature (nos dois modos, quando `hasFrontend`); o Executor os materializa depois em `packages/ui`/`src/styles`.
 
 Regras:
 
@@ -370,13 +372,13 @@ Projeto existente:
 - Reaproveite o indice do Code Base Memory criado no EXPLORE: `get_architecture` para o panorama, `search_graph`/`trace_path` para mapear os simbolos e fluxos afetados pela demanda, e `detect_changes` quando for um fix.
 - Complemente com `Read`, `Glob` e `Grep` para detalhes que o grafo nao cobrir (config, padroes locais, persistencia, UI).
 - Nao execute alteracoes no codigo.
-- Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`.
+- Registre achados, incertezas e sinais `hasBackend`, `hasFrontend`, `isGreenfield = false`. Persista o sinal no estado com `withGreenfieldSignal(state, false)` — ele viaja no handoff via o role `project-baseline` (FINAL passo 5) para o Orquestrador/Executor nao terem que re-derivar isGreenfield de forma independente e potencialmente divergente.
 - **Derive `state.apiStyle`** quando `hasBackend`: detecte se o contrato e REST (`rest` → `openapi.yaml`), GraphQL (`graphql` → `schema.graphql`), gRPC (`grpc` → `service.proto`) ou orientado a eventos/filas/webhooks (`events` → `asyncapi.yaml`). Reaproveite o baseline de contrato descoberto no EXPLORE. Se ambiguo, pergunte via `AskUserQuestion`. Esse valor seleciona o formato do contrato maquina-legivel no FINAL (`resolveContractFormat(state.apiStyle)`).
 - **Derive `uiPackageDir`** quando `hasFrontend`: inspecione se o repo e um monorepo (`pnpm-workspace.yaml`, `packages/` ou `apps/` presentes) ou um app unico. Use `resolveUiPackageDir({ isMonorepo, framework })` do engine como base (`packages/ui` para monorepo; `src/styles` para app unico Next.js/Vite/Remix). Se ambiguo, pergunte via `AskUserQuestion`. Grave a resposta em `state.uiPackageDir` — esse valor NAO e o destino da copia do Pensador; e o **alvo de materializacao** que o Orquestrador/Executor usa depois. O Pensador sempre persiste os arquivos verbatim dentro da pasta da feature (`<featurePath>/design-systems/<id>/`), nunca na arvore de codigo real.
 
 Greenfield:
 
-- Quando nao houver base de codigo relevante, marque `isGreenfield = true`.
+- Quando nao houver base de codigo relevante, marque `isGreenfield = true` e persista com `withGreenfieldSignal(state, true)` (mesma razao do caso brownfield acima).
 - Entreviste o usuario via `AskUserQuestion` sobre stack desejada, canais de entrega, persistencia, integracoes e restricoes tecnicas.
 
 **Top-up do track tecnico do RESEARCH.** Se `state.techResearch.status === 'DEFERRED'` (a stack nao era detectavel no RESEARCH), execute a pesquisa tecnica **agora**, com a stack que este estagio acabou de resolver: `detectTechStack` sobre as respostas/analise → `inferStackGaps` → `techResearchQueryPlan` → `classifyPatternAdoption` → `withTechResearch(state, { status: 'DONE', ... })`, atualizando `<featurePath>/tech-research.md`. Sao as mesmas funcoes do RESEARCH; o que muda e so o momento em que a stack ficou conhecida. Se a stack ja foi pesquisada no RESEARCH, **nao pergunte nem pesquise de novo** — reaproveite.
@@ -529,6 +531,8 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
    - Em **ambos** os modos, quando `hasFrontend`, os arquivos verbatim do Open Design vao para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, passo 5). O Orquestrador/Executor os materializa depois em `state.uiPackageDir` (`packages/ui`/`src/styles`).
 4. Antes de sobrescrever artefatos existentes, confirme via `AskUserQuestion`.
 5. Gere os artefatos:
+   - **Baseline do projeto (`architecture.md`, `codebase-memory.md`, `project-baseline.json`) — nos DOIS modos, sempre:** `architecture.md` e `codebase-memory.md` ja foram gravados no ARCH/EXPLORE; confirme que continuam presentes em `<featurePath>/`. Gere `project-baseline.json` (novo, chamando `buildProjectBaseline(state)` para o conteudo — `isGreenfield`, `techStack`, `apiStyle`, `uiPackageDir`, `existingApiContractGlobs`) em `<featurePath>/project-baseline.json`. Os tres emitem roles `architecture`/`codebase-memory`/`project-baseline` no `handoff.json` (`buildArtifactList` ja os inclui automaticamente) — sem isso o Orquestrador/Executor re-derivam o brownfield do zero, exatamente o gap que este passo existe para fechar.
+   - **Indice de requisitos (`requirements.json`) — somente modo PRD:** depois de `prd.md` gravado (com as tabelas `RF-XX`/`CA-XX` das secoes 6 e 14 preenchidas, nao `"TBD"` num requisito real), rode `extractRequirements(prdMarkdownText)` (`scripts/lib/requirements-extractor.mjs`) sobre o texto do `prd.md` que acabou de escrever e persista o resultado (`{ requirements, acceptanceCriteria }`) em `<featurePath>/requirements.json`. Emite o role `requirements-index` no `handoff.json` (`buildArtifactList` ja inclui quando `artifactMode = 'prd'`). Trate qualquer `warnings[]` retornado (secao ausente, referencia `CA -> RF` pendurada) como sinal para revisar o PRD antes de fechar FINAL — e a materia-prima do gate de cobertura RF/CA que o Orquestrador aplica na Fase 2/7; um indice incompleto ou ausente enfraquece esse gate silenciosamente rio abaixo.
    - **Design system (Open Design), quando `hasFrontend` — nos DOIS modos):** o Open Design e um **pipeline de arquivos**, nao prosa. NUNCA puxe so o `DESIGN.md` para re-escrever. Para cada system escolhido no BRAINSTORM_GERAL, **baixe e persista os arquivos verbatim** rodando:
 
      ```bash

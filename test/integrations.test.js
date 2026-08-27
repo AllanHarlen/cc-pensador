@@ -246,16 +246,20 @@ describe('planArtifacts in spec mode', () => {
 });
 
 describe('buildArtifactList in spec mode', () => {
-  it('emits only proposal/design/tasks/specs (no prd/userhistory/communication)', () => {
+  // architecture / codebase-memory / project-baseline are common to BOTH
+  // artifactMode (EXPLORE/ARCH always run in the fixed STAGE_ORDER) — spec
+  // mode still excludes prd/userhistory/communication, which ARE mode-specific.
+  it('emits proposal/design/tasks/specs + the common architecture/codebase-memory/project-baseline (no prd/userhistory/communication)', () => {
     const kinds = buildArtifactList(finalState('spec', [backendReq])).map((a) => a.kind);
     expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks', 'specs']));
+    expect(kinds).toEqual(expect.arrayContaining(['architecture', 'codebase-memory', 'project-baseline']));
     expect(kinds).not.toContain('prd');
     expect(kinds).not.toContain('userhistory');
     expect(kinds).not.toContain('communication');
-    expect(kinds).toHaveLength(4);
+    expect(kinds).toHaveLength(7);
   });
 
-  it('writes spec artifacts under openspec/changes/<name>/ (not .pensador/)', () => {
+  it('writes spec artifacts under openspec/changes/<name>/ (not .pensador/); the common baseline artifacts stay under .pensador/', () => {
     const state = { ...finalState('spec', [frontendReq]), featurePath: '.pensador/login-social-v1' };
     const artifacts = buildArtifactList(state);
     const proposal = artifacts.find((a) => a.kind === 'proposal');
@@ -263,23 +267,28 @@ describe('buildArtifactList in spec mode', () => {
     expect(proposal.managedBy).toBe('openspec');
     const specs = artifacts.find((a) => a.kind === 'specs');
     expect(specs.path).toBe('openspec/changes/login-social-v1/specs/');
-    for (const a of artifacts) {
+    for (const a of artifacts.filter((a) => a.managedBy === 'openspec')) {
       expect(a.path.startsWith('openspec/changes/')).toBe(true);
-      expect(a.managedBy).toBe('openspec');
+    }
+    for (const kind of ['architecture', 'codebase-memory', 'project-baseline']) {
+      const artifact = artifacts.find((a) => a.kind === kind);
+      expect(artifact.path.startsWith('.pensador/login-social-v1/')).toBe(true);
+      expect(artifact.managedBy).toBeUndefined();
     }
   });
 
-  it('omits specs/ when skipSpecs is set (3-artifact change set)', () => {
+  it('omits specs/ when skipSpecs is set (6-artifact change set: proposal+design+tasks + the common baseline three)', () => {
     const state = { ...finalState('spec', [backendReq]), skipSpecs: true };
     const kinds = buildArtifactList(state).map((a) => a.kind);
     expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks']));
+    expect(kinds).toEqual(expect.arrayContaining(['architecture', 'codebase-memory', 'project-baseline']));
     expect(kinds).not.toContain('specs');
-    expect(kinds).toHaveLength(3);
+    expect(kinds).toHaveLength(6);
   });
 
-  it('prd mode emits design-system for a front-end demand (prd + userhistory + design-system)', () => {
+  it('prd mode emits design-system for a front-end demand (prd + baseline four + userhistory + design-system)', () => {
     const kinds = buildArtifactList(finalState('prd', [frontendReq])).map((a) => a.kind);
-    expect(kinds).toEqual(['prd', 'userhistory', 'design-system']);
+    expect(kinds).toEqual(['prd', 'architecture', 'codebase-memory', 'project-baseline', 'requirements-index', 'userhistory', 'design-system']);
   });
 });
 
@@ -560,9 +569,19 @@ describe('design-system artifact planning (PRD mode, front-end gated)', () => {
     expect(ds.path).toBe('.pensador/locadora-v1/design-system.md');
   });
 
-  it('fullstack demand emits prd + userhistory + api-contract + communication + design-system', () => {
+  it('fullstack demand emits prd + baseline four + userhistory + api-contract + communication + design-system', () => {
     const kinds = buildArtifactList(finalState('prd', [backendReq, frontendReq])).map((a) => a.kind);
-    expect(kinds).toEqual(['prd', 'userhistory', 'api-contract', 'communication', 'design-system']);
+    expect(kinds).toEqual([
+      'prd',
+      'architecture',
+      'codebase-memory',
+      'project-baseline',
+      'requirements-index',
+      'userhistory',
+      'api-contract',
+      'communication',
+      'design-system',
+    ]);
   });
 });
 

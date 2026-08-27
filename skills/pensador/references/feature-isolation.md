@@ -175,7 +175,7 @@ Regras:
 
 1. `stage: "pensador"`, `upstream: null` (primeiro estagio da cadeia).
 2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
-3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador: `prd`, `userhistory`, `architecture`, `communication-contract`, `design-system`, `design-system-files`, `codebase-memory`, `shared-agents`.
+3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador (identicos aos declarados em `references/handoff-contract.md` secao 5): `prd`, `userhistory`, `architecture`, `codebase-memory`, `project-baseline`, `requirements-index`, `api-contract`, `communication-contract`, `design-system`, `design-system-files`, `openspec-change`, `shared-agents`.
 4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
 5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orchestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
 
@@ -186,6 +186,7 @@ Exemplo minimo:
   "handoffVersion": 1,
   "stage": "pensador",
   "slug": "login-social",
+  "artifactMode": "prd",
   "producer": { "plugin": "cc-pensador", "version": "2.5.1" },
   "artifactRoot": ".pensador/login-social-v1",
   "status": "DONE",
@@ -196,8 +197,11 @@ Exemplo minimo:
   "artifacts": [
     { "role": "prd", "path": "prd.md", "required": true, "description": "PRD consolidado" },
     { "role": "userhistory", "path": "userhistory.md", "required": true, "description": "Historias de usuario" },
-    { "role": "architecture", "path": "architecture.md", "required": false, "description": "Arquitetura alvo" },
-    { "role": "communication-contract", "path": "communication.md", "required": false, "description": "Contratos front-back" },
+    { "role": "architecture", "path": "architecture.md", "required": true, "description": "Arquitetura alvo, dominios descobertos e convencoes preservaveis" },
+    { "role": "codebase-memory", "path": "codebase-memory.md", "required": true, "description": "Mapa do codigo real e baseline do contrato de API existente" },
+    { "role": "project-baseline", "path": "project-baseline.json", "required": true, "description": "Resumo maquina-legivel: isGreenfield, techStack, apiStyle, uiPackageDir" },
+    { "role": "api-contract", "path": "openapi.yaml", "required": true, "description": "Contrato de API maquina-legivel, fonte da verdade" },
+    { "role": "communication-contract", "path": "communication.md", "required": false, "description": "Contratos front-back (visao legivel derivada do api-contract)" },
     { "role": "design-system", "path": "design-system.md", "required": false, "description": "Design system inline (fallback, sem Open Design)" }
   ],
   "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orchestrador", "instructions": "Ingerir os artefatos e implementar o plano." }

@@ -10,6 +10,8 @@ import {
   classifyProject,
   planArtifacts,
   buildArtifactList,
+  buildProjectBaseline,
+  withGreenfieldSignal,
   withConsolidated,
   initState,
   addQuestions,
@@ -330,15 +332,30 @@ describe('buildArtifactList(state)', () => {
   });
 
   describe('total artifact count', () => {
-    it('returns 2 artifacts (prd + userhistory) for a project with no back-end in FINAL', () => {
+    // architecture / codebase-memory / project-baseline / requirements-index
+    // are unconditional in FINAL/DONE PRD mode (EXPLORE and ARCH always run,
+    // independent of hasBackend/hasFrontend) — every count below carries the
+    // +4 baseline.
+    it('returns 6 artifacts (prd + architecture + codebase-memory + project-baseline + requirements-index + userhistory) for a project with no back-end in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
-      expect(artifacts).toHaveLength(2);
+      expect(artifacts.map((a) => a.kind)).toEqual([
+        'prd',
+        'architecture',
+        'codebase-memory',
+        'project-baseline',
+        'requirements-index',
+        'userhistory',
+      ]);
     });
 
-    it('returns 5 artifacts (prd + userhistory + api-contract + communication + design-system) for a fullstack project in FINAL', () => {
+    it('returns 9 artifacts (+ api-contract + communication + design-system) for a fullstack project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
       expect(artifacts.map((a) => a.kind)).toEqual([
         'prd',
+        'architecture',
+        'codebase-memory',
+        'project-baseline',
+        'requirements-index',
         'userhistory',
         'api-contract',
         'communication',
@@ -346,19 +363,60 @@ describe('buildArtifactList(state)', () => {
       ]);
     });
 
-    it('returns 4 artifacts (prd + userhistory + api-contract + communication) for a back-end-only project in FINAL', () => {
+    it('returns 8 artifacts (+ api-contract + communication) for a back-end-only project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
       expect(artifacts.map((a) => a.kind)).toEqual([
         'prd',
+        'architecture',
+        'codebase-memory',
+        'project-baseline',
+        'requirements-index',
         'userhistory',
         'api-contract',
         'communication',
       ]);
     });
 
-    it('returns 3 artifacts (prd + userhistory + design-system) for a front-end-only project in FINAL', () => {
+    it('returns 7 artifacts (+ design-system) for a front-end-only project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
-      expect(artifacts.map((a) => a.kind)).toEqual(['prd', 'userhistory', 'design-system']);
+      expect(artifacts.map((a) => a.kind)).toEqual([
+        'prd',
+        'architecture',
+        'codebase-memory',
+        'project-baseline',
+        'requirements-index',
+        'userhistory',
+        'design-system',
+      ]);
+    });
+  });
+
+  describe('architecture / codebase-memory / project-baseline are unconditional in FINAL/DONE', () => {
+    it('are present regardless of hasBackend/hasFrontend', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
+      expect(artifacts.find((a) => a.kind === 'architecture')).toBeDefined();
+      expect(artifacts.find((a) => a.kind === 'codebase-memory')).toBeDefined();
+      expect(artifacts.find((a) => a.kind === 'project-baseline')).toBeDefined();
+    });
+
+    it('use the canonical filenames', () => {
+      const artifacts = buildArtifactList(stateAt('FINAL', []));
+      expect(artifacts.find((a) => a.kind === 'architecture').filename).toBe('architecture.md');
+      expect(artifacts.find((a) => a.kind === 'codebase-memory').filename).toBe('codebase-memory.md');
+      expect(artifacts.find((a) => a.kind === 'project-baseline').filename).toBe('project-baseline.json');
+    });
+
+    it('are absent outside FINAL/DONE, same gate as prd/userhistory', () => {
+      const artifacts = buildArtifactList(stateAt('EXPAND', [backendReq(), frontendReq()]));
+      expect(artifacts).toHaveLength(0);
+    });
+
+    it('are also emitted in spec mode (OpenSpec), not just PRD mode', () => {
+      const state = { ...stateAt('FINAL', [backendReq()]), artifactMode: 'spec' };
+      const artifacts = buildArtifactList(state);
+      expect(artifacts.find((a) => a.kind === 'architecture')).toBeDefined();
+      expect(artifacts.find((a) => a.kind === 'codebase-memory')).toBeDefined();
+      expect(artifacts.find((a) => a.kind === 'project-baseline')).toBeDefined();
     });
   });
 
@@ -493,5 +551,129 @@ describe('withConsolidated wires consolidated requirements into artifact plannin
     ]);
     expect(planArtifacts(state).communication).toBe(false);
     expect(buildArtifactList(state).find((a) => a.kind === 'communication')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withGreenfieldSignal / buildProjectBaseline (project-baseline.json content)
+// ---------------------------------------------------------------------------
+
+describe('withGreenfieldSignal(state, isGreenfield)', () => {
+  it('starts as null (unresolved) in a fresh state', () => {
+    expect(initState('demanda').isGreenfield).toBeNull();
+  });
+
+  it('sets isGreenfield to true and coerces truthy input to boolean', () => {
+    const state = withGreenfieldSignal(initState('demanda'), 1);
+    expect(state.isGreenfield).toBe(true);
+  });
+
+  it('sets isGreenfield to false and coerces falsy input to boolean', () => {
+    const state = withGreenfieldSignal(initState('demanda'), 0);
+    expect(state.isGreenfield).toBe(false);
+  });
+
+  it('does not mutate the input state (returns a new object)', () => {
+    const before = initState('demanda');
+    const after = withGreenfieldSignal(before, true);
+    expect(before.isGreenfield).toBeNull();
+    expect(after).not.toBe(before);
+  });
+});
+
+describe('buildProjectBaseline(state)', () => {
+  it('reports isGreenfield: null when ARCH has not resolved it yet', () => {
+    const baseline = buildProjectBaseline(initState('demanda'));
+    expect(baseline.isGreenfield).toBeNull();
+  });
+
+  it('reports the resolved isGreenfield value (brownfield: false)', () => {
+    const state = withGreenfieldSignal(initState('demanda'), false);
+    expect(buildProjectBaseline(state).isGreenfield).toBe(false);
+  });
+
+  it('reports the resolved isGreenfield value (greenfield: true)', () => {
+    const state = withGreenfieldSignal(initState('demanda'), true);
+    expect(buildProjectBaseline(state).isGreenfield).toBe(true);
+  });
+
+  it('copies techStack from state without aliasing the original array', () => {
+    const state = { ...initState('demanda'), techStack: ['react', 'dotnet'] };
+    const baseline = buildProjectBaseline(state);
+    expect(baseline.techStack).toEqual(['react', 'dotnet']);
+    expect(baseline.techStack).not.toBe(state.techStack);
+  });
+
+  it('defaults techStack to an empty array when state.techStack is not an array', () => {
+    const state = { ...initState('demanda'), techStack: undefined };
+    expect(buildProjectBaseline(state).techStack).toEqual([]);
+  });
+
+  it('carries apiStyle and uiPackageDir straight from state', () => {
+    const state = { ...initState('demanda'), apiStyle: 'graphql', uiPackageDir: 'apps/web/src/styles' };
+    const baseline = buildProjectBaseline(state);
+    expect(baseline.apiStyle).toBe('graphql');
+    expect(baseline.uiPackageDir).toBe('apps/web/src/styles');
+  });
+
+  it('falls back to the default apiStyle/uiPackageDir when state omits them', () => {
+    const baseline = buildProjectBaseline({ ...initState('demanda'), apiStyle: undefined, uiPackageDir: undefined });
+    expect(baseline.apiStyle).toBe('rest');
+    expect(baseline.uiPackageDir).toBe('packages/ui');
+  });
+
+  it('includes existingApiContractGlobs so a consumer can re-run the same brownfield discovery', () => {
+    const baseline = buildProjectBaseline(initState('demanda'));
+    expect(Array.isArray(baseline.existingApiContractGlobs)).toBe(true);
+    expect(baseline.existingApiContractGlobs).toContain('**/openapi*.{yaml,yml,json}');
+    expect(baseline.existingApiContractGlobs).toContain('**/*.graphql');
+  });
+});
+
+describe('buildArtifactList: project-baseline.json path follows featurePath (same convention as prd.md)', () => {
+  it('uses featurePath when set', () => {
+    const state = { ...stateAt('FINAL', []), featurePath: '.pensador/login-social-v1' };
+    const artifact = buildArtifactList(state).find((a) => a.kind === 'project-baseline');
+    expect(artifact.path).toBe('.pensador/login-social-v1/project-baseline.json');
+  });
+
+  it('falls back to .pensador/atualizacao-v1/ when featurePath is null', () => {
+    const artifact = buildArtifactList(stateAt('FINAL', [])).find((a) => a.kind === 'project-baseline');
+    expect(artifact.path).toBe('.pensador/atualizacao-v1/project-baseline.json');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// requirements-index (requirements.json) — PRD mode only
+// ---------------------------------------------------------------------------
+
+describe('buildArtifactList: requirements-index (requirements.json)', () => {
+  it('is present in PRD mode, in FINAL/DONE, regardless of hasBackend/hasFrontend', () => {
+    const artifacts = buildArtifactList(stateAt('FINAL', [otherReq()]));
+    const artifact = artifacts.find((a) => a.kind === 'requirements-index');
+    expect(artifact).toBeDefined();
+    expect(artifact.filename).toBe('requirements.json');
+  });
+
+  it('is absent in Spec mode (OpenSpec has its own equivalent via openspec status)', () => {
+    const state = { ...stateAt('FINAL', [backendReq()]), artifactMode: 'spec' };
+    const artifacts = buildArtifactList(state);
+    expect(artifacts.find((a) => a.kind === 'requirements-index')).toBeUndefined();
+  });
+
+  it('is absent outside FINAL/DONE', () => {
+    const artifacts = buildArtifactList(stateAt('EXPAND', [backendReq()]));
+    expect(artifacts).toHaveLength(0);
+  });
+
+  it('follows featurePath (same convention as project-baseline.json)', () => {
+    const state = { ...stateAt('FINAL', []), featurePath: '.pensador/login-social-v1' };
+    const artifact = buildArtifactList(state).find((a) => a.kind === 'requirements-index');
+    expect(artifact.path).toBe('.pensador/login-social-v1/requirements.json');
+  });
+
+  it('falls back to .pensador/atualizacao-v1/ when featurePath is null', () => {
+    const artifact = buildArtifactList(stateAt('FINAL', [])).find((a) => a.kind === 'requirements-index');
+    expect(artifact.path).toBe('.pensador/atualizacao-v1/requirements.json');
   });
 });

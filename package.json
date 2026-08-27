@@ -1,6 +1,6 @@
 {
   "name": "cc-pensador",
-  "version": "2.14.0",
+  "version": "2.17.0",
   "description": "Pensador PRD workflow skill and command, with --modo execution-mode delegation (claude/agy/kiro/codex), comprehensive 17-section PRD schema, mandatory Code Base Memory exploration, mandatory two-track web research (RESEARCH: market benchmark + current stack patterns/architecture/conventions), optional Open Design (verbatim design-system files, design-system.md only as fallback) integration and optional OpenSpec spec mode",
   "license": "MIT",
   "type": "module",

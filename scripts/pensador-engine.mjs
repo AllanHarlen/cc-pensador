@@ -316,6 +316,12 @@ export function initState(demanda) {
     // service.proto / asyncapi.yaml) that is the SOURCE OF TRUTH when hasBackend.
     // communication.md is the human-readable view derived from it.
     apiStyle: DEFAULT_API_STYLE,
+    // Whether ARCH found no relevant existing codebase to build on. null until
+    // ARCH resolves it (unknown at INIT/EXPLORE time); false is the common case
+    // (brownfield — building on an existing project). Feeds detectComplexity()
+    // AND travels downstream via project-baseline.json (see withGreenfieldSignal)
+    // so the Orchestrador/Executor do not have to re-derive it independently.
+    isGreenfield: null,
   };
 }
 
@@ -735,14 +741,21 @@ export const CODEBASE_MEMORY = {
     getCodeSnippet: 'get_code_snippet',
     searchCode: 'search_code',
   },
-  /** Working snapshot written under <featurePath>/ (not a final artifact). */
+  /**
+   * Snapshot written under <featurePath>/. Consumed by PRD_BASE/Spec and ARCH
+   * during the run, AND emitted as a handoff artifact (role `codebase-memory`,
+   * see buildArtifactList) — the Orchestrador/Executor need the discovered
+   * code map (symbols, call chains, existing API contract baseline) as much as
+   * the LLM authoring the PRD does; re-deriving it from scratch downstream
+   * would silently drop the brownfield exploration this stage exists for.
+   */
   snapshotFile: 'codebase-memory.md',
 };
 
 /**
  * Builds the path of the Code Base Memory exploration snapshot inside the update
- * directory. Like `architecture.md`, this is a working file (it is NOT part of
- * buildArtifactList) consumed by PRD_BASE/Spec and ARCH.
+ * directory. Consumed by PRD_BASE/Spec and ARCH during the run, and emitted as
+ * a handoff artifact by buildArtifactList (role `codebase-memory`).
  *
  * @param {string|null|undefined} featurePath
  * @returns {string}
@@ -750,6 +763,95 @@ export const CODEBASE_MEMORY = {
 export function codebaseMemorySnapshotPath(featurePath) {
   const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
   return `${base}${CODEBASE_MEMORY.snapshotFile}`;
+}
+
+/** Filename of the ARCH-stage architecture snapshot, written under <featurePath>/. */
+export const ARCHITECTURE_SNAPSHOT_FILE = 'architecture.md';
+
+/**
+ * Builds the path of the ARCH-stage architecture snapshot inside the update
+ * directory. Consumed downstream by EXPAND/COMPLEXITY during the run, and
+ * emitted as a handoff artifact by buildArtifactList (role `architecture`) —
+ * it carries the discovered domains, known decisions, researched technical
+ * baseline and, in brownfield, the conventions the Orchestrador/Executor are
+ * expected to preserve (see WORKFLOW.md's brownfield precedence rule).
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function architectureSnapshotPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${ARCHITECTURE_SNAPSHOT_FILE}`;
+}
+
+/** Filename of the machine-readable project baseline emitted at FINAL. */
+export const PROJECT_BASELINE_FILE = 'project-baseline.json';
+
+/**
+ * Builds the path of the machine-readable project baseline artifact (role
+ * `project-baseline`) inside the update directory. Unlike architecture.md/
+ * codebase-memory.md (LLM-authored prose), this file is a small structured
+ * summary the Orchestrador/Executor can parse directly instead of re-deriving
+ * isGreenfield/stack/apiStyle/uiPackageDir from scratch — see
+ * buildProjectBaseline().
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function projectBaselinePath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${PROJECT_BASELINE_FILE}`;
+}
+
+/** Filename of the RF/CA requirements index emitted at FINAL (PRD mode only). */
+export const REQUIREMENTS_INDEX_FILE = 'requirements.json';
+
+/**
+ * Builds the path of the requirements index artifact (role
+ * `requirements-index`) inside the update directory. PRD mode only — see
+ * `scripts/lib/requirements-extractor.mjs` for how its content is derived
+ * from the PRD's own RF/CA tables (section 6 + 14).
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function requirementsIndexPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${REQUIREMENTS_INDEX_FILE}`;
+}
+
+/**
+ * @typedef {Object} ProjectBaseline
+ * @property {boolean|null} isGreenfield
+ * @property {string[]} techStack
+ * @property {'rest'|'graphql'|'grpc'|'events'} apiStyle
+ * @property {string} uiPackageDir
+ * @property {string[]} existingApiContractGlobs // contractDiscoveryGlobs(), for the consumer to re-run the same discovery
+ */
+
+/**
+ * Builds the machine-readable content of project-baseline.json (role
+ * `project-baseline`). Unlike architecture.md/codebase-memory.md (LLM-authored
+ * prose consumed by re-reading), this is a small structured summary so the
+ * Orchestrador/Executor can branch on isGreenfield/techStack/apiStyle without
+ * parsing prose — see the `project-baseline` role in handoff-contract.md §5.
+ *
+ * `isGreenfield: null` means ARCH has not resolved the signal yet (should not
+ * happen once FINAL is reached in a well-formed run; kept null rather than
+ * defaulted to false/true so a consumer can tell "unknown" from "resolved
+ * brownfield/greenfield" and degrade explicitly instead of assuming).
+ *
+ * @param {StageState} state
+ * @returns {ProjectBaseline}
+ */
+export function buildProjectBaseline(state) {
+  return {
+    isGreenfield: state.isGreenfield ?? null,
+    techStack: Array.isArray(state.techStack) ? [...state.techStack] : [],
+    apiStyle: state.apiStyle ?? DEFAULT_API_STYLE,
+    uiPackageDir: state.uiPackageDir ?? 'packages/ui',
+    existingApiContractGlobs: contractDiscoveryGlobs(),
+  };
 }
 
 /**
@@ -1424,9 +1526,10 @@ export function marketResearchQueryPlan(options = {}) {
 
 /**
  * Builds the path of the market-research snapshot inside the update directory.
- * Like `codebase-memory.md` and `architecture.md`, this is a WORKING file (it is
- * NOT part of buildArtifactList) consumed by PRD_BASE, EXPAND, the BRAINSTORM_GERAL
- * context pack and the Open Design brief.
+ * This is a WORKING file (it is NOT part of buildArtifactList — unlike
+ * `codebase-memory.md`/`architecture.md`, which ARE emitted as handoff
+ * artifacts) consumed by PRD_BASE, EXPAND, the BRAINSTORM_GERAL context pack
+ * and the Open Design brief.
  *
  * @param {string|null|undefined} featurePath
  * @returns {string}
@@ -2399,6 +2502,22 @@ export function withArtifactMode(state, mode) {
 }
 
 /**
+ * Records whether ARCH found no relevant existing codebase (greenfield) or is
+ * building on top of one (brownfield). ARCH calls this once it resolves the
+ * signal (project existing vs. greenfield interview). Feeds detectComplexity()
+ * directly AND travels downstream through project-baseline.json (see
+ * buildArtifactList) so the Orchestrador/Executor consume the Pensador's
+ * finding instead of re-deriving it independently and possibly disagreeing.
+ *
+ * @param {StageState} state
+ * @param {boolean} isGreenfield
+ * @returns {StageState}
+ */
+export function withGreenfieldSignal(state, isGreenfield) {
+  return { ...state, isGreenfield: Boolean(isGreenfield) };
+}
+
+/**
  * OpenSpec (https://github.com/Fission-AI/OpenSpec) descriptor.
  *
  * In spec mode the Pensador does NOT hand-write the change files: it drives the
@@ -3191,6 +3310,14 @@ export function planArtifacts(state) {
     specs: false,
     design: false,
     tasks: false,
+    // architecture.md/codebase-memory.md/project-baseline.json are written by
+    // EXPLORE and ARCH regardless of artifactMode (PRD or Spec) — both stages
+    // always run in the fixed STAGE_ORDER, so these are unconditionally planned
+    // once the flow reaches FINAL/DONE, independent of hasBackend/hasFrontend.
+    architecture: false,
+    codebaseMemory: false,
+    projectBaseline: false,
+    requirementsIndex: false,
   };
   if (!finalStages.has(state.currentStage)) {
     return empty;
@@ -3229,6 +3356,10 @@ export function planArtifacts(state) {
       communication: false,
       apiContract: false,
       designSystem: false,
+      architecture: true,
+      codebaseMemory: true,
+      projectBaseline: true,
+      requirementsIndex: false,
     };
   }
 
@@ -3251,6 +3382,14 @@ export function planArtifacts(state) {
     // When Open Design is used, its verbatim DESIGN.md (in design-systems/<id>/)
     // IS the design document, so no redundant standalone doc is emitted.
     designSystem: hasFrontend && !usesOpenDesign,
+    architecture: true,
+    codebaseMemory: true,
+    projectBaseline: true,
+    // requirements.json is derived from the PRD's own RF/CA tables (section 6
+    // + 14) — PRD mode only. Spec mode's equivalent (SHALL requirements +
+    // #### Scenario: blocks in specs/) is exposed live via `openspec status`,
+    // a different, I/O-based path this pure engine does not attempt to mirror.
+    requirementsIndex: true,
   };
 }
 
@@ -3325,6 +3464,47 @@ export function buildArtifactList(state) {
       filename: 'specs/',
       path: `${changeDir}/specs/`,
       managedBy: 'openspec',
+    });
+  }
+
+  // architecture.md / codebase-memory.md / project-baseline.json: common to
+  // BOTH artifactMode (PRD and Spec) — EXPLORE and ARCH always run in the
+  // fixed STAGE_ORDER, so these are unconditionally planned by the time FINAL
+  // is reached. They are what makes the brownfield exploration this run did
+  // (discovered domains, existing API contract baseline, researched technical
+  // conventions, code map) available to the Orchestrador/Executor instead of
+  // being re-derived from scratch (or lost) downstream.
+  if (plan.architecture) {
+    artifacts.push({
+      kind: 'architecture',
+      filename: ARCHITECTURE_SNAPSHOT_FILE,
+      path: architectureSnapshotPath(state.featurePath),
+    });
+  }
+
+  if (plan.codebaseMemory) {
+    artifacts.push({
+      kind: 'codebase-memory',
+      filename: CODEBASE_MEMORY.snapshotFile,
+      path: codebaseMemorySnapshotPath(state.featurePath),
+    });
+  }
+
+  if (plan.projectBaseline) {
+    artifacts.push({
+      kind: 'project-baseline',
+      filename: PROJECT_BASELINE_FILE,
+      path: projectBaselinePath(state.featurePath),
+    });
+  }
+
+  // requirements.json (role requirements-index): PRD mode only — see
+  // planArtifacts() and scripts/lib/requirements-extractor.mjs.
+  if (plan.requirementsIndex) {
+    artifacts.push({
+      kind: 'requirements-index',
+      filename: REQUIREMENTS_INDEX_FILE,
+      path: requirementsIndexPath(state.featurePath),
     });
   }
 
@@ -3651,7 +3831,7 @@ export function deserializeState(serialized) {
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'} kind
+ * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'|'architecture'|'codebase-memory'|'project-baseline'|'requirements-index'} kind
  * @property {string} filename
  * @property {string} path
  * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
