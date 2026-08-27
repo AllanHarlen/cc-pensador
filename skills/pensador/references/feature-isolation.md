@@ -177,7 +177,7 @@ Regras:
 2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
 3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador (identicos aos declarados em `references/handoff-contract.md` secao 5): `prd`, `userhistory`, `architecture`, `codebase-memory`, `project-baseline`, `requirements-index`, `api-contract`, `communication-contract`, `design-system`, `design-system-files`, `openspec-change`, `shared-agents`.
 4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
-5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orchestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
+5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orquestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
 
 Exemplo minimo:
 
@@ -204,7 +204,7 @@ Exemplo minimo:
     { "role": "communication-contract", "path": "communication.md", "required": false, "description": "Contratos front-back (visao legivel derivada do api-contract)" },
     { "role": "design-system", "path": "design-system.md", "required": false, "description": "Design system inline (fallback, sem Open Design)" }
   ],
-  "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orchestrador", "instructions": "Ingerir os artefatos e implementar o plano." }
+  "nextStage": { "consumer": "cc-orchestrador-subagents", "entrypoint": "/orquestrador", "instructions": "Ingerir os artefatos e implementar o plano." }
 }
 ```
 

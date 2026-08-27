@@ -172,7 +172,7 @@ Esse bloco e **injetado verbatim** nos consumidores de `WEB_RESEARCH.promptSyste
 | `prd-base` | Escopo, requisitos funcionais e personas do PRD base ja nascem com o baseline |
 | `expand` | Funcionalidades do inventario viram requisitos candidatos |
 | `context-pack` | `shared-agents/context-pack.md` do `BRAINSTORM_GERAL` |
-| `delegation` | Em `--modo agy\|kiro\|codex`, prefixa **toda** unidade de trabalho delegada |
+| `delegation` | Em `--mode agy\|kiro\|codex`, prefixa **toda** unidade de trabalho delegada |
 | `open-design` | `sectorContext` + `brandReferences` do brief de design |
 | `handoff` | Recap final: o benchmark que sustenta as decisoes de escopo |
 

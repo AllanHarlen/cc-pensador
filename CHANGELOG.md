@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.18.0] — 2026-08-27
+
+### Reconciliacao da superficie de comando unificada com os validadores de handoff
+
+Esta versao integra a linha remota de interface unificada com as entregas locais 2.15.0–2.17.0,
+sem reutilizar um numero de versao que ja representava outra mudanca:
+
+- `--mode` passa a ser o nome canonico; `--modo` continua aceito como alias legado silencioso.
+- Novos subcomandos: `help`, `preflight`, `status`, `resume [slug]` e `config`.
+- `argument-hint` e documentacao agora expoem a superficie completa do comando.
+- O handoff aponta para `/cc-orchestrador-subagents:orquestrador`.
+- Mantidos o baseline de projeto, o schema/validador de `handoff.json` e a extracao de
+  `requirements.json` adicionados na linha local.
+
 ## [2.17.0] — 2026-08-24
 
 ### `requirements.json` (role `requirements-index`) — materia-prima do gate de cobertura RF/CA do Orquestrador

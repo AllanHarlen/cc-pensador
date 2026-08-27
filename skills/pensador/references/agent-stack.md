@@ -2,9 +2,9 @@
 
 Este documento descreve os subagentes usados pelo Pensador v2 e o contrato de arquivos compartilhados em `shared-agents/`.
 
-As skills de dominio sao descritas em `references/skill-stack.md`. Os **modos de execucao** (`--modo`), que delegam o trabalho pesado do fluxo a uma CLI externa, sao descritos em `references/execution-modes.md`.
+As skills de dominio sao descritas em `references/skill-stack.md`. Os **modos de execucao** (`--mode`), que delegam o trabalho pesado do fluxo a uma CLI externa, sao descritos em `references/execution-modes.md`.
 
-> **Dois eixos distintos.** Codex e AGY aparecem aqui como **lentes de domínio** (refinamento técnico e varredura de produto dentro dos estágios). Isso é independente do **modo de execução**, que escolhe quem redige os artefatos do fluxo (Claude, AGY, Kiro ou Codex). O Kiro participa apenas como motor de execução (`--modo kiro`), não como lente de domínio.
+> **Dois eixos distintos.** Codex e AGY aparecem aqui como **lentes de domínio** (refinamento técnico e varredura de produto dentro dos estágios). Isso é independente do **modo de execução**, que escolhe quem redige os artefatos do fluxo (Claude, AGY, Kiro ou Codex). O Kiro participa apenas como motor de execução (`--mode kiro`), não como lente de domínio.
 
 ---
 
@@ -24,15 +24,15 @@ Agent(subagent_type="cc-antigravity-plugin:antigravity-agent", prompt="... Use m
 
 ---
 
-## Motores de execucao (`--modo`)
+## Motores de execucao (`--mode`)
 
 Quando o usuario escolhe um modo de execucao delegado, o Pensador entrega o trabalho pesado de cada estagio ao motor via slash command (tool `SlashCommand`), enquanto mantem `AskUserQuestion` como unico canal com o usuario.
 
 | Motor | Modo | Slash command | Parametro padrao | Plugin |
 |---|---|---|---|---|
-| Antigravity | `--modo agy` | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` | `cc-antigravity-plugin` |
-| Kiro | `--modo kiro` | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` | `cc-kiro-plugin` |
-| Codex | `--modo codex` | `/codex:rescue` | `--effort high` | `openai-codex` |
+| Antigravity | `--mode agy` | `/cc-antigravity-plugin:antigravity` | `--model claude-4.6-opus-thinking` | `cc-antigravity-plugin` |
+| Kiro | `--mode kiro` | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` | `cc-kiro-plugin` |
+| Codex | `--mode codex` | `/codex:rescue` | `--effort high` | `openai-codex` |
 
 O motor `claude` (padrao) nao delega: o Claude Code redige inline. Detalhes de parsing, preflight, contrato de delegacao e fallback em `references/execution-modes.md`.
 

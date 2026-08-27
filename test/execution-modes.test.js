@@ -89,6 +89,55 @@ describe('parseExecutionMode(rawArgs)', () => {
     expect(r.demanda).toBe('Construir checkout');
   });
 
+  it('extracts --mode agy (the primary spelling) and strips it from the demanda', () => {
+    const r = parseExecutionMode('--mode agy Crie uma tela de login');
+    expect(r.mode).toBe('agy');
+    expect(r.requestedMode).toBe('agy');
+    expect(r.modeValid).toBe(true);
+    expect(r.demanda).toBe('Crie uma tela de login');
+  });
+
+  it('accepts --mode=kiro syntax and is case-insensitive', () => {
+    const r = parseExecutionMode('Construir API --mode=KIRO');
+    expect(r.mode).toBe('kiro');
+    expect(r.demanda).toBe('Construir API');
+  });
+
+  it('treats --modo as a silent alias of --mode (identical result)', () => {
+    for (const value of ['agy', 'kiro', 'codex', 'claude', 'turbo']) {
+      expect(parseExecutionMode(`--mode ${value} faça algo`)).toEqual(
+        parseExecutionMode(`--modo ${value} faça algo`),
+      );
+    }
+  });
+
+  /**
+   * Regression guard for the --modo → --mode rename: `--mode` is a strict prefix
+   * of `--model`, so a careless alternation would consume the model flag and
+   * leave `l gpt-x` in the demanda. The mandatory `=`/whitespace separator is
+   * what prevents it — assert both orderings, since the mode extractor runs
+   * before the model one.
+   */
+  it('does not let --mode swallow --model, in either order', () => {
+    const modeFirst = parseExecutionMode('--mode agy --model gpt-x Construir checkout');
+    expect(modeFirst.mode).toBe('agy');
+    expect(modeFirst.modelOverride).toBe('gpt-x');
+    expect(modeFirst.demanda).toBe('Construir checkout');
+
+    const modelFirst = parseExecutionMode('--model gpt-x --mode agy Construir checkout');
+    expect(modelFirst.mode).toBe('agy');
+    expect(modelFirst.modelOverride).toBe('gpt-x');
+    expect(modelFirst.demanda).toBe('Construir checkout');
+  });
+
+  it('leaves --model alone when no mode flag is present', () => {
+    const r = parseExecutionMode('--model gpt-x Construir checkout');
+    expect(r.mode).toBe('claude');
+    expect(r.requestedMode).toBeNull();
+    expect(r.modelOverride).toBe('gpt-x');
+    expect(r.demanda).toBe('Construir checkout');
+  });
+
   it('is total — never throws for nullish / non-string input', () => {
     expect(() => parseExecutionMode(undefined)).not.toThrow();
     expect(() => parseExecutionMode(null)).not.toThrow();

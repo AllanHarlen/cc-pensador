@@ -503,7 +503,7 @@ export function agyStageModel() {
 }
 
 // ---------------------------------------------------------------------------
-// Execution modes (--modo)
+// Execution modes (--mode)
 // ---------------------------------------------------------------------------
 
 /**
@@ -574,10 +574,15 @@ export const EXECUTION_MODES = {
  * Parses the raw `$ARGUMENTS` string of `/pensador`, extracting the execution
  * mode flag and optional `--model` / `--effort` overrides, and returns the
  * leftover text as the demanda. Pure and total: same input → same output, never
- * throws. Unknown `--modo <x>` falls back to the default mode with
+ * throws. Unknown `--mode <x>` falls back to the default mode with
  * `modeValid: false` so the caller can warn the user.
  *
- * Accepts `--modo agy` and `--modo=agy` (case-insensitive value).
+ * The flag is `--mode`; `--modo` is kept as a silent legacy alias. Both accept
+ * `--mode agy` and `--mode=agy` (case-insensitive value).
+ *
+ * The `mode|modo` alternation cannot swallow `--model`: the mandatory `=`/space
+ * separator fails on the `l`, so `--model x` falls through to its own extractor
+ * regardless of the order the two flags appear in.
  *
  * @param {string | null | undefined} rawArgs
  * @returns {{ mode: string, requestedMode: string|null, modeValid: boolean,
@@ -593,7 +598,7 @@ export function parseExecutionMode(rawArgs) {
     return m[2];
   };
 
-  const requestedRaw = extract(/(^|\s)--modo(?:=|\s+)([a-zA-Z]+)/);
+  const requestedRaw = extract(/(^|\s)--(?:mode|modo)(?:=|\s+)([a-zA-Z]+)/);
   const modelOverride = extract(/(^|\s)--model(?:=|\s+)(\S+)/);
   const effortOverride = extract(/(^|\s)--effort(?:=|\s+)(\S+)/);
 
@@ -914,7 +919,7 @@ export function codebaseMemoryExplorationPlan(options = {}) {
  *     becomes explicit in/out-of-scope questions in RESEARCH and EXPAND;
  *   - a **Prompt System**: the domain-context block that is injected verbatim into
  *     every downstream prompt (context-pack.md, each delegated unit of work in a
- *     delegating --modo, the Open Design brief, the handoff), so every lens
+ *     delegating --mode, the Open Design brief, the handoff), so every lens
  *     reasons with the same researched business context instead of a generic one.
  *
  * The constant is a deterministic descriptor consumed by the prose layer and the
@@ -978,7 +983,7 @@ export const WEB_RESEARCH = {
     'prd-base',        // PRD_BASE: scope, functional requirements, personas
     'expand',          // EXPAND: candidate requirements from the feature inventory
     'context-pack',    // BRAINSTORM_GERAL: shared-agents/context-pack.md
-    'delegation',      // delegating --modo: prepended to every delegated prompt
+    'delegation',      // delegating --mode: prepended to every delegated prompt
     'open-design',     // design brief: sectorContext + brandReferences
     'handoff',         // recap/handoff: the benchmark behind the scope decisions
   ],
@@ -2442,7 +2447,7 @@ export function withTechResearch(state, research = {}) {
 
 /**
  * The artifact mode selects WHICH base deliverable the flow produces. It is
- * orthogonal to the execution mode (--modo) and to the domain lenses.
+ * orthogonal to the execution mode (--mode) and to the domain lenses.
  *
  *   - `prd` (default): the classic Pensador flow. PRD_BASE drafts a base PRD and
  *     FINAL emits prd.md (+ userhistory.md, + communication.md when backend).
