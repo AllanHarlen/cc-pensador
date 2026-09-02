@@ -21,7 +21,7 @@
   "additionalProperties": true,
   "properties": {
     "handoffVersion": { "const": 1 },
-    "stage": { "enum": ["pensador", "orchestrador", "executor"] },
+    "stage": { "enum": ["pensador", "orchestrador", "testador", "executor"] },
     "slug": { "type": "string", "minLength": 1 },
     "artifactMode": {
       "description": "Only emitted by stage pensador; propagates prd-vs-spec to downstream consumers.",
@@ -47,7 +47,7 @@
           "type": "object",
           "required": ["stage", "handoffPath"],
           "properties": {
-            "stage": { "enum": ["pensador", "orchestrador", "executor"] },
+            "stage": { "enum": ["pensador", "orchestrador", "testador", "executor"] },
             "handoffPath": { "type": "string", "minLength": 1 }
           }
         }
