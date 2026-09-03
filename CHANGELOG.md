@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.18.1] — 2026-09-03
+
+### Suite de testes do handoff-validator alinhada com o estagio Testador
+
+Uma sincronizacao anterior (`skills/pensador/references/handoff-contract.md`,
+`assets/handoff.schema.json`, `scripts/lib/handoff-validator.mjs`) adicionou `testador` a
+`HANDOFF_STAGES` e `HANDOFF_ROLES_BY_STAGE`, mas nao estendeu `test/handoff-validator.test.js`:
+o teste "accepts every role declared for each stage" usava um ternario de 3 ramos que caia no
+`else` (fixture de Executor) para o novo estagio, e o teste de alinhamento com a tabela do
+contrato nao existia para `testador`. `npm test` reportava 1 falha.
+
+- `test/handoff-validator.test.js` (alterado): adiciona `validTestadorHandoff()`, estende o
+  ternario para 4 ramos, corrige o regex de `extractStageRoles` (`[a-z-]+` -> `[a-z0-9-]+`, que
+  quebrava em roles com digito como `a11y-report`) e adiciona o teste de alinhamento
+  "testador role set matches the contract table". `npm test`: 526 passed, 2 skipped, 0 failed.
+- `skills/pensador/references/handoff-contract.md` (alterado, replicado nos quatro plugins):
+  secao 9 corrigida — nao afirma mais que `handoff.schema.json`/`handoff-validator.mjs` sao
+  byte-identicos entre plugins (nunca foram; a garantia real e equivalencia semantica testada).
+
 ## [2.18.0] — 2026-08-27
 
 ### Reconciliacao da superficie de comando unificada com os validadores de handoff
