@@ -112,6 +112,18 @@ function validExecutorHandoff(overrides = {}) {
   };
 }
 
+// WF-010: structured waiver fixture.
+function validWaiver(overrides = {}) {
+  return {
+    owner: 'Produto',
+    motivo: 'Achado bloqueante do Testador ainda sem revalidacao',
+    impacto: 'Entrega segue sem confirmacao de navegador real neste escopo',
+    validade: '2026-12-31T00:00:00.000Z',
+    condicaoDeReabertura: 'Rodar o Testador de novo sobre o mesmo escopo corrigido',
+    ...overrides,
+  };
+}
+
 describe('validateHandoff — positive path (well-formed handoffs)', () => {
   it('accepts a well-formed Pensador handoff', () => {
     const result = validateHandoff(validPensadorHandoff());
@@ -210,6 +222,40 @@ describe('validateHandoff — negative path (contract violations)', () => {
   it('rejects a PARTIAL/BLOCKED status with a near-empty summary (defeats the field\'s purpose)', () => {
     const result = validateHandoff(validOrchestradorHandoff({ status: 'BLOCKED', summary: 'n/a' }));
     expect(result.errors.some((e) => e.code === 'SUMMARY_TOO_SHORT_FOR_NON_DONE_STATUS')).toBe(true);
+  });
+
+  it('accepts a well-formed waiver on a BLOCKED handoff', () => {
+    const result = validateHandoff(validOrchestradorHandoff({ status: 'BLOCKED', waiver: validWaiver() }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a waiver with validade: null (no deadline)', () => {
+    const result = validateHandoff(validOrchestradorHandoff({ status: 'PARTIAL', waiver: validWaiver({ validade: null }) }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('a handoff with no waiver field is still valid (not every PARTIAL/BLOCKED is a formal waiver)', () => {
+    const result = validateHandoff(validOrchestradorHandoff({ status: 'PARTIAL' }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a waiver on a DONE handoff', () => {
+    const result = validateHandoff(validOrchestradorHandoff({ status: 'DONE', waiver: validWaiver() }));
+    expect(result.errors.some((e) => e.code === 'WAIVER_REQUIRES_NON_DONE_STATUS')).toBe(true);
+  });
+
+  it('rejects a waiver missing a required field', () => {
+    for (const field of ['owner', 'motivo', 'impacto', 'condicaoDeReabertura']) {
+      const waiver = validWaiver();
+      delete waiver[field];
+      const result = validateHandoff(validOrchestradorHandoff({ status: 'BLOCKED', waiver }));
+      expect(result.errors.some((e) => e.code === 'INVALID_WAIVER' && e.path === `waiver.${field}`)).toBe(true);
+    }
+  });
+
+  it('rejects a waiver with an unparseable validade', () => {
+    const result = validateHandoff(validOrchestradorHandoff({ status: 'BLOCKED', waiver: validWaiver({ validade: 'not-a-date' }) }));
+    expect(result.errors.some((e) => e.code === 'INVALID_WAIVER' && e.path === 'waiver.validade')).toBe(true);
   });
 
   it('rejects a Pensador handoff with a non-null upstream (it is always the first stage)', () => {
