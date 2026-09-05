@@ -1,5 +1,64 @@
 # Changelog
 
+## [2.19.0] — 2026-09-05
+
+### Open Design: `system/` deixa de ser descartado e o FINAL passa a verificar a copia
+
+Duas falhas independentes, achadas ao auditar um run real (`OficinaAI`, `.pensador/oficina-saas-v1`)
+cuja pasta `design-systems/professional/` tinha **1 arquivo em vez de 24**.
+
+**1. `system/` nunca era copiado, nem num run correto.** `manifest.json` (schema
+`od-design-system-project/v1`) declara apenas *arquivos* — `files.*`, `usage`,
+`componentsManifest`, `preview.pages[]`, `sourceFiles.*` — e nenhum campo para diretorio.
+Logo, as entradas com `/` de `OPEN_DESIGN.systemArtifacts` sao a **unica** coisa que faz um
+diretorio chegar na saida, nos dois caminhos (manifest e legado). Essa lista estava errada.
+Medido nos 152 systems curados do clone upstream (2026-09-05): `preview/` em 152, `source/`
+em 151, `system/` em 150, `assets/` em **0**, `fonts/` em **0**. Ou seja, a lista perseguia
+dois diretorios que nao existem em system nenhum e ignorava o que esta em quase todos. Um run
+que perdia os 11 arquivos de `system/` (kit renderizado + `system/artifacts/`) ainda reportava
+`ok: true` com `unexpectedMissing: []` — perda silenciosa, nao falha.
+
+- `scripts/pensador-engine.mjs` (alterado): `OPEN_DESIGN.systemArtifacts` passa a listar
+  `preview/`, `system/`, `source/`, `assets/`, `fonts/` (nessa ordem). `assets/`/`fonts/`
+  ficam porque um system **importado** (`import-github`/`import-shadcn`) pode traze-los.
+  O bloco de doc explica por que a metade-diretorio da lista nao e um fallback.
+- `scripts/od-fetch-system.mjs` (alterado): `LEGACY_DIRS` (lista fixa duplicada) vira
+  `PACKAGE_DIRS`, **derivada** de `OPEN_DESIGN.systemArtifacts.filter(f => f.endsWith('/'))`,
+  para as duas nao poderem divergir de novo. Nenhuma mudanca de comportamento alem do
+  conjunto de diretorios; `copyTree` ja recursava corretamente.
+- Verificacao contra o clone real: `--id professional` num destino limpo agora produz uma
+  arvore **byte-identica** a `~/.open-design/design-systems/professional` (`diff -r` limpo,
+  24 arquivos, exit 0).
+
+**2. O FINAL podia fechar sem nunca rodar o `od-fetch-system.mjs`.** No run auditado o agente
+instalou o Open Design no meio do fluxo, foi direto no `GET /api/design-systems/<id>` — que
+serve **so metadados + `DESIGN.md`**, nunca raw file bodies — e gravou esse `DESIGN.md` com
+`Write`. O gate do FINAL exigia apenas "artefatos gerados", entao o run fechou `DONE` com um
+unico arquivo. O `handoff.json` tambem saiu sem `verbatim`/`materializeInto`, provando que nao
+passou por `buildArtifactList()`.
+
+- `skills/pensador/SKILL.md` (alterado): passo 5 do FINAL ganha uma **verificacao obrigatoria**
+  em tres pontos (exit `0` + `results[].ok`; `tokens.css` e `DESIGN.md` em `copied[]`; e
+  **listar o diretorio em disco** e conferir contra `copied[]`). O terceiro e o que pega o caso
+  real — quando o script nao roda nao existe JSON para conferir. Documenta as assinaturas do
+  modo de falha (pasta com so `DESIGN.md`; `DESIGN.md` com quebras de linha diferentes do clone,
+  porque `copyFileSync` copia byte a byte e `Write` nao; entrada de handoff sem `materializeInto`)
+  e proibe gravar arquivo de system com `Write`/`Edit`. O gate do FINAL e a linha da tabela
+  **Resumo dos gates** passam a citar a verificacao.
+- `skills/pensador/references/open-design.md` (alterado): tabela de artefatos verbatim ganha
+  `system/` e `source/`; nova nota explicando que o `manifest.json` nao declara diretorios e
+  registrando a medicao dos 152 systems; novo callout descrevendo a reincidencia do bug
+  "so o DESIGN.md" pela via do FINAL escrito a mao.
+- `README.md` / `README.pt-BR.md` (alterados): `system/`/`source/` na descricao de
+  `design-systems/<id>/`.
+- `test/integrations.test.js` (alterado): assercao de `systemArtifacts` atualizada com o
+  racional e os numeros da medicao; novo teste garantindo que **nenhuma** entrada de diretorio
+  e `required` (invariante de que um system sem diretorio nenhum ainda sai 0).
+- `test/fetch-system.test.js` (alterado): dois testes novos de regressao — um copia um fixture
+  com `system/artifacts/` aninhado e confere o conteudo em disco (nao so o `copied[]`), outro
+  fixa que um system sem diretorio nenhum continua saindo `0`. `npm test`: 535 passed,
+  2 skipped, 0 failed.
+
 ## [2.18.1] — 2026-09-03
 
 ### Suite de testes do handoff-validator alinhada com o estagio Testador

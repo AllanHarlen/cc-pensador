@@ -2758,14 +2758,25 @@ export const OPEN_DESIGN = {
    * Read order (agent consumption): manifest.json → USAGE.md → DESIGN.md →
    * tokens.css (paste first) → design-tokens.json / tailwind-v4.css (alternate
    * consumption forms of the same tokens) → components.html →
-   * components.manifest.json → assets/ → fonts/ (typography fidelity) →
-   * preview/ (visual sanity check).
+   * components.manifest.json → preview/ (visual sanity check) → system/
+   * (rendered kit + example artifacts) → source/ (audit evidence) → assets/ →
+   * fonts/ (typography fidelity).
    *
-   * This list is the FALLBACK used when a system ships no manifest.json (legacy
-   * DESIGN.md-only systems). When manifest.json IS present, od-fetch-system.mjs
-   * derives the authoritative file list from its `files`/`usage`/
-   * `componentsManifest`/`preview.pages[]`/`sourceFiles` fields instead — see
-   * that script's `deriveExpectedFiles()`.
+   * The FILE entries are the FALLBACK used when a system ships no manifest.json
+   * (legacy DESIGN.md-only systems). When manifest.json IS present,
+   * od-fetch-system.mjs derives the authoritative file list from its
+   * `files`/`usage`/`componentsManifest`/`preview.pages[]`/`sourceFiles` fields
+   * instead — see that script's `deriveExpectedFiles()`.
+   *
+   * The DIRECTORY entries ('/'-suffixed) are NOT a fallback: manifest.json has
+   * no field that declares a directory, so od-fetch-system.mjs copies them
+   * best-effort from the clone on BOTH paths (see its PACKAGE_DIRS, derived from
+   * this list). Getting this list wrong silently drops files from a run that
+   * otherwise reports ok — which is exactly what happened to system/ before
+   * 2.19.0. Measured against the 152 curated systems in the upstream clone
+   * (2026-09-05): system/ 150, source/ 151, preview/ 152, assets/ 0, fonts/ 0.
+   * assets/ and fonts/ are kept because an IMPORTED system (import-github /
+   * import-shadcn) can ship them; they are simply absent from the bundled set.
    */
   systemArtifacts: [
     'manifest.json',         // machine-readable entry point — schemaVersion 'od-design-system-project/v1' when present; drives od-fetch-system.mjs's per-system file list
@@ -2776,9 +2787,11 @@ export const OPEN_DESIGN = {
     'tailwind-v4.css',       // Tailwind v4 @theme mapping onto the same custom properties
     'components.html',       // fixtures: real component HTML/CSS + states
     'components.manifest.json', // component inventory
-    'assets/',               // optional brand assets directory
-    'fonts/',                // optional webfont files — required for typography fidelity
     'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
+    'system/',               // rendered kit (kit.html / kit.dark.html / index.html / tokens.default.json) + system/artifacts/ example pages (landing, form, email, deck, newsletter, poster)
+    'source/',               // provenance/audit evidence (evidence.md, tokens.source.json, token-contract.report.json) — manifest.sourceFiles names the files, this copies whatever else the dir holds
+    'assets/',               // optional brand assets directory — absent from the bundled curated set; imported systems can ship it
+    'fonts/',                // optional webfont files (typography fidelity) — absent from the bundled curated set; imported systems can ship it
   ],
   /** Schema version manifest.json declares when present (upstream 'design-systems' contract). */
   manifestSchemaVersion: 'od-design-system-project/v1',

@@ -30,10 +30,15 @@
  * 'od-design-system-project/v1') is fetched FIRST via the same three-source
  * chain. When present and parseable, it is the authority for which files this
  * system promises (files.*, usage, componentsManifest, preview.pages[],
- * sourceFiles.*) — see `deriveExpectedFiles()`. `OPEN_DESIGN.systemArtifacts`
- * is used only as a FALLBACK for legacy systems that ship no manifest.json.
- * Any manifest-promised file that never gets copied is reported under
- * `unexpectedMissing` — never silently dropped.
+ * sourceFiles.*) — see `deriveExpectedFiles()`. The FILE half of
+ * `OPEN_DESIGN.systemArtifacts` is used only as a FALLBACK for legacy systems
+ * that ship no manifest.json. Any manifest-promised file that never gets copied
+ * is reported under `unexpectedMissing` — never silently dropped.
+ *
+ * DIRECTORIES are the exception: manifest.json declares none, so the '/'-suffixed
+ * entries of `OPEN_DESIGN.systemArtifacts` (see PACKAGE_DIRS) are copied
+ * best-effort from the clone on BOTH paths. That list is therefore the only
+ * thing deciding whether preview/, system/ or source/ reach the output.
  *
  * tokens.css and DESIGN.md are always required; their absence after all three
  * sources is a non-zero exit for that system.
@@ -121,7 +126,14 @@ if (runningAsCli && ids.length === 0) {
 }
 
 const BASE_REQUIRED = new Set(["tokens.css", "DESIGN.md"]);
-const LEGACY_DIRS = ["assets/", "fonts/", "preview/"];
+/**
+ * Directories copied best-effort from the clone on BOTH paths (manifest-driven
+ * and legacy) — manifest.json has no field that declares a directory, so this
+ * list is the ONLY thing that decides whether e.g. system/ makes it into the
+ * output. Derived from OPEN_DESIGN.systemArtifacts so the two can't drift:
+ * a directory added there is copied here without a second edit.
+ */
+const PACKAGE_DIRS = OPEN_DESIGN.systemArtifacts.filter((f) => f.endsWith("/"));
 
 function copyTree(srcDir, destDir) {
   mkdirSync(destDir, { recursive: true });
@@ -233,9 +245,9 @@ async function fetchFile(id, rel, destDir) {
   }
 }
 
-/** Directories (assets/, fonts/, preview/) are only ever available from the
- * on-disk clone — neither `od get-file` nor the REST payload can serve a
- * directory atomically. Best-effort: absence is never fatal. */
+/** Directories (preview/, system/, source/, assets/, fonts/) are only ever
+ * available from the on-disk clone — neither `od get-file` nor the REST payload
+ * can serve a directory atomically. Best-effort: absence is never fatal. */
 function fetchDir(id, rel, destDir) {
   const name = rel.replace(/\/$/, "");
   const src = join(cloneDir, id, name);
@@ -251,8 +263,8 @@ function fetchDir(id, rel, destDir) {
  * upstream `od-design-system-project/v1` schema (files.*, usage,
  * componentsManifest, preview.pages[], sourceFiles.*). Returns
  * { files: string[], required: Set<string> } — `files` excludes directories
- * (assets/, fonts/), which manifest.json does not declare and which stay on
- * the legacy best-effort path via LEGACY_DIRS.
+ * (preview/, system/, source/, …), which manifest.json does not declare and
+ * which stay on the clone-only best-effort path via PACKAGE_DIRS.
  */
 export function deriveExpectedFiles(manifest) {
   const files = [];
@@ -329,8 +341,8 @@ for (const id of ids) {
     }
   }
 
-  // ── legacy directories: best-effort, clone-only, never fatal ───────────
-  for (const rel of LEGACY_DIRS) {
+  // ── package directories: best-effort, clone-only, never fatal ──────────
+  for (const rel of PACKAGE_DIRS) {
     const source = fetchDir(id, rel, destDir);
     if (source) {
       fileSource[rel] = source;

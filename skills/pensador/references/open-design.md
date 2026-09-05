@@ -98,6 +98,10 @@ Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do 
 
 > ⚠️ **O bug que isto corrige.** Versões anteriores puxavam **só o `DESIGN.md`** (prosa) e o re-escreviam em `design-system.md`, descartando `tokens.css`, `components.html` e `preview/`. O agente de front-end nunca via os tokens reais → tema chapado, magic numbers, anti-padrões. O Open Design **não é fonte de inspiração textual; é um pipeline de artefatos de código.**
 
+> ⚠️ **O mesmo bug reincide quando o FINAL é escrito à mão** (observado 2026-09-05, cc-pensador 2.18.1). O agente instalou o Open Design no meio do run, foi direto no `GET /api/design-systems/<id>` — que serve **só metadados + `DESIGN.md`** (passo 5a) — e gravou esse `DESIGN.md` com `Write`, sem nunca chamar o `od-fetch-system.mjs`. Resultado: `design-systems/<id>/` com **1 arquivo em vez de 24**, e o `handoff.json` sem `verbatim`/`materializeInto`, porque também não passou por `buildArtifactList()`.
+>
+> **Assinaturas para reconhecer:** (a) a pasta do system tem só `DESIGN.md`; (b) esse `DESIGN.md` tem o conteúdo verbatim mas quebras de linha diferentes do clone — `copyFileSync` copia byte a byte, `Write` não; (c) a entrada `design-system-files` do handoff não tem `materializeInto`. O gate do FINAL na `SKILL.md` agora exige listar o diretório em disco e conferir contra o `copied[]` do JSON — o JSON sozinho não pega esse caso, porque quando o script não roda não há JSON nenhum.
+
 ### Artefatos verbatim (read order do `USAGE.md` oficial)
 
 O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **baixar e persistir** todos, não resumir (`OPEN_DESIGN.systemArtifacts` / `openDesignFetchPlan()`):
@@ -110,11 +114,17 @@ O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **ba
 | `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
 | `components.html` | fixtures: HTML/CSS real dos componentes + estados | — |
 | `components.manifest.json` | inventário de componentes | — |
+| `preview/` | diretório de sanity check visual para o gate de review | — |
+| `system/` | kit renderizado (`kit.html`, `kit.dark.html`, `index.html`, `tokens.default.json`) + `system/artifacts/` com páginas de exemplo (landing, form, email, deck, newsletter, poster) | — |
+| `source/` | evidência de proveniência/auditoria (`evidence.md`, `tokens.source.json`, `token-contract.report.json`) | — |
 | `assets/` | brand assets (logos, ícones) | — |
 | `fonts/` | webfonts — **necessário para fidelidade tipográfica** | — |
-| `preview/` | diretório de sanity check visual para o gate de review | — |
 
-> ⚠️ **`preview/` e `fonts/` variam por system.** A maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; alguns trazem outras páginas (`preview.pages[]` no `manifest.json` lista as reais). O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
+> ⚠️ **Os diretórios não são declarados pelo `manifest.json`.** O schema `od-design-system-project/v1` tem campos para *arquivos* (`files.*`, `usage`, `componentsManifest`, `preview.pages[]`, `sourceFiles.*`), nenhum para diretórios. Por isso as entradas com `/` de `OPEN_DESIGN.systemArtifacts` (`PACKAGE_DIRS` no `od-fetch-system.mjs`) são copiadas best-effort do clone nos **dois** caminhos — e essa lista é a única coisa que decide se `system/` chega na saída. Errar a lista derruba arquivos em silêncio num run que reporta `ok: true`; foi exatamente o que aconteceu com `system/` até a 2.19.0.
+>
+> **Medição contra os 152 systems curados do clone upstream (2026-09-05):** `preview/` em 152, `source/` em 151, `system/` em 150, `assets/` em **0**, `fonts/` em **0**. `assets/` e `fonts/` continuam na lista porque um system **importado** (`import-github` / `import-shadcn`) pode trazê-los — eles só não existem no pacote bundled.
+>
+> ⚠️ **`preview/` varia por system.** A maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; alguns trazem outras páginas (`preview.pages[]` no `manifest.json` lista as reais). O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
 >
 > **`design-tokens.json` e `tailwind-v4.css` também fazem parte do pacote** (export machine-readable dos mesmos tokens e o mapeamento `@theme` para Tailwind v4, respectivamente) — incluídos em `OPEN_DESIGN.systemArtifacts`, ambos opcionais.
 >

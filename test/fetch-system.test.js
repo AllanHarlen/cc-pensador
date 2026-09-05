@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -170,6 +170,72 @@ describe('od-fetch-system.mjs CLI (fixture clone, no live OpenDesign)', () => {
 
     expect(status).toBe(5);
     expect(json.results[0].reason).toBe('no-source');
+  });
+
+  it('copies the package directories the manifest cannot declare (system/, source/, preview/)', () => {
+    // The 2.19.0 regression guard: manifest.json has no field for a directory,
+    // so system/ reached the output only via PACKAGE_DIRS. It was missing from
+    // that list, and a run that dropped all 11 system/ files still reported
+    // ok:true with an empty unexpectedMissing[] — silent loss, not a failure.
+    const root = fixtureDir();
+    const sysDir = join(root, 'clone', 'dirs');
+    mkdirSync(join(sysDir, 'system', 'artifacts'), { recursive: true });
+    mkdirSync(join(sysDir, 'preview'), { recursive: true });
+    mkdirSync(join(sysDir, 'source'), { recursive: true });
+    writeFileSync(join(sysDir, 'manifest.json'), JSON.stringify({
+      schemaVersion: 'od-design-system-project/v1',
+      files: { design: 'DESIGN.md', tokens: 'tokens.css' },
+    }));
+    writeFileSync(join(sysDir, 'DESIGN.md'), '# Design');
+    writeFileSync(join(sysDir, 'tokens.css'), ':root{}');
+    writeFileSync(join(sysDir, 'system', 'kit.html'), '<html>kit</html>');
+    writeFileSync(join(sysDir, 'system', 'tokens.default.json'), '{}');
+    writeFileSync(join(sysDir, 'system', 'artifacts', 'landing.html'), '<html>landing</html>');
+    writeFileSync(join(sysDir, 'preview', 'colors.html'), '<html>colors</html>');
+    writeFileSync(join(sysDir, 'source', 'evidence.md'), '# Evidence');
+
+    const outRepo = join(root, 'out');
+    const { status, json } = run([
+      '--id', 'dirs',
+      '--repo', outRepo,
+      '--out-dir', '.',
+      '--clone-dir', join(root, 'clone'),
+      '--daemon-url', 'http://127.0.0.1:1',
+    ]);
+
+    expect(status).toBe(0);
+    expect(json.results[0].copied).toEqual(
+      expect.arrayContaining(['preview/', 'system/', 'source/']),
+    );
+    // Nested contents come along — copyTree recurses, so system/artifacts/ is
+    // not left behind.
+    const dest = join(outRepo, 'design-systems', 'dirs');
+    expect(readFileSync(join(dest, 'system', 'kit.html'), 'utf8')).toBe('<html>kit</html>');
+    expect(readFileSync(join(dest, 'system', 'artifacts', 'landing.html'), 'utf8'))
+      .toBe('<html>landing</html>');
+    expect(readFileSync(join(dest, 'system', 'tokens.default.json'), 'utf8')).toBe('{}');
+    expect(readFileSync(join(dest, 'preview', 'colors.html'), 'utf8')).toBe('<html>colors</html>');
+    expect(readFileSync(join(dest, 'source', 'evidence.md'), 'utf8')).toBe('# Evidence');
+  });
+
+  it('a system shipping no directories at all still exits 0 (dirs are never required)', () => {
+    const root = fixtureDir();
+    const sysDir = join(root, 'clone', 'bare');
+    mkdirSync(sysDir, { recursive: true });
+    writeFileSync(join(sysDir, 'DESIGN.md'), '# Design');
+    writeFileSync(join(sysDir, 'tokens.css'), ':root{}');
+
+    const { status, json } = run([
+      '--id', 'bare',
+      '--repo', join(root, 'out'),
+      '--out-dir', '.',
+      '--clone-dir', join(root, 'clone'),
+      '--daemon-url', 'http://127.0.0.1:1',
+    ]);
+
+    expect(status).toBe(0);
+    expect(json.results[0].ok).toBe(true);
+    expect(json.results[0].copied).not.toEqual(expect.arrayContaining(['system/']));
   });
 
   it('falls back to OPEN_DESIGN.systemArtifacts when the system ships no manifest.json (legacy)', () => {

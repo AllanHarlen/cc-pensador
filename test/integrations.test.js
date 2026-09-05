@@ -367,9 +367,13 @@ describe('Open Design descriptor', () => {
 
   it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
     // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
-    // Directory entries (trailing '/') are copied recursively. assets/ and fonts/
-    // are required for brand fidelity; preview/ varies by system (~150 curated systems
-    // as of 2026; most ship preview/colors.html+typography.html+spacing.html, only 1 has app.html).
+    // Directory entries (trailing '/') are copied recursively and are the ONLY
+    // way a directory reaches the output — manifest.json declares files, never
+    // directories, so od-fetch-system.mjs derives PACKAGE_DIRS from this list on
+    // BOTH the manifest and the legacy path. Measured over the 152 curated
+    // systems in the upstream clone (2026-09-05): preview/ 152, source/ 151,
+    // system/ 150, assets/ 0, fonts/ 0. system/ was missing from this list until
+    // 2.19.0, silently dropping 11 files per system from runs reporting ok.
     expect(OPEN_DESIGN.systemArtifacts).toEqual([
       'manifest.json',
       'USAGE.md',
@@ -379,9 +383,11 @@ describe('Open Design descriptor', () => {
       'tailwind-v4.css',
       'components.html',
       'components.manifest.json',
+      'preview/',
+      'system/',
+      'source/',
       'assets/',
       'fonts/',
-      'preview/',
     ]);
     expect(OPEN_DESIGN.manifestSchemaVersion).toBe('od-design-system-project/v1');
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
@@ -428,9 +434,20 @@ describe('Open Design descriptor', () => {
     expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
     // Optional artifacts — present when the system ships them, never fatal if absent.
     expect(bmw.files.find((f) => f.source === 'manifest.json').required).toBe(false);
-    expect(bmw.files.find((f) => f.source === 'fonts/').required).toBe(false);
-    expect(bmw.files.find((f) => f.source === 'assets/').required).toBe(false);
-    expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(false);
+    for (const dir of ['preview/', 'system/', 'source/', 'assets/', 'fonts/']) {
+      expect(bmw.files.find((f) => f.source === dir).required).toBe(false);
+    }
+  });
+
+  it('every directory entry is optional and none is required (dirs are best-effort, clone-only)', () => {
+    // Guards the invariant PACKAGE_DIRS relies on: a directory is never in
+    // BASE_REQUIRED, so a system that ships none of them still exits 0.
+    const dirs = OPEN_DESIGN.systemArtifacts.filter((f) => f.endsWith('/'));
+    expect(dirs).toEqual(['preview/', 'system/', 'source/', 'assets/', 'fonts/']);
+    const [plan] = openDesignFetchPlan(['bmw']);
+    for (const dir of dirs) {
+      expect(plan.files.find((f) => f.source === dir).required).toBe(false);
+    }
   });
 
   it('openDesignFetchPlan honors a custom root dir and is total on bad input', () => {
