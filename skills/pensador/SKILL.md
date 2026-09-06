@@ -541,11 +541,18 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 
      Isso grava `tokens.css` (fonte de verdade), `components.html`, `USAGE.md`, `DESIGN.md`, `preview/`, `system/`, `source/` em `<featurePath>/design-systems/<id>/` — ou seja, dentro de `.pensador/<slug>-vN/`, mantendo a saida do Pensador autocontida (ver `openDesignFetchPlan()` + `designSystemFilesRoot()`). Passe `--out-dir` com o `featurePath` da execucao (ex.: `.pensador/login-social-v1`). Quando o system traz `manifest.json`, o script deriva a lista de arquivos esperados dele (em vez da lista fixa) e reporta em `unexpectedMissing[]` qualquer arquivo prometido e nao copiado — nunca falha em silencio. `--locale <bcp47>` baixa tambem `DESIGN-<bcp47>.md` quando o system o oferece (opcional). Exit codes: `5` nenhuma fonte encontrada para o system, `6` fonte encontrada mas `tokens.css`/`DESIGN.md` ainda faltando. Se o script sair com erro (sem clone e sem REST), avise via `AskUserQuestion` e so entao caia para um `design-system.md` inline. Depois derive o `tokens.css` do projeto por composicao rastreavel dos systems (nunca um objeto JS a mao) e faca o `theme.ts` ler `var(--*)`.
 
-     **Verificacao obrigatoria — nao feche o FINAL sem ela.** O script imprime JSON com `copied[]`, `fileSource` e `unexpectedMissing[]`. Para CADA `<id>`, confira as tres coisas:
+     **Verificacao obrigatoria — nao feche o FINAL sem ela.** O script imprime JSON com `copied[]`, `fileSource` e `unexpectedMissing[]`. Para CADA `<id>`, confira as quatro coisas:
 
      1. **Exit code `0`** e `results[].ok === true`.
      2. **`tokens.css` e `DESIGN.md` estao em `copied[]`** — sao os dois obrigatorios.
      3. **Liste o diretorio de verdade** (`ls -R <featurePath>/design-systems/<id>/`) e confira que o conteudo em disco bate com `copied[]`. Nao confie so no JSON: o passo 3 e o que pega o modo de falha real (abaixo).
+     4. **Consistencia interna DESIGN.md × tokens.css.** Os dois sao gerados no mesmo bundle por upstream, mas nada garante que descrevem o mesmo produto — uma run real teve `DESIGN.md` prometendo uma paleta amarela com Poppins enquanto `tokens.css` (a fonte de verdade, que a implementacao seguiu corretamente) definia azul com Inter; `DESIGN.md` e o artefato que um humano le para julgar conformidade, e descrevia um produto que nunca existiu. Rode:
+
+        ```bash
+        node "${CLAUDE_PLUGIN_ROOT}/scripts/od-verify-system.mjs" --dir <featurePath>/design-systems/<id>
+        ```
+
+        Grava `<featurePath>/design-systems/<id>/design-consistency.json` e sai `1` se achar divergencia de paleta, tipografia ou escala de espacamento entre a prosa do `DESIGN.md` e os valores reais de `tokens.css`. **Nunca reescreva `DESIGN.md` a partir de `tokens.css`** — o bundle vem verbatim de upstream, e reescrever quebraria a proveniencia que `source/tokens.source.json` registra. Uma divergencia encontrada e um achado a reportar no recap final (passo 6), nao um erro a corrigir editando o `DESIGN.md`.
 
      > ⚠️ **Modo de falha conhecido — o FINAL escrito a mao.** Se `design-systems/<id>/` contiver **so `DESIGN.md`**, o script NAO rodou: voce puxou `GET /api/design-systems/<id>` a mao, e esse endpoint serve **apenas metadados + DESIGN.md**, nunca os raw file bodies (`references/open-design.md`, passo 5a). O sintoma e um `DESIGN.md` com o conteudo certo mas gravado por `Write` — o script usa `copyFileSync`, copia byte a byte do clone. **Volte e rode o script.** Nunca grave arquivo de system com `Write`/`Edit`: eles sao copia verbatim, nao geracao.
      >
@@ -556,7 +563,7 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
    - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
 
-**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a **verificacao do passo 5**: `od-fetch-system.mjs` rodou com exit `0` e o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON.
+**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a **verificacao de 4 pontos do passo 5**: `od-fetch-system.mjs` rodou com exit `0`, o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON, e `od-verify-system.mjs` rodou sobre cada `<id>` (uma divergencia DESIGN.md × tokens.css nao bloqueia o FINAL por si so, mas precisa estar no recap).
 
 ---
 
