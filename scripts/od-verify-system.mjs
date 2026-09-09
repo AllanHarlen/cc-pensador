@@ -30,8 +30,8 @@
  *   node od-verify-system.mjs --dir <featurePath>/design-systems/<id>
  *
  * Writes `<dir>/design-consistency.json` and exits 0 when no divergence is
- * found, 1 when at least one divergence was found (informational — the
- * caller decides whether that blocks FINAL), 2 on usage error. Missing
+ * found, 1 when at least one divergence was found (a blocking result for the
+ * Pensador FINAL gate), 2 on usage error. Missing
  * tokens.css/DESIGN.md is not this script's concern (od-fetch-system.mjs
  * already gates that) — it exits 0 with an explicit `skipped` reason
  * instead of failing redundantly.
@@ -102,9 +102,19 @@ export function compareTypography(tokens, designMdText) {
     const first = value.split(",")[0]?.trim().replace(/^["']|["']$/g, "");
     if (first) declaredFamilies.push(first);
   }
-  const lowerDesignMd = designMdText.toLowerCase();
+  // A substring check turns `Interaction` into a false mention of `Inter`.
+  // Keep family names as complete lexical phrases, while accepting whitespace
+  // variations such as "SF Mono" / "SF   Mono" in Markdown prose.
+  const mentionsFamily = (family) => {
+    const escapedWords = family
+      .trim()
+      .split(/\s+/)
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    return new RegExp(`(?:^|[^a-z0-9])${escapedWords}(?=$|[^a-z0-9])`, "i").test(designMdText);
+  };
   const missingFromProse = declaredFamilies.filter(
-    (family) => !lowerDesignMd.includes(family.toLowerCase()),
+    (family) => !mentionsFamily(family),
   );
   return { declaredFamilies: [...new Set(declaredFamilies)], missingFromProse: [...new Set(missingFromProse)] };
 }
@@ -195,6 +205,27 @@ export function buildConsistencyReport(cssText, designMdText) {
   };
 }
 
+/** Persists the deterministic sidecar used by the fetch pipeline and handoff. */
+export function verifyDesignSystemDirectory(dir) {
+  const cssPath = join(dir, "tokens.css");
+  const designMdPath = join(dir, "DESIGN.md");
+  if (!existsSync(cssPath) || !existsSync(designMdPath)) {
+    return {
+      schemaVersion: 1,
+      consistent: true,
+      skipped: true,
+      reason: "tokens.css and/or DESIGN.md not found — od-fetch-system.mjs's own presence gate already covers this",
+      divergences: [],
+    };
+  }
+  const report = buildConsistencyReport(
+    readFileSync(cssPath, "utf8"),
+    readFileSync(designMdPath, "utf8"),
+  );
+  writeFileSync(join(dir, "design-consistency.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  return report;
+}
+
 const invokedDirectly =
   process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 const runningAsCli = invokedDirectly || (process.argv[1] && /od-verify-system\.mjs$/.test(process.argv[1]));
@@ -205,28 +236,9 @@ function main() {
     console.error("od-verify-system: --dir <design-systems/<id>> is required");
     process.exit(2);
   }
-  const cssPath = join(dir, "tokens.css");
-  const designMdPath = join(dir, "DESIGN.md");
-  if (!existsSync(cssPath) || !existsSync(designMdPath)) {
-    const report = {
-      schemaVersion: 1,
-      consistent: true,
-      skipped: true,
-      reason: "tokens.css and/or DESIGN.md not found — od-fetch-system.mjs's own presence gate already covers this",
-      divergences: [],
-    };
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(0);
-  }
-
-  const cssText = readFileSync(cssPath, "utf8");
-  const designMdText = readFileSync(designMdPath, "utf8");
-  const report = buildConsistencyReport(cssText, designMdText);
-
-  const outPath = join(dir, "design-consistency.json");
-  writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  const report = verifyDesignSystemDirectory(dir);
   console.log(JSON.stringify(report, null, 2));
-  process.exit(report.consistent ? 0 : 1);
+  process.exit(report.skipped || report.consistent ? 0 : 1);
 }
 
 if (runningAsCli) main();

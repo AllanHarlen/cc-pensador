@@ -549,8 +549,16 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
      4. **Consistencia interna DESIGN.md × tokens.css.** Os dois sao gerados no mesmo bundle por upstream, mas nada garante que descrevem o mesmo produto — uma run real teve `DESIGN.md` prometendo uma paleta amarela com Poppins enquanto `tokens.css` (a fonte de verdade, que a implementacao seguiu corretamente) definia azul com Inter; `DESIGN.md` e o artefato que um humano le para julgar conformidade, e descrevia um produto que nunca existiu. Rode:
 
         ```bash
-        node "${CLAUDE_PLUGIN_ROOT}/scripts/od-verify-system.mjs" --dir <featurePath>/design-systems/<id>
-        ```
+         node "${CLAUDE_PLUGIN_ROOT}/scripts/od-verify-system.mjs" --dir <featurePath>/design-systems/<id>
+         ```
+
+         O `od-fetch-system.mjs` agora executa esta verificacao automaticamente e grava o mesmo
+         `design-consistency.json`; portanto, o fetch retorna **exit 7** e `consistency.status =
+         "DIVERGENT_BLOCKED"` quando houver divergencia. Isso bloqueia o FINAL. Nao execute o
+         verificador separado como substituto do fetch: ele serve apenas para reinspecao. So depois
+         de uma decisao explicita do usuario e permitido prosseguir com
+         `--accept-design-divergence --design-authority tokens.css`; o JSON passa a registrar
+         `DIVERGENT_ACCEPTED` e a autoridade escolhida.
 
         Grava `<featurePath>/design-systems/<id>/design-consistency.json` e sai `1` se achar divergencia de paleta, tipografia ou escala de espacamento entre a prosa do `DESIGN.md` e os valores reais de `tokens.css`. **Nunca reescreva `DESIGN.md` a partir de `tokens.css`** — o bundle vem verbatim de upstream, e reescrever quebraria a proveniencia que `source/tokens.source.json` registra. Uma divergencia encontrada e um achado a reportar no recap final (passo 6), nao um erro a corrigir editando o `DESIGN.md`.
 
@@ -563,7 +571,7 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
    - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
 
-**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a **verificacao de 4 pontos do passo 5**: `od-fetch-system.mjs` rodou com exit `0`, o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON, e `od-verify-system.mjs` rodou sobre cada `<id>` (uma divergencia DESIGN.md × tokens.css nao bloqueia o FINAL por si so, mas precisa estar no recap).
+**Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a verificacao de 4 pontos do passo 5: `od-fetch-system.mjs` rodou com exit `0`, o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON, e cada `design-consistency.json` esta em `PASS` ou em `DIVERGENT_ACCEPTED` por decisao explicita do usuario. `DIVERGENT_BLOCKED` impede fechar o FINAL.
 
 ---
 

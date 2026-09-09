@@ -127,6 +127,13 @@ describe('compareTypography (Achado 12.1: Poppins/IBM Plex Mono vs Inter/SF Mono
     expect(result.missingFromProse).toContain('SF Mono');
   });
 
+  it('does not mistake the word "Interaction" for the Inter font family', () => {
+    const tokens = parseTokensCssProperties(REAL_TOKENS_CSS);
+    const result = compareTypography(tokens, '# Design\n## Interaction patterns\nSF Mono is used for code.');
+    expect(result.missingFromProse).toContain('Inter');
+    expect(result.missingFromProse).not.toContain('SF Mono');
+  });
+
   it('reports no divergence when every declared family is mentioned somewhere in the prose', () => {
     const tokens = parseTokensCssProperties(REAL_TOKENS_CSS);
     const result = compareTypography(tokens, CONSISTENT_DESIGN_MD);

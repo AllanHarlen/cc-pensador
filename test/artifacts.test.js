@@ -433,6 +433,8 @@ describe('buildArtifactList(state)', () => {
       // Persisted under the feature root (featurePath is null here → fallback).
       expect(dsf[0].path).toBe('.pensador/atualizacao-v1/design-systems/agentic/');
       expect(dsf[0].verbatim).toBe(true);
+      expect(dsf[0].consistencyReport).toBe('design-systems/agentic/design-consistency.json');
+      expect(dsf[0].consistencyGate).toBe('tokens.css-authoritative');
       // uiPackageDir is only the downstream materialization hint, not the path.
       expect(dsf[0].materializeInto).toBe('packages/ui/design-systems/agentic/');
     });

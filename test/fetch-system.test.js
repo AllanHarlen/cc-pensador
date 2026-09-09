@@ -131,6 +131,7 @@ describe('od-fetch-system.mjs CLI (fixture clone, no live OpenDesign)', () => {
     expect(result.unexpectedMissing.sort()).toEqual(
       ['components.html', 'components.manifest.json', 'design-tokens.json'].sort(),
     );
+    expect(result.consistency.status).toBe('PASS');
   });
 
   it('exits 6 when a required file (tokens.css/DESIGN.md) is missing even with a source found', () => {
@@ -154,6 +155,43 @@ describe('od-fetch-system.mjs CLI (fixture clone, no live OpenDesign)', () => {
     expect(status).toBe(6);
     expect(json.ok).toBe(false);
     expect(json.results[0].missingRequired.sort()).toEqual(['DESIGN.md', 'tokens.css'].sort());
+  });
+
+  it('writes a sidecar and exits 7 when the copied prose contradicts tokens.css', () => {
+    const root = fixtureDir();
+    const sysDir = join(root, 'clone', 'divergent');
+    mkdirSync(sysDir, { recursive: true });
+    writeFileSync(join(sysDir, 'DESIGN.md'), '# Design\nPrimary: #fece14\nTypography: Poppins\nSpacing: 4/8');
+    writeFileSync(join(sysDir, 'tokens.css'), ':root { --accent: #2563eb; --font-body: Inter; --space-1: 4px; --space-2: 8px; --space-3: 12px; }');
+
+    const outRepo = join(root, 'out');
+    const { status, json } = run([
+      '--id', 'divergent', '--repo', outRepo, '--out-dir', '.',
+      '--clone-dir', join(root, 'clone'), '--daemon-url', 'http://127.0.0.1:1',
+    ]);
+
+    expect(status).toBe(7);
+    expect(json.ok).toBe(false);
+    expect(json.results[0].consistency.status).toBe('DIVERGENT_BLOCKED');
+    expect(readFileSync(join(outRepo, 'design-systems', 'divergent', 'design-consistency.json'), 'utf8'))
+      .toContain('PALETTE_DIVERGENCE');
+  });
+
+  it('allows a divergent bundle only with the explicit tokens.css authority', () => {
+    const root = fixtureDir();
+    const sysDir = join(root, 'clone', 'accepted');
+    mkdirSync(sysDir, { recursive: true });
+    writeFileSync(join(sysDir, 'DESIGN.md'), '# Design\nPrimary: #fece14');
+    writeFileSync(join(sysDir, 'tokens.css'), ':root { --accent: #2563eb; }');
+
+    const { status, json } = run([
+      '--id', 'accepted', '--repo', join(root, 'out'), '--out-dir', '.',
+      '--clone-dir', join(root, 'clone'), '--daemon-url', 'http://127.0.0.1:1',
+      '--accept-design-divergence', '--design-authority', 'tokens.css',
+    ]);
+
+    expect(status).toBe(0);
+    expect(json.results[0].consistency.status).toBe('DIVERGENT_ACCEPTED');
   });
 
   it('exits 5 when no source at all is found for a system', () => {

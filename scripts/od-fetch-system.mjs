@@ -47,6 +47,7 @@
  *   node od-fetch-system.mjs --id <slug>[,<slug>] --repo <repoRoot>
  *        [--out-dir <.pensador/<slug>-vN>] [--clone-dir <path>] [--daemon-url <url>]
  *        [--token <bearer>] [--locale <bcp47>]
+ *        [--accept-design-divergence --design-authority tokens.css]
  *
  * --out-dir is the directory (relative to --repo) UNDER WHICH `design-systems/<id>/`
  * is created. In the Pensador flow this is the FEATURE ROOT (`.pensador/<slug>-vN`)
@@ -66,7 +67,7 @@
  * Override via OD_CLONE_DIR env or --clone-dir flag when using a non-default clone path.
  *
  * Exit codes: 0 ok · 2 usage · 5 no source found at all for a system ·
- * 6 a source was found but a required file (tokens.css/DESIGN.md) is still missing.
+ * 6 a source was found but a required file is missing · 7 divergence blocked.
  */
 import {
   existsSync,
@@ -81,6 +82,7 @@ import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { OPEN_DESIGN } from "./pensador-engine.mjs";
+import { verifyDesignSystemDirectory } from "./od-verify-system.mjs";
 
 function arg(name, fallback = undefined) {
   const argv = process.argv.slice(2);
@@ -111,6 +113,8 @@ const daemonUrl = String(
 ).replace(/\/$/, "");
 const token = arg("token", process.env.OD_API_TOKEN || "");
 const locale = arg("locale", "");
+const acceptDesignDivergence = process.argv.slice(2).includes("--accept-design-divergence");
+const designAuthority = arg("design-authority", "");
 
 // Only run the shell (and enforce --id) when invoked directly, so tests can
 // import deriveExpectedFiles without touching the filesystem/network or
@@ -122,6 +126,10 @@ const runningAsCli =
 
 if (runningAsCli && ids.length === 0) {
   console.error("od-fetch-system: --id <slug>[,<slug>] is required");
+  process.exit(2);
+}
+if (runningAsCli && acceptDesignDivergence && designAuthority !== "tokens.css") {
+  console.error("od-fetch-system: --accept-design-divergence requires --design-authority tokens.css");
   process.exit(2);
 }
 
@@ -298,6 +306,7 @@ async function main() {
 const results = [];
 let hadNoSource = false;
 let hadMissingRequired = false;
+let hadBlockedDivergence = false;
 
 for (const id of ids) {
   const destDir = join(repoRoot, outDir, "design-systems", id);
@@ -376,6 +385,22 @@ for (const id of ids) {
 
   const ok = missingRequired.length === 0;
   if (!ok) hadMissingRequired = true;
+  let consistency = { status: "SKIPPED", report: null, divergences: [] };
+  if (ok) {
+    const report = verifyDesignSystemDirectory(destDir);
+    if (report.consistent) {
+      consistency = { status: "PASS", report: "design-consistency.json", divergences: [] };
+    } else {
+      const accepted = acceptDesignDivergence && designAuthority === "tokens.css";
+      consistency = {
+        status: accepted ? "DIVERGENT_ACCEPTED" : "DIVERGENT_BLOCKED",
+        report: "design-consistency.json",
+        authority: "tokens.css",
+        divergences: report.divergences,
+      };
+      if (!accepted) hadBlockedDivergence = true;
+    }
+  }
 
   results.push({
     id,
@@ -387,11 +412,12 @@ for (const id of ids) {
     fileSource,
     missingRequired,
     unexpectedMissing,
+    consistency,
   });
 }
 
-console.log(JSON.stringify({ ok: !hadNoSource && !hadMissingRequired, results }, null, 2));
-process.exit(hadNoSource ? 5 : hadMissingRequired ? 6 : 0);
+console.log(JSON.stringify({ ok: !hadNoSource && !hadMissingRequired && !hadBlockedDivergence, results }, null, 2));
+process.exit(hadNoSource ? 5 : hadMissingRequired ? 6 : hadBlockedDivergence ? 7 : 0);
 }
 
 if (runningAsCli) {

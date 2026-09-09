@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.21.0] — 2026-09-09
+
+### Open Design: divergência deixa de ser aviso manual e passa a bloquear FINAL
+
+- `od-fetch-system.mjs` executa a verificação de conteúdo automaticamente após
+  cada cópia completa, grava `design-consistency.json` e sai com código `7` em
+  `DIVERGENT_BLOCKED`.
+- A exceção requer tanto a decisão explícita do usuário quanto
+  `--accept-design-divergence --design-authority tokens.css`; a saída registra
+  `DIVERGENT_ACCEPTED` e a autoridade.
+- `buildArtifactList()` inclui o sidecar de consistência e a regra de autoridade
+  na entrada `design-system-files` do handoff.
+- A comparação tipográfica não confunde mais `Inter` com a palavra
+  `Interaction`.
+
 ## [2.19.0] — 2026-09-05
 
 ### Open Design: `system/` deixa de ser descartado e o FINAL passa a verificar a copia
