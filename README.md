@@ -1,8 +1,8 @@
 # cc-pensador
 
-> Claude Code plugin that conducts a natural language request through **twelve stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--mode`, saving Claude tokens.
+> Claude Code plugin that conducts a natural language request through **thirteen stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--mode`, saving Claude tokens.
 
-`version 2.7.2` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
+`version 2.22.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
 **📖 [Leia em Português](./README.pt-BR.md) | Read in Portuguese**
 
@@ -176,10 +176,10 @@ Install: Open Design is a local-first app (daemon + web); there is no `curl | sh
 
 The `Strict_PRD_Schema` (`skills/prd/SKILL.md`) defines **17 mandatory sections** so the PRD details the whole product at modern-system depth: Overview, Problem & Context, Objectives & Metrics, Personas, Scope, Functional Requirements, Non-Functional Requirements, **Design System & UI/UX**, Use Cases & Flows, **Data Model & Domain**, **API Contracts & Integrations**, **Security/Privacy & Compliance (LGPD, roles, multitenancy)**, **Observability & Operations**, Acceptance Criteria, Architecture, **Risks & Mitigations**, and Delivery Plan. An explicit anti-truncation directive requires every gap (business rule or technology) to be resolved or marked exactly `"TBD"` — the PRD is never shortened for brevity.
 
-## Twelve Stages
+## Thirteen Stages
 
 ```
-INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → DESIGN → FINAL → DONE
 ```
 
 | Stage | Purpose | Delegates | Always runs |
@@ -194,6 +194,7 @@ INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY �
 | **BRAINSTORM_GERAL** | Orchestrate domain lenses in parallel: requirements-clarity + Codex (if backend) + AGY (if frontend) + Open Design design brief (if frontend). | `requirements-clarity` · `codex:codex-rescue` · `cc-antigravity-plugin:antigravity-agent` · Open Design (`od`) | ✓ |
 | **CODEX** | Dedicated technical refinement with `effort high`. Does not run for frontend-only. | `codex:codex-rescue` | except frontend-only |
 | **AGY** | Final product gaps sweep. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | ✓ |
+| **DESIGN** | Materialize the resolved visual package (`design-systems/<id>/resolved/`): design contract, tokens, `components.html`, previews, audited brand assets. Auto-advances for backend-only demands. | AGY (synthesis + imagery) · Codex (read-only audit) | except backend-only |
 | **FINAL** | Apply `withConsolidated`, confirm backend, generate artifacts, present recap and handoff. | — | ✓ |
 | **DONE** | Terminal state. | — | — |
 
@@ -246,7 +247,7 @@ cc-pensador/
 │  ├─ plugin.json            # plugin manifest
 │  └─ marketplace.json       # marketplace entry
 ├─ commands/
-│  └─ pensador.md            # /pensador command (orchestrates the 12 stages + --mode)
+│  └─ pensador.md            # /pensador command (orchestrates the 13 stages + --mode)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md
@@ -299,7 +300,7 @@ npm test       # Vitest — smoke · engine-complexity · feature-isolation · c
 
 | Aspect | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 12 stages (EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 stages (CLARITY/BACKEND/UIUX/FRONTEND) | 13 stages (EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL/DESIGN) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
 | Artifacts folder | legacy v1 root | `.pensador/<slug-vN>/` |
 | v1 checkpoints | `pensador-output/.pensador-progress.json` | Incompatible — Pensador offers fresh start |

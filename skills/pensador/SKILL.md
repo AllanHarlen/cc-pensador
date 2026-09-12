@@ -1,6 +1,6 @@
 ---
 name: pensador
-description: Orquestra o protocolo v2 do Pensador em doze estagios, transformando uma demanda em linguagem natural em PRD (ou specs OpenSpec) e artefatos isolados por feature. Inclui exploracao via Code Base Memory, pesquisa web/benchmark de mercado, analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
+description: Orquestra o protocolo v2 do Pensador em treze estagios, transformando uma demanda em linguagem natural em PRD (ou specs OpenSpec) e artefatos isolados por feature. Inclui exploracao via Code Base Memory, pesquisa web/benchmark de mercado, analise de arquitetura, expansao, complexidade, brainstorm geral paralelo por dominio, refinamento Codex, AGY, pacote de design resolvido (DESIGN) e consolidacao final. Toda pergunta ao usuario passa exclusivamente por AskUserQuestion.
 ---
 
 # Skill: Pensador
@@ -26,7 +26,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/web-research.md` | RESEARCH, track de negocio: arquetipos de produto, plano de consultas, classificacao de funcionalidades e o Prompt System reaproveitavel |
 | `skills/pensador/references/tech-research.md` | RESEARCH, track tecnico: deteccao de stack, lacunas, versao atual, padroes de arquitetura/design, convencoes e anti-padroes vigentes |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e persistencia verbatim dos arquivos do system (`design-system.md` so no fallback, quando ha front-end e o Open Design nao e usado) |
-| `skills/pensador/references/imagery.md` | Pipeline de imagery/iconografia: `sectorContext` (Pensador) ate `IMAGE_SUGGESTIONS` do `antigravity-coder` (Orquestrador) |
+| `skills/pensador/references/imagery.md` | Contrato de imagery/iconografia: o Pensador e o unico proprietario das decisoes e artefatos visuais (`resolved/assets/manifest.json`); o Orquestrador so materializa, nunca pergunta nem gera |
 | `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (manifest-driven quando o system traz `manifest.json`; `tokens.css`, `components.html`, `preview/`, … caso contrario) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`) — `packages/ui/design-systems/<id>/` e so o alvo de materializacao que o Orquestrador/Executor usa depois |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes ocultas e correlacao por slug |
@@ -42,7 +42,7 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 A sequencia e fixa e nunca reordenada:
 
 ```text
-INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → DESIGN → FINAL → DONE
 ```
 
 `STAGE_ORDER` v2:
@@ -355,7 +355,7 @@ Quando o usuario escolheu Spec no INIT, este estagio **substitui o PRD base** ac
 1. Confirme que os comandos `/opsx:*` estao disponiveis (perfil core, instalado por padrao por `openspec init`). Se nao estiverem, pergunte via `AskUserQuestion` se deve cair para o modo PRD ou abortar — nao monte a estrutura manualmente nem siga como Claude direto.
 2. Crie e monte o change set: `/opsx:propose <nome ou descricao>` (gera `proposal.md`, `specs/<capability-path>/spec.md`, `design.md` e `tasks.md` de uma vez; `specs/` e omitido sob `skip_specs`) em `openspec/changes/<nome>/`. Use `openspecChangeName(featurePath)` como `<nome>`.
 3. Alimente os comandos com a demanda e o `<featurePath>/codebase-memory.md`; o que nao for inferivel fica como `"TBD"`.
-4. Todas as etapas seguintes (`ARCH`, `EXPAND`, `COMPLEXITY`, `BRAINSTORM_GERAL`, `CODEX`, `AGY`, `FINAL`) passam a raciocinar sobre a **spec** em vez do PRD, refinando os artefatos do change set.
+4. Todas as etapas seguintes (`ARCH`, `EXPAND`, `COMPLEXITY`, `BRAINSTORM_GERAL`, `CODEX`, `AGY`, `DESIGN`, `FINAL`) passam a raciocinar sobre a **spec** em vez do PRD, refinando os artefatos do change set.
 
 Detalhes do fluxo, chamadas de CLI (`openspec validate`, `openspec archive`) e handoff em `references/openspec.md`.
 
@@ -519,6 +519,17 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
 
 ---
 
+## DESIGN
+
+Execute somente quando `hasFrontend=true`. AGY e Codex sao dependencias obrigatorias: valide plugin, bridge, autenticacao e capacidade; se qualquer uma falhar, encerre como `BLOCKED` com `reasonCode` (`AGY_VISUAL_SYNTHESIS_UNAVAILABLE` ou `CODEX_VISUAL_AUDITOR_UNAVAILABLE`), remediacao e comando de retomada. Nao use fallback silencioso do Claude.
+
+1. **Pacote de Design & Contrato Visual:** Preserve os artefatos do Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`) em `<featurePath>/design-systems/<id>/`. AGY sintetiza `design-contract.json` conforme `assets/design-contract.schema.json`, obedecendo a precedencia: escolhas do usuario → PRD/CA → Open Design → prosa original.
+2. **Prototipacao no Discovery:** Selecione os 1 a 3 fluxos criticos descritos no `PRD_Base` (ex.: Vitrine + Carrinho, Dashboard de Metricas, Onboarding) e instrua a geracao de prototipos HTML standalone interativos em `<featurePath>/prototypes/<fluxo>/index.html`. Os prototipos devem consumir o CSS local (`tokens.css`), ser autocontidos (sem dependencias de CDNs externas) e acessiveis (WCAG AA).
+3. **Gate de Aprovacao Visual:** Apresente os links locais dos prototipos (`file:///<featurePath>/prototypes/<fluxo>/index.html`) ao usuario via `AskUserQuestion` para colher feedback de usabilidade, navegacao e estilo antes de consolidar. O PRD so avanca para `FINAL` apos a confirmacao do usuario.
+4. **Geracao de Midia e Brand Assets:** Gere imagens vetoriais (SVG) e rasterizadas realistas usando o `sectorContext` definido no `RESEARCH` (ex.: banners tematicos, icones de servico, fotos contextuais), salvando em `<featurePath>/assets/` e indexando em `<featurePath>/assets/manifest.json`. Cada asset obrigatorio precisa de requisito, rota, slot, arquivo, proporcao, alt, destino, bindings de seed, aprovacao, SHA-256 e metadata do gerador. Emojis e bitmaps nao substituem icones funcionais.
+5. **Fixtures de Componentes & Auditoria:** Execute `node "${CLAUDE_PLUGIN_ROOT}/scripts/design-package.mjs" audit --dir "<featurePath>/design-systems/<id>/resolved" --prototypes "<featurePath>/prototypes"`. Garanta que `components.html` contenha todos os componentes e seus 4 estados (default, hover, focus, disabled). Codex audita read-only tokens, aliases, contraste WCAG AA, estados, componentes, previews, iconografia, prototipos e integridade dos assets.
+6. **Fechamento do Estagio:** O estagio fecha somente quando `design-audit.json.status=PASS`, os prototipos estiverem aprovados pelo usuario e todos os assets `required` estiverem gerados e validados.
+
 ## FINAL
 
 **Objetivo:** consolidar e gerar artefatos.
@@ -563,12 +574,16 @@ Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQu
         Grava `<featurePath>/design-systems/<id>/design-consistency.json` e sai `1` se achar divergencia de paleta, tipografia ou escala de espacamento entre a prosa do `DESIGN.md` e os valores reais de `tokens.css`. **Nunca reescreva `DESIGN.md` a partir de `tokens.css`** — o bundle vem verbatim de upstream, e reescrever quebraria a proveniencia que `source/tokens.source.json` registra. Uma divergencia encontrada e um achado a reportar no recap final (passo 6), nao um erro a corrigir editando o `DESIGN.md`.
 
      > ⚠️ **Modo de falha conhecido — o FINAL escrito a mao.** Se `design-systems/<id>/` contiver **so `DESIGN.md`**, o script NAO rodou: voce puxou `GET /api/design-systems/<id>` a mao, e esse endpoint serve **apenas metadados + DESIGN.md**, nunca os raw file bodies (`references/open-design.md`, passo 5a). O sintoma e um `DESIGN.md` com o conteudo certo mas gravado por `Write` — o script usa `copyFileSync`, copia byte a byte do clone. **Volte e rode o script.** Nunca grave arquivo de system com `Write`/`Edit`: eles sao copia verbatim, nao geracao.
+
+        Grava `<featurePath>/design-systems/<id>/design-consistency.json` e sai `1` se achar divergencia de paleta, tipografia ou escala de espacamento entre a prosa do `DESIGN.md` e os valores reais de `tokens.css`. **Nunca reescreva `DESIGN.md` a partir de `tokens.css`** — o bundle vem verbatim de upstream, e reescrever quebraria a proveniencia que `source/tokens.source.json` registra. Uma divergencia encontrada e um achado a reportar no recap final (passo 6), nao um erro a corrigir editando o `DESIGN.md`.
+
+     > ⚠️ **Modo de falha conhecido — o FINAL escrito a mao.** Se `design-systems/<id>/` contiver **so `DESIGN.md`**, o script NAO rodou: voce puxou `GET /api/design-systems/<id>` a mao, e esse endpoint serve **apenas metadados + DESIGN.md**, nunca os raw file bodies (`references/open-design.md`, passo 5a). O sintoma e um `DESIGN.md` com o conteudo certo mas gravado por `Write` — o script usa `copyFileSync`, copia byte a byte do clone. **Volte e rode o script.** Nunca grave arquivo de system com `Write`/`Edit`: eles sao copia verbatim, nao geracao.
      >
      > A mesma regra vale para o `handoff.json`: as entradas `design-system-files` saem de `buildArtifactList()` e carregam `verbatim: true` e `materializeInto`. Uma entrada sem esses campos e sinal de que o FINAL nao passou pelo engine.
-   - **Modo PRD:** quando o Open Design foi usado, o `DESIGN.md` verbatim (em `design-systems/<id>/`) **e** o documento de design — **nao gere `design-system.md` standalone** (evita duplicacao). As decisoes de selecao/merge/overrides ja viajam no `handoff.json` (role `design-system-files` com o `<id>`). O `design-system.md` inline so e escrito no **fallback** (Open Design indisponivel/recusado): nesse caso preenche as 9 secoes do schema `DESIGN.md` a partir do brief. Os demais artefatos saem dos templates.
+   - **Modo PRD:** publique somente `design-systems/<id>/resolved/` como `authoritative:true`; mantenha `original/` apenas como provenance. Mesmo sem Open Design, produza o pacote resolvido completo — nunca apenas um `design-system.md` inline.
    - **Modo Spec:** dobre o design no change set usando o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)`. Ele entrega os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar: (a) na secao *Decisions* do `design.md`, registre o(s) `<id>`, a origem verbatim (`verbatimDir`) e o alvo de materializacao (`materializeInto`) + overrides justificados; (b) na capability delta-spec `specs/ui-design-system/spec.md`, escreva requisitos `SHALL` + cenarios `#### Scenario:` que citam `materializedTokens` (ex.: `packages/ui/design-systems/<id>/tokens.css`) como fonte de estilo. Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `openspec validate <nome> --strict --json` (e `/opsx:sync` se introduziu/ajustou specs). Contrato completo em `references/openspec.md` › **Contrato Spec ↔ Open Design**.
    - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
-   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id). Cada entrada carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
+   - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id com `components.html` garantido). Quando `hasFrontend`, declare tambem os novos roles visuais: `ui-prototype` (apontando para `prototypes/` com os prototipos standalone gerados no Discovery) e `brand-assets` (apontando para `assets/` e o `manifest.json` com os assets de midia do setor). Cada entrada de design system carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
 6. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a verificacao de 4 pontos do passo 5: `od-fetch-system.mjs` rodou com exit `0`, o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON, e cada `design-consistency.json` esta em `PASS` ou em `DIVERGENT_ACCEPTED` por decisao explicita do usuario. `DIVERGENT_BLOCKED` impede fechar o FINAL.
@@ -595,6 +610,7 @@ Estado terminal. O fluxo esta encerrado.
 | `BRAINSTORM_GERAL` | `agent.response.md` ou fallback por dominio; perguntas fechadas |
 | `CODEX` | Front-end especifico: zero perguntas e avanco; caso contrario, todas respondidas ou diferidas |
 | `AGY` | Todas as perguntas respondidas ou diferidas |
+| `DESIGN` | `design-audit.json` em `PASS`, prototipos aprovados pelo usuario via `AskUserQuestion` e assets `required` gerados e validados |
 | `FINAL` | Artefatos gerados, caminhos reportados e recap/handoff entregues; com `hasFrontend` + system selecionado, `od-fetch-system.mjs` rodou (exit `0`) e o diretorio verbatim em disco foi conferido contra o `copied[]` |
 | `DONE` | Terminal |
 
@@ -614,3 +630,4 @@ Estado terminal. O fluxo esta encerrado.
 | `BRAINSTORM_GERAL`/`FINAL` | MCP/CLI (motor) | Open Design (`od`) | `hasFrontend` | arquivos verbatim em `design-systems/<id>/` (inclui `DESIGN.md`); `design-system.md` so no fallback inline |
 | `CODEX` | subagente | `codex:codex-rescue` | nao especifico de front-end (`hasBackend` ou nao `hasFrontend`) | perguntas tecnicas finais |
 | `AGY` | subagente | `cc-antigravity-plugin:antigravity-agent` | sempre | perguntas de produto finais |
+| `DESIGN` | pipeline | `resolved-design-package` (AGY + Codex) | `hasFrontend` | protótipos em `prototypes/`, assets em `assets/`, pacote auditado |

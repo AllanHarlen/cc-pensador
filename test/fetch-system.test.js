@@ -12,7 +12,7 @@
  * implementation (see the OpenDesign upgrade plan, Workstream D).
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,6 +92,21 @@ describe('od-fetch-system.mjs CLI (fixture clone, no live OpenDesign)', () => {
       // execFileSync throws on non-zero exit; stdout is still captured.
       return { status: err.status, json: JSON.parse(err.stdout) };
     }
+  }
+
+  function runAsync(args) {
+    return new Promise((resolve) => {
+      execFile('node', [SCRIPT, ...args], { encoding: 'utf8' }, (err, stdout, stderr) => {
+        const exitCode = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
+        let json = {};
+        try {
+          json = JSON.parse(stdout || '{}');
+        } catch {
+          json = { stdout, stderr, error: err?.message };
+        }
+        resolve({ status: exitCode, json, stderr });
+      });
+    });
   }
 
   it('reports unexpectedMissing (never silent) when the manifest promises files the clone lacks', () => {
@@ -319,5 +334,53 @@ describe('od-fetch-system.mjs CLI (fixture clone, no live OpenDesign)', () => {
 
     expect(status).toBe(0);
     expect(json.results[0].copied).toContain('DESIGN-pt-br.md');
+  });
+
+  it('synthesizes components.html and preview/ when fetched via REST without prebuilt fixtures', async () => {
+    const { createServer } = await import('node:http');
+    const root = fixtureDir();
+    const server = createServer((req, res) => {
+      if (req.url === '/api/design-systems/remote-sys') {
+        res.writeHead(200, { 'content-type': 'application/json', connection: 'close' });
+        res.end(JSON.stringify({
+          id: 'remote-sys',
+          'DESIGN.md': '# Remote System\n',
+          'tokens.css': ':root{}\n',
+          // components.html and preview/ intentionally not served by the daemon
+        }));
+      } else {
+        res.writeHead(404, { connection: 'close' });
+        res.end();
+      }
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const outRepo = join(root, 'out');
+      const { status, json } = await runAsync([
+        '--id', 'remote-sys',
+        '--repo', outRepo,
+        '--out-dir', '.',
+        '--clone-dir', join(root, 'empty-clone'),
+        '--daemon-url', `http://127.0.0.1:${port}`,
+      ]);
+
+      expect(status).toBe(0);
+      const res = json.results[0];
+      expect(res.ok).toBe(true);
+      expect(res.fileSource['components.html']).toBe('synthesized:emergency');
+      expect(res.fileSource['preview/']).toBe('synthesized:emergency');
+
+      const dest = join(outRepo, 'design-systems', 'remote-sys');
+      expect(readFileSync(join(dest, 'components.html'), 'utf8')).toContain('Component Fixtures');
+      expect(readFileSync(join(dest, 'preview', 'colors.html'), 'utf8')).toContain('Colors Preview');
+    } finally {
+      if (typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections();
+      }
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

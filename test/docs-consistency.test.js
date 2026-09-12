@@ -89,6 +89,27 @@ describe('docs ↔ engine consistency', () => {
         expect(offenders, `stale phrase found in: ${offenders.join(', ')}`).toEqual([]);
       });
     }
+
+    // Patterns that only existed in the retired 12-stage model (DESIGN added,
+    // 12 -> 13). Excludes CHANGELOG.md, a dated historical record where "12
+    // estágios" correctly describes a past release. This is what actually
+    // caught the DESIGN-stage drift the Codex session left in
+    // commands/pensador.md, README.md, README.pt-BR.md, SKILL.md and both
+    // plugin manifests after STAGE_ORDER grew to 13.
+    const retiredTotalCount = [
+      { re: /\b12[\s-]?stages?\b/i, label: '"12 stages" / "12-stage" (flow has 13 stages, DESIGN added)' },
+      { re: /\btwelve\s+stages?\b/i, label: '"twelve stages" (flow has 13 stages, DESIGN added)' },
+      { re: /\b12\s+est[aá]gios?\b/i, label: '"12 estágios" (flow has 13 estágios, DESIGN added)' },
+      { re: /\bdoze\s+est[aá]gios?\b/i, label: '"doze estágios" (flow has 13 estágios, DESIGN added)' },
+    ];
+    const nonChangelogFiles = FILES.filter((f) => rel(f) !== 'CHANGELOG.md');
+
+    for (const { re, label } of retiredTotalCount) {
+      it(`no file (other than CHANGELOG.md) contains ${label}`, () => {
+        const offenders = nonChangelogFiles.filter((f) => re.test(readFileSync(f, 'utf8'))).map(rel);
+        expect(offenders, `stale phrase found in: ${offenders.join(', ')}`).toEqual([]);
+      });
+    }
   });
 
   describe('no removed engine identifier is reintroduced', () => {

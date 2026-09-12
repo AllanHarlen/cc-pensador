@@ -46,6 +46,8 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { detectOpenDesign } from "./lib/open-design-preflight.mjs";
 import {
   CODEBASE_MEMORY_BINARY_NAMES,
   CODEBASE_MEMORY_CONFIG_CANDIDATES,
@@ -189,9 +191,13 @@ function parseModeArg(argv) {
  */
 function checkCli(cli, options = {}) {
   try {
+    const configuredTimeout = Number(process.env.PENSADOR_PREFLIGHT_CLI_TIMEOUT_MS);
+    const timeout = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : (Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 5_000);
     const out = execSync(`${cli} --version`, {
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: 10_000,
+      timeout,
     })
       .toString()
       .trim();
@@ -319,22 +325,62 @@ function checkPlugin(marketplace, pluginName) {
 // ── Checks ─────────────────────────────────────────────────────────────────
 
 /**
+ * Whether a sibling plugin ships a given agent file, preferring its own
+ * `.claude-plugin/plugin.json` `agents` declaration (a public, versioned
+ * contract the sibling plugin's own contract tests already enforce) over a
+ * hardcoded relative path. Falls back to the conventional `agents/<basename>`
+ * path when the manifest omits the `agents` field entirely (some plugins rely
+ * on directory-convention auto-discovery instead of declaring it) — so this
+ * never regresses a plugin that never opted in to the manifest contract, it
+ * only stops guessing a path when a better signal is available. Either way
+ * the resolved path is verified with `existsSync` — a manifest entry alone is
+ * not proof the file wasn't since deleted/renamed on disk.
+ * @param {string|undefined} pluginPath
+ * @param {string} agentBasename  e.g. "codex-rescue.md"
+ */
+function pluginHasAgent(pluginPath, agentBasename) {
+  if (!pluginPath) return false;
+  let declaredEntry = null;
+  try {
+    const manifestPath = join(pluginPath, ".claude-plugin", "plugin.json");
+    if (existsSync(manifestPath)) {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (Array.isArray(manifest.agents)) {
+        declaredEntry = manifest.agents.find((entry) => String(entry).split(/[\\/]/).pop() === agentBasename) ?? null;
+      }
+    }
+  } catch {
+    // Malformed/unreadable manifest — fall through to the path check below.
+  }
+  const relativePath = declaredEntry
+    ? String(declaredEntry).replace(/^\.[\\/]/, "")
+    : join("agents", agentBasename);
+  return existsSync(join(pluginPath, relativePath));
+}
+
+/**
  * Full availability check for the Codex subagent.
  * Verifies both the plugin cache entry and the CLI binary.
  */
 function checkCodex() {
   const plugin = checkPlugin(CODEX_MARKETPLACE, CODEX_PLUGIN_NAME);
   const cli = checkCli("codex");
+  const capabilities = {
+    agent: pluginHasAgent(plugin.path, "codex-rescue.md"),
+    bridge: Boolean(plugin.path && existsSync(join(plugin.path, "scripts", "codex-companion.mjs"))),
+    authenticated: cli.ok,
+  };
 
   // The subagent is invoked as a Claude Code plugin (codex:codex-rescue), not via
   // a global CLI. Availability hinges on the plugin being installed; the CLI check
   // is advisory only (many setups have no `codex` binary on PATH).
-  const available = plugin.ok;
+  const available = plugin.ok && capabilities.agent && capabilities.bridge;
   return {
     subagentKey: CODEX_SUBAGENT_KEY,
     available,
     plugin,
     cli,
+    capabilities,
     cliAdvisory: true,
     stage: "CODEX",
     parameter: "--effort high",
@@ -350,16 +396,23 @@ function checkCodex() {
 function checkAgy() {
   const plugin = checkPlugin(AGY_MARKETPLACE, AGY_PLUGIN_NAME);
   const cli = checkCli("agy");
+  const capabilities = {
+    analyst: pluginHasAgent(plugin.path, "antigravity-agent.md"),
+    coder: pluginHasAgent(plugin.path, "antigravity-coder.md"),
+    bridge: Boolean(plugin.path && existsSync(join(plugin.path, "scripts", "antigravity-bridge.js"))),
+    authenticated: cli.ok,
+  };
 
   // AGY ships as a plugin (cc-antigravity-plugin) with a bridge script — there is
   // typically no `agy` binary on PATH. Base availability on the plugin; the CLI
   // check is advisory only (avoids a guaranteed false-negative).
-  const available = plugin.ok;
+  const available = plugin.ok && capabilities.analyst && capabilities.bridge;
   return {
     subagentKey: AGY_SUBAGENT_KEY,
     available,
     plugin,
     cli,
+    capabilities,
     cliAdvisory: true,
     stage: "AGY",
     parameter: "--model gemini-3.1-pro-high",
@@ -747,7 +800,7 @@ function checkOpenSpec() {
     try {
       const out = execSync("openspec doctor --json", {
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: 10_000,
+        timeout: Number(process.env.PENSADOR_PREFLIGHT_CLI_TIMEOUT_MS) || 5_000,
         env: { ...process.env, NO_COLOR: "1", OPENSPEC_NO_UPDATE_CHECK: "1" },
       }).toString();
       const report = JSON.parse(out);
@@ -844,7 +897,7 @@ function checkOpenSpec() {
  *
  * Like OpenSpec, this is purely optional and never affects the overall status.
  */
-function checkOpenDesign() {
+function checkOpenDesignLegacy() {
   const cliRaw = checkCli(OPEN_DESIGN_CLI);
 
   // GNU coreutils ships an `od` (octal-dump) binary on virtually every Unix-like
@@ -934,6 +987,11 @@ function checkOpenDesign() {
   };
 }
 
+async function checkOpenDesign(options = {}) {
+  const legacy = checkOpenDesignLegacy();
+  return detectOpenDesign({ ...options, cliCheck: legacy.cliCheck, legacy });
+}
+
 /**
  * Availability check for the selected execution mode (--mode). For the default
  * `claude` mode, always available (no external plugin needed). For a delegating
@@ -983,7 +1041,8 @@ function checkExecutionMode(mode, modeValid, requestedMode) {
 
 // ── Report ─────────────────────────────────────────────────────────────────
 
-const { mode, requestedMode, modeValid } = parseModeArg(process.argv.slice(2));
+export async function runPreflight({ cwd = process.cwd(), env = process.env, timeoutMs = 5_000, argv = [] } = {}) {
+const { mode, requestedMode, modeValid } = parseModeArg(argv);
 
 const codex = checkCodex();
 const agy = checkAgy();
@@ -992,7 +1051,7 @@ const codebaseMemory = checkCodebaseMemory();
 const context7 = checkContext7();
 const webResearch = checkWebResearch();
 const openspec = checkOpenSpec();
-const openDesign = checkOpenDesign();
+const openDesign = await checkOpenDesign({ cwd, env, timeoutMs });
 
 const subagentsAvailable = codex.available && agy.available;
 // Overall status considers the domain subagents, the selected execution engine,
@@ -1034,13 +1093,15 @@ const report = {
   },
   guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign),
 };
+return report;
+}
 
-console.log(JSON.stringify(report, null, 2));
-// Always exit 0: the /pensador command reads the `status` field from stdout to
-// decide fallbacks. A non-zero exit is reserved for the script itself failing,
-// not for a subagent/engine being unavailable (which is a normal, handled
-// condition).
-process.exit(0);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const requestedTimeout = Number(process.env.OD_PREFLIGHT_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0 ? requestedTimeout : 5_000;
+  console.log(JSON.stringify(await runPreflight({ argv: process.argv.slice(2), timeoutMs }), null, 2));
+  process.exitCode = 0;
+}
 
 // ── Guidance builder ───────────────────────────────────────────────────────
 

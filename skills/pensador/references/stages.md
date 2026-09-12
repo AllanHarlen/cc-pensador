@@ -7,7 +7,7 @@ Este documento detalha os estagios do protocolo v2, seus gates e as regras de de
 ## Visao geral
 
 ```text
-INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → DESIGN → FINAL → DONE
 ```
 
 A sequencia e fixa e nunca reordenada. O avanco e controlado por gate: o Pensador so avanca quando todas as perguntas do estagio atual tem resposta, diferimento explicito ou fallback registrado.
@@ -301,6 +301,10 @@ Se um participante falhar:
 **Gate:** todas as perguntas/fallbacks de AGY respondidos ou diferidos.
 
 ---
+
+## DESIGN
+
+Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/resolved/`: contrato JSON, tokens JSON/CSS, DESIGN.md normativo, componentes, previews, assets/manifest, auditoria e provenance. AGY sintetiza e gera imagens antecipadamente; Codex audita read-only. Sao permitidas no maximo duas rodadas automaticas de correcao. Finding alto/critico, dependencia visual ausente ou asset obrigatorio ausente produz `BLOCKED`. Backend-only visita o estagio e auto-avanca sem trabalho visual.
 
 ## FINAL
 

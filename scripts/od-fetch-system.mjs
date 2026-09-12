@@ -83,6 +83,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { OPEN_DESIGN } from "./pensador-engine.mjs";
 import { verifyDesignSystemDirectory } from "./od-verify-system.mjs";
+import { renderComponentsHtml } from "./design-package.mjs";
 
 function arg(name, fallback = undefined) {
   const argv = process.argv.slice(2);
@@ -351,12 +352,35 @@ for (const id of ids) {
   }
 
   // ── package directories: best-effort, clone-only, never fatal ──────────
-  for (const rel of PACKAGE_DIRS) {
+  for (const rel of [...PACKAGE_DIRS, "prototypes/", "fixtures/"]) {
     const source = fetchDir(id, rel, destDir);
     if (source) {
       fileSource[rel] = source;
       copied.add(rel);
     }
+  }
+
+  // ── emergency synthesis: when source is REST and daemon didn't serve components.html / preview/ ──
+  const usedRest = Object.values(fileSource).some((s) => s.startsWith("rest:"));
+  if (usedRest && !copied.has("components.html")) {
+    let contract = null;
+    const contractPath = join(destDir, "design-contract.json");
+    if (existsSync(contractPath)) {
+      try { contract = JSON.parse(readFileSync(contractPath, "utf8")); } catch {}
+    }
+    const html = renderComponentsHtml(contract || { systemId: id });
+    writeFileSync(join(destDir, "components.html"), html, "utf8");
+    copied.add("components.html");
+    fileSource["components.html"] = "synthesized:emergency";
+  }
+
+  if (usedRest && !copied.has("preview/")) {
+    const previewDir = join(destDir, "preview");
+    mkdirSync(previewDir, { recursive: true });
+    writeFileSync(join(previewDir, "colors.html"), `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Colors Preview</title><link rel="stylesheet" href="../tokens.css"></head><body><h1>Colors</h1></body></html>`, "utf8");
+    writeFileSync(join(previewDir, "typography.html"), `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Typography Preview</title><link rel="stylesheet" href="../tokens.css"></head><body><h1>Typography</h1></body></html>`, "utf8");
+    copied.add("preview/");
+    fileSource["preview/"] = "synthesized:emergency";
   }
 
   const copiedArr = [...copied];
@@ -416,8 +440,12 @@ for (const id of ids) {
   });
 }
 
-console.log(JSON.stringify({ ok: !hadNoSource && !hadMissingRequired && !hadBlockedDivergence, results }, null, 2));
-process.exit(hadNoSource ? 5 : hadMissingRequired ? 6 : hadBlockedDivergence ? 7 : 0);
+  console.log(JSON.stringify({ ok: !hadNoSource && !hadMissingRequired && !hadBlockedDivergence, results }, null, 2));
+  const exitCode = hadNoSource ? 5 : hadMissingRequired ? 6 : hadBlockedDivergence ? 7 : 0;
+  process.exitCode = exitCode;
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
 }
 
 if (runningAsCli) {

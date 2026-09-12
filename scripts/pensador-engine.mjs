@@ -44,6 +44,7 @@ export const STAGE_ORDER = [
   'BRAINSTORM_GERAL',
   'CODEX',
   'AGY',
+  'DESIGN',
   'FINAL',
   'DONE',
 ];
@@ -120,6 +121,15 @@ export const STAGE_DELEGATION = {
   // front-end-only work via hasBackend.
   CODEX:    { kind: 'subagent', ref: 'codex:codex-rescue',                          origin: 'codex', param: '--effort high', relevantWhen: 'not(frontendOnly)' },
   AGY:      { kind: 'subagent', ref: 'cc-antigravity-plugin:antigravity-agent',     origin: 'agy',   param: '--model gemini-3.1-pro-high' },
+  DESIGN:   {
+    kind: 'composite',
+    relevantWhen: 'hasFrontend',
+    lenses: [
+      { kind: 'skill', ref: 'ui-ux-pro-max', origin: 'ui-ux-pro-max', role: 'design-lead', relevantWhen: 'hasFrontend' },
+      { kind: 'skill', ref: 'frontend-design', origin: 'frontend-design', role: 'implementation-spec', relevantWhen: 'hasFrontend' },
+      { kind: 'tool', ref: 'open-design', origin: 'open-design', role: 'design-engine', relevantWhen: 'hasFrontend' },
+    ],
+  },
 };
 
 /** Origins that represent a resolved gap (anything not authored by the Pensador itself). */
@@ -2821,6 +2831,12 @@ export const OPEN_DESIGN = {
   ],
   /** Final design-system artifact written under <featurePath>/ in PRD mode. */
   designSystemFile: 'design-system.md',
+  /** Directory for discovery HTML prototypes. */
+  prototypesDir: 'prototypes/',
+  /** Directory for brand assets and manifest. */
+  brandAssetsDir: 'assets/',
+  /** Authoritative components fixture document. */
+  componentsDoc: 'design-systems/<id>/resolved/components.html',
 };
 
 /**
@@ -2877,6 +2893,8 @@ export function openDesignBriefPlan() {
     'responsiveness',      // breakpoints, grid, densidade
     'accessibility',       // contraste, foco, leitura de tela, alvo WCAG
     'microcopy',           // voz/tom de textos, mensagens de estado
+    'imageryStrategy',     // estilo e slots de imagens/banners sem placeholders
+    'iconography',         // conjunto de ícones vetoriais e semântica de interface
   ];
 }
 
@@ -2910,6 +2928,8 @@ export function openDesignBriefRouting() {
     responsiveness: 'parameter',  // section_spacing / densidade
     accessibility: 'constraint',  // gate WCAG (contraste AA) sobre o output
     microcopy: 'input',           // tagline + copy das seções + CTAs
+    imageryStrategy: 'input',     // diretriz para geração e seleção de imagens
+    iconography: 'constraint',    // restrição visual de ícones
   };
 }
 
@@ -2937,13 +2957,13 @@ export function openDesignBriefRouting() {
 export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
   const ids = Array.isArray(systemIds) ? systemIds.filter(Boolean) : [];
   const base = `${String(rootDir).replace(/\/+$/, '')}/design-systems`;
-  const required = new Set(['tokens.css', 'DESIGN.md']);
+  const required = new Set(['tokens.css', 'DESIGN.md', 'components.html', 'preview/']);
   return ids.map((id) => ({
     id,
-    destDir: `${base}/${id}/`,
+    destDir: `${base}/${id}/original`,
     files: OPEN_DESIGN.systemArtifacts.map((source) => ({
       source,
-      dest: `${base}/${id}/${source}`,
+      dest: `${base}/${id}/original/${source}`,
       required: required.has(source),
     })),
   }));
@@ -2975,18 +2995,21 @@ export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
  *
  * @param {'prd'|'spec'|undefined} artifactMode
  * @param {string} [changeName='<name>']  the OpenSpec change folder name
- * @returns {{ mode: 'prd'|'spec', systemsDir: string, standaloneArtifact: boolean, decisionsDoc: string, requirementsDoc: string }}
+ * @returns {{ mode: 'prd'|'spec', systemsDir: string, prototypesDir: string, brandAssetsDir: string, componentsDoc: string, standaloneArtifact: boolean, decisionsDoc: string, requirementsDoc: string }}
  */
 export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
   const spec = resolveArtifactMode(artifactMode) === 'spec';
   const changeDir = `openspec/changes/${changeName}`;
   // The verbatim DESIGN.md that ships inside every fetched system — relative to
   // the artifactRoot, matching the design-system-files handoff path convention.
-  const verbatimDesignDoc = 'design-systems/<id>/DESIGN.md';
+  const verbatimDesignDoc = 'design-systems/<id>/resolved/DESIGN.md';
   return {
     mode: spec ? 'spec' : 'prd',
     // Eventual UI-package target the executor materializes into (both modes).
     systemsDir: OPEN_DESIGN.systemsDir,
+    prototypesDir: OPEN_DESIGN.prototypesDir,
+    brandAssetsDir: OPEN_DESIGN.brandAssetsDir,
+    componentsDoc: OPEN_DESIGN.componentsDoc,
     // When Open Design is used, its verbatim DESIGN.md IS the design document —
     // the Pensador never writes a redundant standalone design-system.md (this
     // function only describes the Open-Design-in-use delivery). The inline
@@ -3051,8 +3074,8 @@ export function openDesignSpecContract(featurePath, systemIds, uiPackageDir = 'p
     capabilityName: 'ui-design-system',
     capabilitySpec: `${changeDir}/specs/ui-design-system/spec.md`,
     systems: ids.map((id) => {
-      const src = `${root}/design-systems/${id}`;
-      const dst = `${uiRoot}/design-systems/${id}`;
+      const src = `${root}/design-systems/${id}/resolved`;
+      const dst = `${uiRoot}/styles/design-systems/${id}`;
       return {
         id,
         verbatimDir: `${src}/`,
@@ -3336,6 +3359,8 @@ export function planArtifacts(state) {
     codebaseMemory: false,
     projectBaseline: false,
     requirementsIndex: false,
+    uiPrototype: false,
+    brandAssets: false,
   };
   if (!finalStages.has(state.currentStage)) {
     return empty;
@@ -3349,6 +3374,7 @@ export function planArtifacts(state) {
   // the inline fallback (Open Design unavailable / declined → no system selected).
   const usesOpenDesign =
     Array.isArray(state.designSystems) && state.designSystems.filter(Boolean).length > 0;
+  const hasPrototypes = Array.isArray(state.prototypes) && state.prototypes.length > 0;
 
   if (spec) {
     // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
@@ -3378,6 +3404,8 @@ export function planArtifacts(state) {
       codebaseMemory: true,
       projectBaseline: true,
       requirementsIndex: false,
+      uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
+      brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
     };
   }
 
@@ -3408,6 +3436,8 @@ export function planArtifacts(state) {
     // #### Scenario: blocks in specs/) is exposed live via `openspec status`,
     // a different, I/O-based path this pure engine does not attempt to mirror.
     requirementsIndex: true,
+    uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
+    brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
   };
 }
 
@@ -3567,17 +3597,29 @@ export function buildArtifactList(state) {
     });
   }
 
-  // Verbatim Open Design system files persisted by the Pensador. Per the handoff
-  // contract, every producer artifact lives under the feature root — the Pensador
-  // never writes into the project's real source tree. So the files land in
-  // `<featurePath>/design-systems/<id>/` (designSystemFilesRoot), keyed by the
-  // CONCRETE system id(s) chosen at BRAINSTORM_GERAL (state.designSystems). This
-  // makes the design-system-files path genuinely relative to artifactRoot, so the
-  // handoff carries the real path without the consumer parsing design-system.md
-  // prose. The downstream Orchestrator/Executor materializes them into
-  // state.uiPackageDir (packages/ui / src/styles) during implementation. Fires in
-  // BOTH modes when the demand has a front-end AND a system was selected; gated on
-  // FINAL/DONE via the empty-plan short-circuit above.
+  if (plan.uiPrototype) {
+    artifacts.push({
+      kind: 'ui-prototype',
+      role: 'ui-prototype',
+      filename: 'prototypes/',
+      path: `${basePath}prototypes/`,
+      description: 'Protótipos HTML estáticos dos fluxos críticos para validação visual e spec de UI',
+    });
+  }
+
+  if (plan.brandAssets) {
+    artifacts.push({
+      kind: 'brand-assets',
+      role: 'brand-assets',
+      filename: 'assets/',
+      path: `${basePath}assets/`,
+      manifest: `${basePath}assets/manifest.json`,
+      description: 'Diretório de mídia, logos, banners e ícones vetoriais gerados no DESIGN',
+    });
+  }
+
+  // The resolved package is authoritative. Open Design input remains immutable
+  // under original/ and is never handed to an executor as the implementation source.
   const isFinalStage = plan.prd || plan.proposal || plan.designSystem || plan.userhistory;
   const { hasFrontend } = classifyProject(state.consolidated);
   const selectedSystems = Array.isArray(state.designSystems)
@@ -3588,15 +3630,20 @@ export function buildArtifactList(state) {
     for (const entry of openDesignFetchPlan(selectedSystems, designSystemFilesRoot(state.featurePath))) {
       artifacts.push({
         kind: 'design-system-files',
-        filename: `design-systems/${entry.id}/`,
-        path: entry.destDir,
-        verbatim: true,
+        filename: `design-systems/${entry.id}/resolved/`,
+        path: `${designSystemFilesRoot(state.featurePath)}/design-systems/${entry.id}/resolved`,
+        variant: 'resolved',
+        authoritative: true,
+        sourcePath: `design-systems/${entry.id}/original/`,
+        verbatim: false,
         // Written by od-fetch-system.mjs for every complete bundle. The
         // consumer inspects this deterministic status before materializing.
-        consistencyReport: `design-systems/${entry.id}/design-consistency.json`,
-        consistencyGate: 'tokens.css-authoritative',
+        consistencyReport: `design-systems/${entry.id}/resolved/design-audit.json`,
+        consistencyGate: 'resolved-contract-authoritative',
+        assetsManifest: 'assets/manifest.json',
+        validation: { status: 'PASS', audit: 'design-audit.json' },
         // The eventual UI package the executor materializes these into.
-        materializeInto: `${materializeRoot}/design-systems/${entry.id}/`,
+        materializeInto: `${materializeRoot}/styles/design-systems/${entry.id}/`,
       });
     }
   }
@@ -3745,7 +3792,7 @@ export function deserializeState(serialized) {
 // ---------------------------------------------------------------------------
 
 /**
- * @typedef {'INIT'|'EXPLORE'|'RESEARCH'|'PRD_BASE'|'ARCH'|'EXPAND'|'COMPLEXITY'|'BRAINSTORM_GERAL'|'CODEX'|'AGY'|'FINAL'|'DONE'} Stage
+ * @typedef {'INIT'|'EXPLORE'|'RESEARCH'|'PRD_BASE'|'ARCH'|'EXPAND'|'COMPLEXITY'|'BRAINSTORM_GERAL'|'CODEX'|'AGY'|'DESIGN'|'FINAL'|'DONE'} Stage
  */
 
 /**
@@ -3849,20 +3896,29 @@ export function deserializeState(serialized) {
  * @property {boolean} [specs]     // OpenSpec (spec mode)
  * @property {boolean} [design]    // OpenSpec (spec mode)
  * @property {boolean} [tasks]     // OpenSpec (spec mode)
+ * @property {boolean} [uiPrototype]
+ * @property {boolean} [brandAssets]
  */
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'proposal'|'specs'|'design'|'tasks'|'architecture'|'codebase-memory'|'project-baseline'|'requirements-index'} kind
+ * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'ui-prototype'|'brand-assets'|'proposal'|'specs'|'design'|'tasks'|'architecture'|'codebase-memory'|'project-baseline'|'requirements-index'} kind
  * @property {string} filename
  * @property {string} path
+ * @property {string} [role]
  * @property {'openspec'} [managedBy] // present when the artifact is scaffolded by the openspec-* commands
- * @property {boolean} [verbatim]     // true for design-system-files (tokens.css, components.html, …)
+ * @property {boolean} [verbatim]     // legacy-verbatim compatibility marker
+ * @property {'resolved'|'legacy-verbatim'} [variant]
+ * @property {boolean} [authoritative]
+ * @property {string} [sourcePath]
+ * @property {string} [assetsManifest]
+ * @property {string} [manifest]      // path to asset manifest for brand-assets
+ * @property {string} [description]   // human-readable summary
  * @property {string} [consistencyReport] // design-system-files sidecar generated by od-fetch-system.mjs
- * @property {'tokens.css-authoritative'} [consistencyGate] // divergence needs explicit acceptance
+ * @property {'tokens.css-authoritative'|'resolved-contract-authoritative'} [consistencyGate]
  * @property {string} [spec]          // contract spec family for api-contract (openapi/graphql-sdl/protobuf/asyncapi)
- * @property {{ spec: string, mock: string, validate: string }} [validation] // mock+validate directive for api-contract
- * @property {string} [derivedFrom]   // for communication: the machine-readable contract file it is a view of
+ * @property {{ spec?: string, mock?: string, validate?: string, status?: string, audit?: string }} [validation]
+ * @property {string|string[]} [derivedFrom]   // for communication: the machine-readable contract file it is a view of
  */
 
 /**

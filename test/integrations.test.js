@@ -361,6 +361,8 @@ describe('Open Design descriptor', () => {
       'responsiveness',
       'accessibility',
       'microcopy',
+      'imageryStrategy',
+      'iconography',
     ]);
     expect(() => openDesignBriefPlan()).not.toThrow();
   });
@@ -414,6 +416,8 @@ describe('Open Design descriptor', () => {
       responsiveness: 'parameter',
       accessibility: 'constraint',
       microcopy: 'input',
+      imageryStrategy: 'input',
+      iconography: 'constraint',
     });
     // Only the four documented destinations exist.
     const allowed = new Set(['selection', 'input', 'parameter', 'constraint']);
@@ -426,33 +430,33 @@ describe('Open Design descriptor', () => {
     expect(plan).toHaveLength(2);
     const bmw = plan[0];
     expect(bmw.id).toBe('bmw');
-    expect(bmw.destDir).toBe('packages/ui/design-systems/bmw/');
+    expect(bmw.destDir).toBe('packages/ui/design-systems/bmw/original');
     expect(bmw.files.map((f) => f.source)).toEqual(OPEN_DESIGN.systemArtifacts);
     const tokens = bmw.files.find((f) => f.source === 'tokens.css');
-    expect(tokens.dest).toBe('packages/ui/design-systems/bmw/tokens.css');
+    expect(tokens.dest).toBe('packages/ui/design-systems/bmw/original/tokens.css');
     expect(tokens.required).toBe(true);
     expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
     // Optional artifacts — present when the system ships them, never fatal if absent.
     expect(bmw.files.find((f) => f.source === 'manifest.json').required).toBe(false);
-    for (const dir of ['preview/', 'system/', 'source/', 'assets/', 'fonts/']) {
+    expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(true);
+    for (const dir of ['system/', 'source/', 'assets/', 'fonts/']) {
       expect(bmw.files.find((f) => f.source === dir).required).toBe(false);
     }
   });
 
-  it('every directory entry is optional and none is required (dirs are best-effort, clone-only)', () => {
+  it('requires preview while keeping non-preview source directories best-effort', () => {
     // Guards the invariant PACKAGE_DIRS relies on: a directory is never in
     // BASE_REQUIRED, so a system that ships none of them still exits 0.
     const dirs = OPEN_DESIGN.systemArtifacts.filter((f) => f.endsWith('/'));
     expect(dirs).toEqual(['preview/', 'system/', 'source/', 'assets/', 'fonts/']);
     const [plan] = openDesignFetchPlan(['bmw']);
-    for (const dir of dirs) {
-      expect(plan.files.find((f) => f.source === dir).required).toBe(false);
-    }
+    expect(plan.files.find((f) => f.source === 'preview/').required).toBe(true);
+    for (const dir of dirs.filter((entry) => entry !== 'preview/')) expect(plan.files.find((f) => f.source === dir).required).toBe(false);
   });
 
   it('openDesignFetchPlan honors a custom root dir and is total on bad input', () => {
     const [ds] = openDesignFetchPlan(['vercel'], 'frontend/packages/ui/');
-    expect(ds.destDir).toBe('frontend/packages/ui/design-systems/vercel/');
+    expect(ds.destDir).toBe('frontend/packages/ui/design-systems/vercel/original');
     expect(openDesignFetchPlan(null)).toEqual([]);
     expect(openDesignFetchPlan(undefined)).toEqual([]);
     expect(openDesignFetchPlan([null, '', 'bmw'])).toHaveLength(1);
@@ -469,7 +473,7 @@ describe('Open Design descriptor', () => {
     expect(designSystemFilesRoot(undefined)).toBe('.pensador/atualizacao-v1');
     // Composed with openDesignFetchPlan the destination stays inside the feature root.
     const [ds] = openDesignFetchPlan(['agentic'], designSystemFilesRoot('.pensador/login-social-v1'));
-    expect(ds.destDir).toBe('.pensador/login-social-v1/design-systems/agentic/');
+    expect(ds.destDir).toBe('.pensador/login-social-v1/design-systems/agentic/original');
   });
 
   it('openDesignDeliveryFor: PRD mode uses the verbatim DESIGN.md (no standalone doc)', () => {
@@ -477,8 +481,8 @@ describe('Open Design descriptor', () => {
     expect(d.mode).toBe('prd');
     // Open Design in use → its verbatim DESIGN.md is the design document.
     expect(d.standaloneArtifact).toBe(false);
-    expect(d.decisionsDoc).toBe('design-systems/<id>/DESIGN.md');
-    expect(d.requirementsDoc).toBe('design-systems/<id>/DESIGN.md');
+    expect(d.decisionsDoc).toBe('design-systems/<id>/resolved/DESIGN.md');
+    expect(d.requirementsDoc).toBe('design-systems/<id>/resolved/DESIGN.md');
     // Verbatim files land in the repo regardless of mode.
     expect(d.systemsDir).toBe('packages/ui/design-systems');
   });
@@ -508,20 +512,20 @@ describe('Open Design descriptor', () => {
     const s = c.systems[0];
     expect(s.id).toBe('agentic');
     // SOURCE the Pensador produced (feature root), cited by design.md Decisions.
-    expect(s.verbatimDir).toBe('.pensador/login-social-v1/design-systems/agentic/');
-    expect(s.tokens).toBe('.pensador/login-social-v1/design-systems/agentic/tokens.css');
-    expect(s.designMd).toBe('.pensador/login-social-v1/design-systems/agentic/DESIGN.md');
-    expect(s.components).toBe('.pensador/login-social-v1/design-systems/agentic/components.html');
+    expect(s.verbatimDir).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/');
+    expect(s.tokens).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/tokens.css');
+    expect(s.designMd).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/DESIGN.md');
+    expect(s.components).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/components.html');
     // RUNTIME target the executor materializes into, cited by the ui-design-system spec.
-    expect(s.materializeInto).toBe('packages/ui/design-systems/agentic/');
-    expect(s.materializedTokens).toBe('packages/ui/design-systems/agentic/tokens.css');
+    expect(s.materializeInto).toBe('packages/ui/styles/design-systems/agentic/');
+    expect(s.materializedTokens).toBe('packages/ui/styles/design-systems/agentic/tokens.css');
   });
 
   it('openDesignSpecContract honors a custom UI package dir, supports multiple systems, and is total', () => {
     const c = openDesignSpecContract('.pensador/checkout-v2', ['bmw', 'clean'], 'frontend/packages/ui/');
     expect(c.systems.map((s) => s.id)).toEqual(['bmw', 'clean']);
-    expect(c.systems[0].materializedTokens).toBe('frontend/packages/ui/design-systems/bmw/tokens.css');
-    expect(c.systems[1].verbatimDir).toBe('.pensador/checkout-v2/design-systems/clean/');
+    expect(c.systems[0].materializedTokens).toBe('frontend/packages/ui/styles/design-systems/bmw/tokens.css');
+    expect(c.systems[1].verbatimDir).toBe('.pensador/checkout-v2/design-systems/clean/resolved/');
     // No systems selected → empty list, still a valid contract with the change paths.
     const empty = openDesignSpecContract('.pensador/checkout-v2', []);
     expect(empty.systems).toEqual([]);

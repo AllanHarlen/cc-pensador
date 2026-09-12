@@ -51,6 +51,7 @@ describe('Pensador Engine — smoke', () => {
       'BRAINSTORM_GERAL',
       'CODEX',
       'AGY',
+      'DESIGN',
       'FINAL',
       'DONE',
     ]);

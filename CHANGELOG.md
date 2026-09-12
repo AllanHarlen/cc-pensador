@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.22.0] — 2026-09-11
+
+- Open Design passa a ser detectado por CLI, MCP estruturado, daemon REST autenticado e Docker/porta publicada, distinguindo autenticacao ausente de instalacao ausente.
+- Novo estagio `DESIGN` produz `original/` imutavel e pacote `resolved/` autoritativo com contrato, tokens, componentes, previews, auditoria e proveniencia.
+- AGY sintetiza o design e gera antecipadamente imagens obrigatorias/recomendadas; Codex executa auditoria read-only com no maximo duas correcoes.
+- Manifesto de assets registra rotas, slots, alt, hashes, destinos e seed bindings; imagens obrigatorias ausentes bloqueiam o handoff.
+- Iconografia vetorial e WCAG AA passam a ser gates do pacote visual; emojis funcionais e tokens indefinidos sao recusados.
+- `design-package.mjs audit` deixa de aceitar apenas o diretorio `resolved/` implicito: `--prototypes <dir>` aponta explicitamente para `<featurePath>/prototypes/` (fora de `resolved/`, onde os protótipos realmente vivem — role `ui-prototype`), e o comando documentado no SKILL.md deixou de ter as aspas fechando no lugar errado. Auditoria de pacote/contrato ausente agora devolve `{status:"BLOCKED", findings:[...]}` estruturado em vez de crashar com stack trace.
+- Detecção de capacidade de Codex/AGY no preflight passa a preferir o `agents` declarado no `plugin.json` do plugin irmão (contrato público e versionado) sobre um caminho interno hardcoded, com fallback para o caminho convencional quando o manifesto não declara `agents`; nunca confia apenas na declaração sem confirmar o arquivo no disco.
+- Timeout de probe de CLI (Codex/AGY/Open Design/OpenSpec) no preflight sobe de 1,5s para 5s por padrão — 1,5s deixava ~35% de margem sobre a latência real medida do Codex (~950-980ms), arriscando falso-negativo sob carga.
+- Contagem de estágios corrigida em toda a documentação (12 → 13, com `DESIGN`) e `docs-consistency.test.js` ganhou guarda dedicada contra essa classe de drift.
+
 ## [2.21.0] — 2026-09-09
 
 ### Open Design: divergência deixa de ser aviso manual e passa a bloquear FINAL

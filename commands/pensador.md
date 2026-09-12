@@ -1,5 +1,5 @@
 ---
-description: Conduz o Pensador v2 em doze estagios — exploracao do codebase, pesquisa de mercado e tecnica, arquitetura, complexidade e brainstorm por dominio — ate um PRD completo ou um change set OpenSpec, isolado por feature. Suporta --mode claude|agy|kiro|codex para delegar o trabalho pesado a uma CLI externa.
+description: Conduz o Pensador v2 em treze estagios — exploracao do codebase, pesquisa de mercado e tecnica, arquitetura, complexidade, brainstorm por dominio e pacote de design resolvido — ate um PRD completo ou um change set OpenSpec, isolado por feature. Suporta --mode claude|agy|kiro|codex para delegar o trabalho pesado a uma CLI externa.
 argument-hint: "help | preflight | status | resume [slug] | config | [--mode claude|agy|kiro|codex] [--model <id>] [--effort <nivel>] <demanda>"
 allowed-tools: Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, Bash(node:*), Bash(openspec:*), AskUserQuestion, Agent, Skill, SlashCommand, mcp__codebase-memory-mcp
 ---
@@ -13,7 +13,7 @@ Transforma uma demanda em linguagem natural num **PRD completo** (ou change set 
 ## Sinopse
 
 ```text
-/pensador <demanda>                 conduz os doze estagios ate o PRD/Spec
+/pensador <demanda>                 conduz os treze estagios ate o PRD/Spec
 /pensador help                      esta ajuda
 /pensador preflight                 valida subagentes, motor e integracoes
 /pensador status                    estagio atual dos checkpoints em .pensador/
@@ -59,10 +59,10 @@ O alias `--modo` continua aceito em silencio e produz exatamente o mesmo efeito.
 | `--mode kiro` | `/cc-kiro-plugin:kiro` | `--model claude-opus-4.8 --effort high` |
 | `--mode codex` | `/codex:rescue` | `--effort high` |
 
-## Os doze estagios
+## Os treze estagios
 
 ```text
-INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → DESIGN → FINAL → DONE
 ```
 
 | Estagio | O que produz |
@@ -77,6 +77,7 @@ INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY �
 | `BRAINSTORM_GERAL` | Orquestracao por dominio com lentes primarias + refino (Codex, AGY, Open Design) |
 | `CODEX` | Refinamento tecnico final com `codex:codex-rescue` |
 | `AGY` | Lacunas finais de produto com `cc-antigravity-plugin:antigravity-agent` |
+| `DESIGN` | Pacote de design resolvido (`design-systems/<id>/resolved/`), auditoria e assets — so para demandas com front-end |
 | `FINAL` | Consolidacao, artefatos, recap final e handoff |
 | `DONE` | Estado terminal |
 
@@ -246,7 +247,7 @@ Read-only. Mostre o motor resolvido por `resolveExecutionMode()` (modo, slash co
 |---|---|
 | `skills/pensador/SKILL.md` | Skill principal do Pensador v2 |
 | `skills/prd/SKILL.md` | Skill_PRD_Base: schema e entrevista de descoberta |
-| `skills/pensador/references/stages.md` | Definicao detalhada dos doze estagios |
+| `skills/pensador/references/stages.md` | Definicao detalhada dos treze estagios |
 | `skills/pensador/references/feature-isolation.md` | Isolamento `.pensador/<slug-da-demanda>-vN/`, `allocateFeatureDir()`, checkpoint e `shared-agents/` |
 | `skills/pensador/references/skill-stack.md` | Skills como lentes de dominio do BRAINSTORM_GERAL |
 | `skills/pensador/references/agent-stack.md` | Codex/AGY/Kiro, roteamento por dominio, motores de execucao e contrato `shared-agents/` |

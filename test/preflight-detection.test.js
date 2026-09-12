@@ -23,17 +23,20 @@ import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PREFLIGHT = join(ROOT, 'scripts', 'preflight.mjs');
+const PATH_DELIMITER = process.platform === 'win32' ? ';' : ':';
 
 /** The forward-slash form Claude Code uses for `projects` keys in ~/.claude.json. */
 const asProjectKey = (p) => p.split(String.fromCharCode(92)).join('/');
 
 let SANDBOX;
+let BASE_BIN;
 let seq = 0;
 
 beforeAll(() => {
   SANDBOX = join(tmpdir(), `pensador-preflight-${process.pid}`);
   rmSync(SANDBOX, { recursive: true, force: true });
   mkdirSync(SANDBOX, { recursive: true });
+  BASE_BIN = fakeBinary('openspec', 'OpenSpec 1.10.0');
 });
 afterAll(() => rmSync(SANDBOX, { recursive: true, force: true }));
 
@@ -49,6 +52,12 @@ afterAll(() => rmSync(SANDBOX, { recursive: true, force: true }));
  *   homeSkills?: string[],
  *   mcpJson?: object,  // written to <cwd>/.mcp.json (project-level MCP registration)
  *   extraPath?: string,  // directory prepended to PATH (e.g. a fake `od` shim)
+ *   pluginInstalls?: Array<{
+ *     marketplace: string, name: string, version?: string,
+ *     manifest?: object,  // written as .claude-plugin/plugin.json when given
+ *     agentFiles?: string[],  // relative paths (e.g. "agents/foo.md") created as empty files
+ *     scriptFiles?: string[],
+ *   }>,  // fake entries under <home>/.claude/plugins/cache/<marketplace>/<name>/<version>/
  * }} [setup]
  */
 function runPreflight(setup = {}) {
@@ -57,6 +66,20 @@ function runPreflight(setup = {}) {
   const cwd = join(base, 'proj');
   mkdirSync(home, { recursive: true });
   mkdirSync(cwd, { recursive: true });
+
+  for (const install of setup.pluginInstalls ?? []) {
+    const pluginDir = join(home, '.claude', 'plugins', 'cache', install.marketplace, install.name, install.version ?? '1.0.0');
+    mkdirSync(pluginDir, { recursive: true });
+    if (install.manifest) {
+      mkdirSync(join(pluginDir, '.claude-plugin'), { recursive: true });
+      writeFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), JSON.stringify(install.manifest));
+    }
+    for (const rel of [...(install.agentFiles ?? []), ...(install.scriptFiles ?? [])]) {
+      const filePath = join(pluginDir, ...rel.split('/'));
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, '# fixture\n');
+    }
+  }
 
   const config =
     typeof setup.claudeJson === 'function' ? setup.claudeJson(cwd) : setup.claudeJson;
@@ -75,13 +98,11 @@ function runPreflight(setup = {}) {
     writeFileSync(join(dir, 'SKILL.md'), `# ${name}\n`);
   }
 
-  const path = setup.extraPath
-    ? `${setup.extraPath}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}`
-    : process.env.PATH;
+  const path = [setup.extraPath, BASE_BIN, dirname(process.execPath)].filter(Boolean).join(PATH_DELIMITER);
 
   const out = execFileSync(process.execPath, [PREFLIGHT], {
     cwd,
-    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path },
+    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path, OD_PREFLIGHT_DISABLE_DEFAULT_URL: '1', OD_PREFLIGHT_DISABLE_DOCKER: '1', PENSADOR_PREFLIGHT_CLI_TIMEOUT_MS: '500' },
     encoding: 'utf8',
   });
   return JSON.parse(out);
@@ -314,7 +335,7 @@ describe('preflight: Codebase Memory detection', () => {
     );
     const out = execFileSync(process.execPath, [PREFLIGHT], {
       cwd,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: [BASE_BIN, dirname(process.execPath)].join(PATH_DELIMITER), OD_PREFLIGHT_DISABLE_DEFAULT_URL: '1', OD_PREFLIGHT_DISABLE_DOCKER: '1', PENSADOR_PREFLIGHT_CLI_TIMEOUT_MS: '500' },
       encoding: 'utf8',
     });
     expect(JSON.parse(out).integrations.codebaseMemory.available).toBe(true);
@@ -350,7 +371,8 @@ describe('preflight: Open Design detection', () => {
     const without = runPreflight();
     const withMcp = runPreflight({ mcpJson: { mcpServers: { 'open-design': { command: 'node', args: [] } } } });
     expect(without.integrations.openDesign.available).toBe(false);
-    expect(withMcp.integrations.openDesign.available).toBe(true);
+    expect(withMcp.integrations.openDesign.detected).toBe(true);
+    expect(withMcp.integrations.openDesign.available).toBe(false);
     expect(withMcp.status).toBe(without.status);
   }, TIMEOUT * 2);
 
@@ -367,6 +389,7 @@ describe('preflight: Open Design detection', () => {
     const shim = fakeOdBinary('od (Open Design CLI) 0.20.2');
     const od = runPreflight({ extraPath: shim }).integrations.openDesign;
     expect(od.cliCheck.ok).toBe(true);
+    expect(od.detected).toBe(true);
     expect(od.available).toBe(true);
     expect(od.mcpFunctional).toBe(true);
   }, TIMEOUT);
@@ -380,7 +403,8 @@ describe('preflight: Open Design detection', () => {
     }).integrations.openDesign;
     expect(od.configured).toBe(true);
     expect(od.configuredIn).toHaveLength(1);
-    expect(od.available).toBe(true);
+    expect(od.detected).toBe(true);
+    expect(od.available).toBe(false);
     expect(od.mcpFunctional).toBe(false);
   }, TIMEOUT);
 
@@ -412,11 +436,63 @@ describe('preflight: Open Design detection', () => {
     );
     const out = execFileSync(process.execPath, [PREFLIGHT], {
       cwd,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: [BASE_BIN, dirname(process.execPath)].join(PATH_DELIMITER), OD_PREFLIGHT_DISABLE_DEFAULT_URL: '1', OD_PREFLIGHT_DISABLE_DOCKER: '1', PENSADOR_PREFLIGHT_CLI_TIMEOUT_MS: '500' },
       encoding: 'utf8',
     });
     const od = JSON.parse(out).integrations.openDesign;
     expect(od.configured).toBe(true);
     expect(od.configuredIn.some((p) => p.includes(join('.claude', 'settings', 'mcp.json')))).toBe(true);
+  }, TIMEOUT);
+});
+
+// ---------------------------------------------------------------------------
+// Codex/AGY agent-capability detection — manifest-driven, path-fallback
+// ---------------------------------------------------------------------------
+
+describe('preflight: Codex/AGY agent-capability detection', () => {
+  // Codex's own plugin.json does not declare an `agents` array (verified
+  // against the real installed plugin at authoring time) — capability
+  // detection must still find the file via the conventional agents/<name>
+  // path, not regress to "unavailable" just because the manifest is silent.
+  it('falls back to the conventional agents/ path when the sibling manifest has no "agents" field', () => {
+    const report = runPreflight({
+      pluginInstalls: [{
+        marketplace: 'openai-codex', name: 'codex',
+        manifest: { name: 'codex' },
+        agentFiles: ['agents/codex-rescue.md'],
+        scriptFiles: ['scripts/codex-companion.mjs'],
+      }],
+    });
+    expect(report.subagents.codex.capabilities.agent).toBe(true);
+    expect(report.subagents.codex.capabilities.bridge).toBe(true);
+  }, TIMEOUT);
+
+  it('trusts the sibling manifest\'s declared agent path even when it does not match the conventional agents/<basename> layout', () => {
+    const report = runPreflight({
+      pluginInstalls: [{
+        marketplace: 'cc-antigravity-plugin', name: 'cc-antigravity-plugin',
+        manifest: { name: 'cc-antigravity-plugin', agents: ['./agents/v2/antigravity-agent.md', './agents/antigravity-coder.md'] },
+        agentFiles: ['agents/v2/antigravity-agent.md', 'agents/antigravity-coder.md'],
+        scriptFiles: ['scripts/antigravity-bridge.js'],
+      }],
+    });
+    expect(report.subagents.agy.capabilities.analyst).toBe(true);
+    expect(report.subagents.agy.capabilities.coder).toBe(true);
+  }, TIMEOUT);
+
+  it('does not report a capability the manifest declares but whose file is actually missing on disk', () => {
+    const report = runPreflight({
+      pluginInstalls: [{
+        marketplace: 'cc-antigravity-plugin', name: 'cc-antigravity-plugin',
+        manifest: { name: 'cc-antigravity-plugin', agents: ['./agents/antigravity-agent.md', './agents/antigravity-coder.md'] },
+        // Only antigravity-coder.md actually exists — antigravity-agent.md is
+        // declared but missing, simulating a broken/partial install.
+        agentFiles: ['agents/antigravity-coder.md'],
+        scriptFiles: ['scripts/antigravity-bridge.js'],
+      }],
+    });
+    expect(report.subagents.agy.capabilities.analyst).toBe(false);
+    expect(report.subagents.agy.capabilities.coder).toBe(true);
+    expect(report.subagents.agy.available).toBe(false);
   }, TIMEOUT);
 });

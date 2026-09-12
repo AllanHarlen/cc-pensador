@@ -284,10 +284,36 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 ## Leitura relacionada
 
 - `references/stages.md`: BRAINSTORM_GERAL (lente de UI/UX) e FINAL (artefatos).
-- `references/imagery.md`: pipeline de imagery/iconografia — `sectorContext` (Pensador) → `IMAGE_SUGGESTIONS` do `antigravity-coder` (Orquestrador).
+- `references/imagery.md`: contrato de imagery/iconografia — o Pensador e o unico proprietario das decisoes e artefatos visuais; o Orquestrador so materializa `resolved/assets/manifest.json`, nunca pergunta nem gera imagem.
 - `references/skill-stack.md`: skills como lentes de domínio; Open Design como motor de design.
 - `references/codebase-memory.md`: padrão de oferta de instalação via `AskUserQuestion`.
 - `references/feature-isolation.md` e `references/handoff-contract.md`: role `design-system-files` (arquivos verbatim, inclui `DESIGN.md`) e o `design-system.md` de fallback.
 - `skills/prd/SKILL.md`: seção **Design System & UI/UX** do `Strict_PRD_Schema`.
 - `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, via `--out-dir <featurePath>`).
 - `scripts/od-onboard-agents.mjs` + `scripts/onboard-open-design-agents.ps1|.sh`: onboarding dos agentes do host (claude/codex/antigravity) num daemon local — ver a seção **Onboarding de agentes** acima.
+# Contrato resolved (v2.22)
+
+O Pensador preserva o pacote upstream em `design-systems/<id>/original/` e sempre produz `design-systems/<id>/resolved/` como autoridade. O resolved contem `design-contract.json`, `DESIGN.md`, `tokens.css`, `design-tokens.json`, `components.html`, `preview/`, `assets/manifest.json`, `design-audit.json` e `provenance.json`. Na ausencia ou incompletude do Open Design, AGY produz o mesmo pacote completo. O fallback de apenas `design-system.md` foi removido.
+
+## Pipeline Generativo e Discovery Visual (v2.23)
+
+O Open Design no Pensador evoluiu de um mero catálogo estático de tokens para um motor ativo de design generativo integrado ao estágio `DESIGN`:
+
+### 1. Descoberta e Prototipação de Fluxos Críticos
+- Durante o `DESIGN`, são selecionados de 1 a 3 fluxos críticos do `PRD_Base` (ex.: vitrine/catálogo, carrinho/checkout, onboarding/autenticação).
+- São gerados protótipos HTML standalone interativos em `<featurePath>/prototypes/<fluxo>/index.html`.
+- Cada protótipo consome o CSS local (`tokens.css`), é autocontido (sem dependências de CDNs externas que quebrem offline) e segue acessibilidade WCAG AA.
+- **Gate de Validação Visual:** O usuário recebe os links locais (`file:///...`) via `AskUserQuestion` para validar telas e interações antes de fechar o PRD.
+
+### 2. Geração de Brand Assets com Contexto Semântico do Setor
+- Baseado no `sectorContext` definido no `RESEARCH` (ex.: oficina automotiva, SaaS financeiro, e-commerce pet), são gerados assets de mídia reais (SVGs vetoriais para logos e ícones de serviços, imagens rasterizadas para banners e cards).
+- Os assets são persistidos em `<featurePath>/assets/` e indexados no `<featurePath>/assets/manifest.json`.
+- Cada asset possui SHA-256 verificado, rota, slot de componente e dimensões semânticas, eliminando placeholders e links quebrados no downstream.
+
+### 3. Fixtures de Componentes em `components.html`
+- O arquivo `components.html` serve como a especificação visual viva de todos os componentes do sistema (Botões, Cards, Inputs, Badges, Modais) renderizados nos 4 estados obrigatórios: `default`, `hover`, `focus` e `disabled`.
+- Quando o daemon REST não fornecer fixtures prontas, o Pensador sintetiza deterministicamente as fixtures a partir do `design-contract.json`, garantindo que o agente de front-end do Orquestrador nunca receba um pacote sem marcação HTML real de referência.
+
+O preflight detecta CLI `od` real (ignorando GNU coreutils), MCP estruturado, REST por `OD_DAEMON_URL`/MCP/`.open-design/deploy/.env`/porta 7456, Docker e novo probe na porta publicada. `401/403` significa `AUTH_REQUIRED`; container sem endpoint significa `DETECTED_UNREACHABLE`; nesses casos nao se oferece reinstalacao. O token vem de `OD_API_TOKEN` ou do `.env` e nunca aparece em stdout, logs ou snapshots.
+
+A precedencia de sintese e: escolhas explicitas do usuario, PRD/criterios, tokens/componentes Open Design e prosa original. AGY sintetiza o JSON Schema; renderizadores deterministas derivam CSS/JSON/Markdown; Codex audita read-only. Sao permitidas duas correcoes automaticas. Finding alto/critico bloqueia o handoff.

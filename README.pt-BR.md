@@ -1,6 +1,6 @@
 # cc-pensador
 
-> Plugin de Claude Code que conduz uma demanda em linguagem natural por **doze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--mode`, economizando tokens do Claude.
+> Plugin de Claude Code que conduz uma demanda em linguagem natural por **treze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--mode`, economizando tokens do Claude.
 
 `versão 2.7.1` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
@@ -34,10 +34,10 @@ Por padrão (`--mode claude`), o Claude Code executa o fluxo com os próprios to
 ## Fluxo de estágios
 
 ```
-INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → FINAL → DONE
+INIT → EXPLORE → RESEARCH → PRD_BASE → ARCH → EXPAND → COMPLEXITY → BRAINSTORM_GERAL → CODEX → AGY → DESIGN → FINAL → DONE
 ```
 
-O funil vai de **iniciar/retomar → explorar o código → pesquisar o mercado → PRD base → arquitetura → ampliar → calibrar complexidade → brainstorm por domínio → varredura técnica → varredura de produto → consolidar → entregar.**
+O funil vai de **iniciar/retomar → explorar o código → pesquisar o mercado → PRD base → arquitetura → ampliar → calibrar complexidade → brainstorm por domínio → varredura técnica → varredura de produto → pacote de design → consolidar → entregar.**
 
 | Estágio | O que faz | Delegação | Relevância |
 |---|---|---|---|
@@ -51,6 +51,7 @@ O funil vai de **iniciar/retomar → explorar o código → pesquisar o mercado 
 | **BRAINSTORM_GERAL** | Orquestra lentes de domínio em paralelo: requirements-clarity + Codex se backend + AGY se frontend + brief de design do Open Design se frontend. | skill `requirements-clarity` · `codex:codex-rescue` · AGY · Open Design (`od`) | sempre |
 | **CODEX** | Refinamento técnico dedicado com `effort high`. Não participa em atividade específica de front-end (`hasFrontend` sem `hasBackend`). | `codex:codex-rescue` | exceto front-end específico |
 | **AGY** | Varredura final de lacunas de produto. | `cc-antigravity-plugin:antigravity-agent` (`gemini-3.1-pro-high`) | sempre |
+| **DESIGN** | Materializa o pacote de design resolvido (`design-systems/<id>/resolved/`): contrato de design, tokens, `components.html`, previews, brand assets auditados. Auto-avança em demanda back-end-only. | AGY (síntese + imagens) · Codex (auditoria read-only) | exceto back-end-only |
 | **FINAL** | Aplica `withConsolidated`, confirma back-end, gera artefatos, apresenta recap e handoff. | — | sempre |
 | **DONE** | Estado terminal. | — | — |
 
@@ -312,7 +313,7 @@ cc-pensador/
 │  ├─ plugin.json            # manifesto do plugin (nome, versão, dependências)
 │  └─ marketplace.json       # entrada de marketplace
 ├─ commands/
-│  └─ pensador.md            # comando /pensador (orquestra os 12 estágios + --mode)
+│  └─ pensador.md            # comando /pensador (orquestra os 13 estágios + --mode)
 ├─ skills/
 │  ├─ pensador/
 │  │  ├─ SKILL.md            # skill principal: protocolo v2 + gates + isolamento por feature + modos de execução
@@ -358,7 +359,7 @@ cc-pensador/
 
 | Aspecto | v1 | v2 |
 |---|---|---|
-| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 12 estágios (com EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL) |
+| `STAGE_ORDER` | 11 estágios (com CLARITY/BACKEND/UIUX/FRONTEND) | 13 estágios (com EXPLORE/RESEARCH/ARCH/COMPLEXITY/BRAINSTORM_GERAL/DESIGN) |
 | `CHECKPOINT_VERSION` | 1 | 2 |
 | Pasta de artefatos | pasta raiz legada da v1 | `.pensador/<slug-da-demanda>-vN/` |
 | Checkpoints v1 | `pensador-output/.pensador-progress.json` | Incompatíveis — Pensador oferece recomeçar |
