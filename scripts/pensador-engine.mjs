@@ -755,6 +755,9 @@ export const CODEBASE_MEMORY = {
     detectChanges: 'detect_changes',
     getCodeSnippet: 'get_code_snippet',
     searchCode: 'search_code',
+    manageAdr: 'manage_adr',
+    queryGraph: 'query_graph',
+    ingestTraces: 'ingest_traces',
   },
   /**
    * Snapshot written under <featurePath>/. Consumed by PRD_BASE/Spec and ARCH
@@ -881,11 +884,13 @@ export function buildProjectBaseline(state) {
  * the gate itself is documented prose (references/codebase-memory.md), not
  * something this pure function encodes.
  *
- * Pure and total: same input → same output, never throws. When the demand is a
- * fix/change over existing code (`isFix`), `detect_changes` is appended to map
- * the git diff to affected symbols and blast radius.
+ * Pure and total: same input → same output, never throws.
+ * - When `options.includeAdr` is true, `manage_adr` is queried after `get_architecture`
+ *   to ingest existing architectural decision records.
+ * - When `options.includeQueryGraph` is true, `query_graph` is included for Cypher invariants.
+ * - When `options.isFix` is true, `detect_changes` is appended to map git diff to affected symbols.
  *
- * @param {{ isFix?: boolean }} [options]
+ * @param {{ isFix?: boolean, includeAdr?: boolean, includeQueryGraph?: boolean }} [options]
  * @returns {string[]} ordered MCP tool names
  */
 export function codebaseMemoryExplorationPlan(options = {}) {
@@ -894,14 +899,49 @@ export function codebaseMemoryExplorationPlan(options = {}) {
     t.indexStatus,
     t.indexRepository,
     t.getArchitecture,
-    t.getGraphSchema,
-    t.searchGraph,
-    t.tracePath,
   ];
+  if (options?.includeAdr === true) {
+    plan.push(t.manageAdr);
+  }
+  plan.push(t.getGraphSchema, t.searchGraph, t.tracePath);
+  if (options?.includeQueryGraph === true) {
+    plan.push(t.queryGraph);
+  }
   if (options?.isFix === true) {
     plan.push(t.detectChanges);
   }
   return plan;
+}
+
+/**
+ * Builds a search_graph parameter payload leveraging semantic search (semantic_query)
+ * supported by codebase-memory-mcp, optionally combinable with name_pattern, label and limit.
+ *
+ * @param {string[]|string} semanticTerms
+ * @param {{ namePattern?: string, label?: string, limit?: number }} [options]
+ * @returns {Record<string, any>}
+ */
+export function buildSemanticSearchParams(semanticTerms, options = {}) {
+  const terms = Array.isArray(semanticTerms)
+    ? semanticTerms.filter((s) => s != null).map((s) => String(s).trim()).filter(Boolean)
+    : typeof semanticTerms === 'string' && semanticTerms.trim()
+      ? [semanticTerms.trim()]
+      : [];
+
+  const params = {};
+  if (terms.length > 0) {
+    params.semantic_query = terms;
+  }
+  if (options?.namePattern) {
+    params.name_pattern = options.namePattern;
+  }
+  if (options?.label) {
+    params.label = options.label;
+  }
+  if (typeof options?.limit === 'number' && options.limit > 0) {
+    params.limit = options.limit;
+  }
+  return params;
 }
 
 // ---------------------------------------------------------------------------

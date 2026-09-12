@@ -38,8 +38,8 @@ Funil v2: **iniciar/retomar** -> **explorar (Code Base Memory)** -> **pesquisar 
 
 **Proposito:** explorar o projeto existente com o **Code Base Memory** (obrigatorio) antes de gerar o PRD/Spec, para entender a estrutura sobre a qual a feature/fix vai atuar.
 
-- Disponivel (`integrations.codebaseMemory.available = true`): rodar o MCP `codebase-memory-mcp` na ordem `index_repository → get_architecture → get_graph_schema → search_graph → trace_path` (mais `detect_changes` em fixes).
-- Gravar `<featurePath>/codebase-memory.md` com panorama de arquitetura, simbolos/arquivos afetados, cadeias de chamada relevantes, raio de impacto (fixes) e lacunas.
+- Disponivel (`integrations.codebaseMemory.available = true`): rodar o MCP `codebase-memory-mcp` na ordem canônica (`index_repository → get_architecture → manage_adr → get_graph_schema → search_graph [com busca semântica] → trace_path → query_graph` + `detect_changes` em fixes).
+- Gravar `<featurePath>/codebase-memory.md` com panorama de arquitetura, ADRs existentes descobertas, simbolos/arquivos afetados, cadeias de chamada relevantes, raio de impacto (fixes) e lacunas.
 - **Descoberta de contrato existente (brownfield):** buscar contratos de API ja versionados no repo via `contractDiscoveryGlobs()` (`**/openapi*.{yaml,yml,json}`, `**/*.graphql`, `**/*.proto`, `**/asyncapi*.{yaml,yml}`, `**/schema.prisma`). Se encontrar, registrar o caminho e o estilo no `codebase-memory.md` como **baseline** — a nova feature deve estender esse contrato, nao redescreve-lo em prosa (coesao front/back).
 - Indisponivel (`integrations.codebaseMemory.available = false`): perguntar via `AskUserQuestion` se o usuario deseja **instalar o servidor agora**:
   - **Opcao A — Instalar (recomendada):** Claude executa o instalador da plataforma (`install.sh` no Linux/macOS; `install.ps1` no Windows via PowerShell) com `Bash`, aguarda conclusao, orienta o usuario a reconectar o MCP e retoma o EXPLORE com o servidor disponivel.
@@ -135,13 +135,13 @@ Protocolo completo em `references/tech-research.md`.
 
 ### Projeto existente
 
-Reaproveite o indice do Code Base Memory criado no EXPLORE (`get_architecture`, `search_graph`, `trace_path`, `detect_changes` em fixes) e complemente com `Read`, `Glob` e `Grep` para identificar:
+Reaproveite o indice do Code Base Memory criado no EXPLORE (`get_architecture`, `manage_adr`, `search_graph`, `trace_path`, `query_graph` para checar invariantes de interface/acoplamento, `detect_changes` em fixes) e complemente com `Read`, `Glob` e `Grep` para identificar:
 
 - Stack, framework, linguagem e gerenciador de pacotes.
 - Estrutura de pastas, entrypoints e padroes locais.
 - Front-end, back-end, persistencia, jobs, integracoes e autenticacao.
 - **Estilo de API (`state.apiStyle`)** quando `hasBackend`: detectar se o contrato e REST (→ `openapi.yaml`), GraphQL (→ `schema.graphql`), gRPC (→ `service.proto`) ou orientado a eventos/filas (→ `asyncapi.yaml`). Reaproveitar o baseline de contrato descoberto no EXPLORE. Se ambiguo, perguntar via `AskUserQuestion`. Esse valor seleciona o formato do contrato maquina-legivel no FINAL (`resolveContractFormat()`).
-- Artefatos relevantes ja existentes.
+- Artefatos e ADRs relevantes ja existentes no grafo.
 - Riscos, convencoes e lacunas tecnicas.
 
 ### Greenfield
@@ -163,7 +163,7 @@ Grave `<featurePath>/architecture.md` com:
 - Resumo da arquitetura.
 - Sinais `hasBackend`, `hasFrontend`, `isGreenfield`.
 - Dominios detectados.
-- Decisoes conhecidas e lacunas.
+- Decisoes conhecidas e lacunas (com sincronização de novas decisões no grafo CBM via `manage_adr` quando disponível).
 - **Baseline tecnico pesquisado:** versao atual por tecnologia, estrutura idiomatica, padroes `current` e convencoes para o Executor, cada um com a URL oficial. Divergencia deliberada vira override justificado, nao omissao.
 - Entradas para `detectComplexity()`.
 

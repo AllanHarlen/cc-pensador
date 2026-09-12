@@ -41,14 +41,36 @@ A indisponibilidade **não bloqueia** o fluxo (status degrada para `partial`).
 | 1 | `index_status` | **Gate obrigatório antes de qualquer outro uso do grafo.** Verifica se já existe índice para este projeto. |
 | 2 | `index_repository` | Indexa o repositório no grafo. **Só executa após confirmação do usuário** (ver "Gate de índice" abaixo) — nunca disparado automaticamente. |
 | 3 | `get_architecture` | Panorama: linguagens, pacotes, entrypoints, rotas, hotspots, camadas, clusters. |
-| 4 | `get_graph_schema` | Contagem de nós/arestas e padrões de relacionamento por label. |
-| 5 | `search_graph` | Localiza os símbolos relevantes à demanda (regex de nome, filtros por label/arquivo). |
-| 6 | `trace_path` | Mapeia quem chama / o que é chamado pelos símbolos afetados (BFS, profundidade 1–5). |
-| 7 | `detect_changes` | **Apenas em fixes:** mapeia o git diff para símbolos afetados + raio de impacto. |
+| 4 | `manage_adr` | **Leitura de ADRs:** consulta decisões arquiteturais prévias registradas no grafo (`mode="sections"`, `mode="get"`). |
+| 5 | `get_graph_schema` | Contagem de nós/arestas e padrões de relacionamento por label. |
+| 6 | `search_graph` | Localiza os símbolos relevantes à demanda via **busca semântica** (`semantic_query=[...]`) e/ou regex (`name_pattern`). |
+| 7 | `trace_path` | Mapeia quem chama / o que é chamado pelos símbolos afetados (BFS, profundidade 1–5). |
+| 8 | `query_graph` | **Análise estrutural Cypher:** validação de interfaces (`IMPLEMENTS`), dependências circulares e nós órfãos. |
+| 9 | `detect_changes` | **Apenas em fixes:** mapeia o git diff para símbolos afetados + raio de impacto. |
 
-Outras ferramentas úteis sob demanda: `get_code_snippet`, `search_code`, `list_projects`, `manage_adr`.
+Outras ferramentas úteis sob demanda: `get_code_snippet`, `search_code`, `list_projects`, `ingest_traces`.
 
-Mapeamento determinístico em `pensador-engine.mjs`: `CODEBASE_MEMORY`, `codebaseMemorySnapshotPath()`, `codebaseMemoryExplorationPlan()`. A função descreve a ordem canônica das ferramentas — não é um executor condicional: o gate de `index_status` abaixo é regra de execução, não algo codificado no array.
+Mapeamento determinístico em `pensador-engine.mjs`: `CODEBASE_MEMORY`, `codebaseMemorySnapshotPath()`, `codebaseMemoryExplorationPlan()`, `buildSemanticSearchParams()`.
+
+### Busca Semântica em `search_graph` (`semantic_query`)
+
+O CBM disponibiliza busca semântica local via embeddings sem necessidade de API keys externas:
+- Quando a demanda do usuário trouxer conceitos de negócio ou intenção funcional (ex.: *"política de cancelamento"*, *"expiração de token"*, *"recalculo de taxas"*), extraia esses termos conceituais e consulte `search_graph(semantic_query=[...])`.
+- Combine com `name_pattern` ou `label` quando houver pistas sintáticas sobre os tipos alvo (ex.: `label="Function"`, `label="Class"`).
+- O resultado semântico traz símbolos pelo sentido e intenção do código, mesmo quando o desenvolvedor usou nomenclaturas técnicas inesperadas.
+
+### Gestão e Leitura de ADRs (`manage_adr`)
+
+O Codebase Memory mantém um repositório de Architecture Decision Records indexado no próprio grafo:
+- **No EXPLORE:** execute `manage_adr(mode="sections")` ou `manage_adr(mode="get")` para absorver premissas e decisões de arquitetura históricas já deliberadas no projeto antes de propor novos padrões.
+- **No ARCH / FINAL:** após a consolidação do `architecture.md` e do PRD, quando houver novas decisões estruturais tomadas para o projeto, persista essas decisões no grafo do CBM via `manage_adr(mode="set_sections")` ou `mode="update"`. Isso garante que as próximas features e sessões herdem o histórico técnico de decisões.
+
+### Consultas Estruturais com Cypher (`query_graph`)
+
+Utilize `query_graph` para consultas read-only estilo Cypher quando a navegação linear (`trace_path`) não for suficiente:
+- Validação de contratos de domínio: `MATCH (c:Class)-[:IMPLEMENTS]->(i:Interface) RETURN c.name, i.name`
+- Relações entre serviços e rotas HTTP.
+- Detecção de pontos de acoplamento entre camadas antes de desenhar a nova arquitetura no `ARCH`.
 
 ### Gate de índice antes de qualquer uso
 

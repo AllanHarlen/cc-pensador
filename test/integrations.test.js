@@ -52,6 +52,9 @@ describe('Code Base Memory (mandatory exploration)', () => {
     expect(CODEBASE_MEMORY.tools.indexRepository).toBe('index_repository');
     expect(CODEBASE_MEMORY.tools.getArchitecture).toBe('get_architecture');
     expect(CODEBASE_MEMORY.tools.detectChanges).toBe('detect_changes');
+    expect(CODEBASE_MEMORY.tools.manageAdr).toBe('manage_adr');
+    expect(CODEBASE_MEMORY.tools.queryGraph).toBe('query_graph');
+    expect(CODEBASE_MEMORY.tools.ingestTraces).toBe('ingest_traces');
   });
 
   it('codebaseMemorySnapshotPath writes inside the update directory', () => {
