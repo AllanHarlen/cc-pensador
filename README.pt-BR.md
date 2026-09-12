@@ -2,7 +2,7 @@
 
 > Plugin de Claude Code que conduz uma demanda em linguagem natural por **treze estágios de trabalho** até um PRD de alta qualidade — com exploração via Code Base Memory, pesquisa web/benchmark de mercado, análise de arquitetura, heurística de complexidade, brainstorm geral por domínio e refinamento por subagentes (Codex e AGY/Gemini). Opcionalmente delega o trabalho pesado a uma CLI externa (Antigravity, Kiro ou Codex) via `--mode`, economizando tokens do Claude.
 
-`versão 2.7.1` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
+`versão 2.23.0` · `categoria: planning` · todo diálogo passa **exclusivamente** por `AskUserQuestion`.
 
 ## Sumário
 

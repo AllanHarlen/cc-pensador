@@ -112,7 +112,7 @@ O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **ba
 | `USAGE.md` | router: como consumir o pacote (ler primeiro) | — |
 | `DESIGN.md` | intenção: 9 seções de prosa + anti-padrões | ✅ |
 | `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
-| `components.html` | fixtures: HTML/CSS real dos componentes + estados | — |
+| `components.html` | **fixtures de componente**: HTML/CSS real dos componentes + todos os estados (Shift-Left: transpilar, não reinventar) | ✅ (hasFrontend) |
 | `components.manifest.json` | inventário de componentes | — |
 | `preview/` | diretório de sanity check visual para o gate de review | — |
 | `system/` | kit renderizado (`kit.html`, `kit.dark.html`, `index.html`, `tokens.default.json`) + `system/artifacts/` com páginas de exemplo (landing, form, email, deck, newsletter, poster) | — |

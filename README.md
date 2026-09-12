@@ -2,7 +2,7 @@
 
 > Claude Code plugin that conducts a natural language request through **thirteen stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--mode`, saving Claude tokens.
 
-`version 2.22.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
+`version 2.23.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
 
 **📖 [Leia em Português](./README.pt-BR.md) | Read in Portuguese**
 

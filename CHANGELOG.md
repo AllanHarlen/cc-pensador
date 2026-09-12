@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.23.0] — 2026-09-12
+
+- Open Design (Shift-Left Front-end): `components.html` passa a ser fixture obrigatória (`✅`) no pacote de design quando há front-end (`hasFrontend`), eliminando adivinhação de layout ou criação de seletores do zero.
+- Protocolo de transpilação shift-left documentado em `skills/pensador/references/open-design.md`: subagentes de front-end devem consumir e transpilar as fixtures de `components.html` diretamente para a stack do projeto, preservando tokens CSS e hierarquia visual.
+
 ## [2.22.0] — 2026-09-11
 
 - Open Design passa a ser detectado por CLI, MCP estruturado, daemon REST autenticado e Docker/porta publicada, distinguindo autenticacao ausente de instalacao ausente.

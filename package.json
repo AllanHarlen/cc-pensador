@@ -1,6 +1,6 @@
 {
   "name": "cc-pensador",
-  "version": "2.22.0",
+  "version": "2.23.0",
   "description": "Pensador PRD workflow with Open Design REST/Docker discovery, AGY visual synthesis and imagery, Codex audit, authoritative resolved design packages, a comprehensive 17-section PRD schema, project exploration, research and optional OpenSpec mode",
   "license": "MIT",
   "type": "module",
