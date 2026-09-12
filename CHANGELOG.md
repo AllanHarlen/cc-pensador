@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.24.0] — 2026-09-12
+
+- Pesquisa técnica com Context7 MCP (`tech-research.md`):
+  - Diretrizes operacionais estritas na fase de `version-currency`: resolução de bibliotecas com pontuação oficial (`Next.js`, `ASP.NET Core`, `Three.js`).
+  - Priorização do identificador versionado `/org/project/version` em projetos brownfield com versão fixada em manifests.
+  - Regra de Single-Concept Scoping e teto de no máximo 3 consultas Context7 por tecnologia para prevenir diluição semântica e consumo indevido de cota.
+
 ## [2.23.0] — 2026-09-12
 
 - Open Design (Shift-Left Front-end): `components.html` passa a ser fixture obrigatória (`✅`) no pacote de design quando há front-end (`hasFrontend`), eliminando adivinhação de layout ou criação de seletores do zero.
