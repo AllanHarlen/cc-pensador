@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import {
   validateHandoff,
+  validateVisualCompleteness,
   HANDOFF_ROLES_BY_STAGE,
   HANDOFF_STAGES,
   HANDOFF_STATUSES,
@@ -326,6 +327,94 @@ describe('validateHandoff — negative path (contract violations)', () => {
   });
 });
 
+describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador handoff', () => {
+  // Root cause this covers: a real run (OficinaAI, 2026-09-12) hand-wrote a
+  // handoff with status DONE and design-system-files.variant "legacy-verbatim"
+  // (the DESIGN stage was skipped entirely), and validateHandoff() alone
+  // reported ok:true because the envelope was structurally fine.
+  const legacyVerbatimHandoff = () => validPensadorHandoff({
+    artifacts: [
+      { role: 'prd', path: 'prd.md', required: true },
+      { role: 'design-system-files', path: 'design-systems/bmw', required: true, variant: 'legacy-verbatim' },
+    ],
+  });
+
+  const resolvedHandoff = () => validPensadorHandoff({
+    artifacts: [
+      { role: 'prd', path: 'prd.md', required: true },
+      { role: 'design-system-files', path: 'design-systems/bmw/resolved', required: true, variant: 'resolved', authoritative: true },
+      { role: 'ui-prototype', path: 'prototypes/', required: true },
+      { role: 'brand-assets', path: 'assets/', required: true },
+    ],
+  });
+
+  it('is a no-op for a non-Pensador stage', () => {
+    expect(validateVisualCompleteness(validOrchestradorHandoff()).ok).toBe(true);
+  });
+
+  it('is a no-op for a demand with no design artifact at all (backend-only)', () => {
+    const result = validateVisualCompleteness(validPensadorHandoff());
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('is a no-op for a PARTIAL/BLOCKED handoff (its own summary already explains the gap)', () => {
+    const result = validateVisualCompleteness({
+      ...legacyVerbatimHandoff(),
+      status: 'PARTIAL',
+      summary: 'Pipeline v2.23 (prototipos/assets/auditoria) nao executado nesta rodada.',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('rejects status DONE with design-system-files.variant "legacy-verbatim" (the exact OficinaAI regression)', () => {
+    const result = validateVisualCompleteness(legacyVerbatimHandoff());
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'DESIGN_PACKAGE_NOT_RESOLVED')).toBe(true);
+  });
+
+  it('rejects status DONE with a front-end demand missing ui-prototype', () => {
+    const handoff = resolvedHandoff();
+    handoff.artifacts = handoff.artifacts.filter((a) => a.role !== 'ui-prototype');
+    const result = validateVisualCompleteness(handoff);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'MISSING_UI_PROTOTYPE_FOR_DONE_STATUS')).toBe(true);
+  });
+
+  it('rejects status DONE with a front-end demand missing brand-assets', () => {
+    const handoff = resolvedHandoff();
+    handoff.artifacts = handoff.artifacts.filter((a) => a.role !== 'brand-assets');
+    const result = validateVisualCompleteness(handoff);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'MISSING_BRAND_ASSETS_FOR_DONE_STATUS')).toBe(true);
+  });
+
+  it('accepts status DONE with a complete resolved design package', () => {
+    const result = validateVisualCompleteness(resolvedHandoff());
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('checks the fallback-inline "design-system" role the same way as "design-system-files"', () => {
+    const handoff = validPensadorHandoff({
+      artifacts: [{ role: 'design-system', path: 'design-system.md', required: true }],
+    });
+    const result = validateVisualCompleteness(handoff);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'MISSING_UI_PROTOTYPE_FOR_DONE_STATUS')).toBe(true);
+    expect(result.errors.some((e) => e.code === 'MISSING_BRAND_ASSETS_FOR_DONE_STATUS')).toBe(true);
+  });
+
+  it('does not affect validateHandoff() itself — the per-role fixture loop stays green', () => {
+    // Guards against accidentally merging this gate into validateHandoff():
+    // that generic loop builds a handoff with ONLY one artifact at a time,
+    // which "design-system-files" alone would fail if this gate applied there.
+    const result = validateHandoff({ ...validPensadorHandoff(), artifacts: [{ role: 'design-system-files', path: 'x', required: true }] });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('HANDOFF_ROLES_BY_STAGE stays in lockstep with handoff-contract.md section 5', () => {
   const contractText = readFileSync(CONTRACT_PATH, 'utf8');
 
@@ -426,6 +515,33 @@ describe('validate-handoff.mjs CLI', () => {
     });
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stdout).errors[0].code).toBe('FILE_NOT_READABLE');
+  });
+
+  it('exits 1 and reports DESIGN_PACKAGE_NOT_RESOLVED for a DONE handoff with a legacy-verbatim design package', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-test-'));
+    try {
+      const file = join(dir, 'handoff.json');
+      writeFileSync(file, JSON.stringify(validPensadorHandoff({
+        artifacts: [
+          { role: 'prd', path: 'prd.md', required: true },
+          { role: 'design-system-files', path: 'design-systems/bmw', required: true, variant: 'legacy-verbatim' },
+        ],
+      })));
+      const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], {
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.errors.some((e) => e.code === 'DESIGN_PACKAGE_NOT_RESOLVED')).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('exits 1 with a clear error when the file is not valid JSON', async () => {

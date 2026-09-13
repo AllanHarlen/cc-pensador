@@ -299,3 +299,74 @@ export function validateHandoff(handoff) {
 
   return { ok: errors.length === 0, errors };
 }
+
+/**
+ * Business-rule gate the Pensador's own FINAL stage runs before writing
+ * `status: "DONE"` — deliberately NOT part of `validateHandoff()` above,
+ * whose docstring scopes it out ("does NOT validate... whether status: DONE
+ * is actually earned"). Kept separate so `validateHandoff()` stays pure
+ * envelope structure (every role in isolation must still validate — see
+ * `test/handoff-validator.test.js` "accepts every role declared for each
+ * stage"), while this function encodes the DESIGN-stage completion rule from
+ * `skills/pensador/SKILL.md` ("o estagio fecha somente quando
+ * design-audit.json.status=PASS, os prototipos estiverem aprovados... e
+ * todos os assets required... gerados e validados") as something the CLI
+ * actually checks, instead of prose the model can skip.
+ *
+ * Root cause this closes: a real run (OficinaAI, 2026-09-12) skipped the
+ * DESIGN stage entirely, hand-wrote `handoff.json` with `status: "DONE"` and
+ * `design-system-files[].variant: "legacy-verbatim"`, and
+ * `validate-handoff.mjs --file handoff.json` reported `ok: true` anyway —
+ * the envelope was structurally fine, so nothing caught the missing
+ * prototypes/brand-assets/audit. Only applies to `stage: "pensador"` and
+ * only to a `status: "DONE"` handoff — `PARTIAL`/`BLOCKED` already carries
+ * its own mandatory `summary` explaining the gap (see `validateHandoff()`).
+ *
+ * @param {unknown} handoff - the parsed JSON content of handoff.json
+ * @returns {{ ok: boolean, errors: Array<{ code: string, message: string, path: string|null }> }}
+ */
+export function validateVisualCompleteness(handoff) {
+  const errors = [];
+  const push = (code, message, path = null) => errors.push({ code, message, path });
+
+  if (!isPlainObject(handoff) || handoff.stage !== "pensador" || handoff.status !== "DONE" || !Array.isArray(handoff.artifacts)) {
+    // Out of scope for this gate: not a Pensador handoff, not DONE (a
+    // PARTIAL/BLOCKED status already has to explain itself via `summary`),
+    // or structurally broken in a way validateHandoff() already reports.
+    return { ok: true, errors };
+  }
+
+  const byRole = (role) => handoff.artifacts.find((artifact) => isPlainObject(artifact) && artifact.role === role);
+  const designFiles = byRole("design-system-files");
+  const designFallback = byRole("design-system");
+  // Presence of either role is the only signal available at this level that
+  // the demand has a front-end: neither `hasFrontend` nor `state` reach the
+  // handoff envelope itself. No design artifact at all means either a
+  // backend-only demand (nothing to check) or a structural gap
+  // `validateHandoff()`/the role vocabulary already would have caught.
+  if (!designFiles && !designFallback) return { ok: true, errors };
+
+  if (designFiles && designFiles.variant !== "resolved") {
+    push(
+      "DESIGN_PACKAGE_NOT_RESOLVED",
+      `status DONE requires the resolved Open Design package (design-system-files.variant: "resolved"), got ${JSON.stringify(designFiles.variant ?? "legacy-verbatim")}. The DESIGN stage (prototypes, brand assets, design-audit.json PASS) was not completed for this handoff — finish it, or close as PARTIAL/BLOCKED with a summary naming the gap (see skills/pensador/SKILL.md, estagio DESIGN).`,
+      "artifacts[].variant",
+    );
+  }
+  if (!byRole("ui-prototype")) {
+    push(
+      "MISSING_UI_PROTOTYPE_FOR_DONE_STATUS",
+      "status DONE with a front-end demand requires a ui-prototype artifact (DESIGN-stage discovery prototypes, approved by the user via AskUserQuestion) — see references/open-design.md.",
+      "artifacts[]",
+    );
+  }
+  if (!byRole("brand-assets")) {
+    push(
+      "MISSING_BRAND_ASSETS_FOR_DONE_STATUS",
+      "status DONE with a front-end demand requires a brand-assets artifact (assets/manifest.json produced in the DESIGN stage) — see references/imagery.md.",
+      "artifacts[]",
+    );
+  }
+
+  return { ok: errors.length === 0, errors };
+}
