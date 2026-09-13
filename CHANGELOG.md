@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.25.0] — 2026-09-13 — Gate real para o estagio DESIGN antes de status DONE
+
+Motivacao: numa run real (OficinaAI, 12/09) o estagio DESIGN foi pulado inteiro — o `handoff.json`
+foi escrito a mao com `status: DONE` e `design-system-files[].variant: legacy-verbatim`, sem
+`ui-prototype` nem `brand-assets` — e `validate-handoff.mjs --file handoff.json` reportou
+`ok: true`, porque o validador so checava a estrutura do envelope, nunca se o `status: DONE`
+realmente correspondia a um estagio DESIGN completo. `.claude-plugin/marketplace.json` tambem
+estava com drift de versao (2.22.0) contra `package.json`/`plugin.json` (2.24.0).
+
+- **`scripts/lib/handoff-validator.mjs`:** nova funcao `validateVisualCompleteness(handoff)`,
+  deliberadamente separada de `validateHandoff()` (que continua envelope-only). Para
+  `stage: pensador` com `status: DONE` e algum artefato de design (`design-system-files` ou o
+  fallback `design-system`), exige `design-system-files[].variant === "resolved"` e a presenca dos
+  roles `ui-prototype`/`brand-assets` — os codigos novos sao `DESIGN_PACKAGE_NOT_RESOLVED`,
+  `MISSING_UI_PROTOTYPE_FOR_DONE_STATUS` e `MISSING_BRAND_ASSETS_FOR_DONE_STATUS`. Sem sinal de
+  front-end (nenhum artefato de design) ou com `status` diferente de `DONE`, e um no-op.
+- **`scripts/validate-handoff.mjs`:** passa a rodar as duas funcoes e mesclar os erros; `ok` e
+  `false` se qualquer uma reportar violacao.
+- **`skills/pensador/SKILL.md`:** o estagio FINAL agora instrui explicitamente rodar
+  `validate-handoff.mjs` antes de reportar — o script nunca era mencionado na prosa antes desta
+  versao, apesar do proprio docstring do CLI dizer "Producers run this before writing status: DONE".
+- **`test/handoff-validator.test.js`:** 9 testes novos, incluindo a reproducao exata da regressao
+  (`status: DONE` + `variant: legacy-verbatim`) e a garantia de que `validateHandoff()` continua
+  passando no loop generico de fixtures por role (a nova checagem nao vaza para o validador de
+  envelope).
+- `.claude-plugin/marketplace.json` realinhado com `package.json`/`plugin.json` (drift 2.22.0 →
+  2.25.0 corrigido).
+
 ## [2.24.0] — 2026-09-12
 
 - Pesquisa técnica com Context7 MCP (`tech-research.md`):

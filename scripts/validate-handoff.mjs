@@ -4,6 +4,12 @@
  * (scripts/lib/handoff-validator.mjs). Producers run this before writing
  * `status: "DONE"`; consumers run it before trusting an upstream handoff.
  *
+ * For `stage: "pensador"`, also runs `validateVisualCompleteness()`: a
+ * `status: "DONE"` handoff with a front-end demand needs a `resolved` Open
+ * Design package plus `ui-prototype`/`brand-assets` artifacts, not just a
+ * structurally valid envelope. Errors from both checks share one array —
+ * the caller does not need to know they came from two functions.
+ *
  * Usage:
  *   node scripts/validate-handoff.mjs --file <path/to/handoff.json>
  *
@@ -15,7 +21,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { validateHandoff } from "./lib/handoff-validator.mjs";
+import { validateHandoff, validateVisualCompleteness } from "./lib/handoff-validator.mjs";
 
 function parseArgs(argv) {
   const args = { file: null };
@@ -56,8 +62,14 @@ function main() {
   }
 
   const result = validateHandoff(parsed);
-  console.log(JSON.stringify({ ok: result.ok, file: resolved, errors: result.errors }, null, 2));
-  process.exitCode = result.ok ? 0 : 1;
+  // Visual completeness only adds meaningful errors once the envelope itself
+  // is well-formed (it reads handoff.stage/status/artifacts directly); still
+  // safe to call unconditionally since it degrades to `{ ok: true, errors:
+  // [] }` on anything it does not recognize as a DONE Pensador handoff.
+  const visual = validateVisualCompleteness(parsed);
+  const errors = [...result.errors, ...visual.errors];
+  console.log(JSON.stringify({ ok: result.ok && visual.ok, file: resolved, errors }, null, 2));
+  process.exitCode = result.ok && visual.ok ? 0 : 1;
 }
 
 main();
