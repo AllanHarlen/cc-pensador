@@ -20,7 +20,7 @@
  * <path> || exit 1`).
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { validateHandoff, validateVisualCompleteness } from "./lib/handoff-validator.mjs";
 
 function parseArgs(argv) {
@@ -32,6 +32,19 @@ function parseArgs(argv) {
     }
   }
   return args;
+}
+
+function readDeclaredJson(handoffPath, declaredPaths) {
+  for (const declared of declaredPaths.filter((value) => typeof value === "string" && value.trim() !== "")) {
+    for (const candidate of [resolve(dirname(handoffPath), declared), resolve(declared)]) {
+      try {
+        return JSON.parse(readFileSync(candidate, "utf8"));
+      } catch {
+        // Try the next path: handoffs may use artifact-root-relative or project-relative paths.
+      }
+    }
+  }
+  return null;
 }
 
 function main() {
@@ -66,9 +79,17 @@ function main() {
   // is well-formed (it reads handoff.stage/status/artifacts directly); still
   // safe to call unconditionally since it degrades to `{ ok: true, errors:
   // [] }` on anything it does not recognize as a DONE Pensador handoff.
-  const visual = validateVisualCompleteness(parsed);
+  const baselineArtifact = parsed.artifacts?.find((artifact) => artifact?.role === "project-baseline");
+  const brandArtifact = parsed.artifacts?.find((artifact) => artifact?.role === "brand-assets");
+  const projectBaseline = readDeclaredJson(resolved, [baselineArtifact?.path, "project-baseline.json"]);
+  const assetsManifest = readDeclaredJson(resolved, [
+    brandArtifact?.manifest,
+    brandArtifact?.path ? join(brandArtifact.path, "manifest.json") : null,
+    "assets/manifest.json",
+  ]);
+  const visual = validateVisualCompleteness(parsed, { projectBaseline, assetsManifest });
   const errors = [...result.errors, ...visual.errors];
-  console.log(JSON.stringify({ ok: result.ok && visual.ok, file: resolved, errors }, null, 2));
+  console.log(JSON.stringify({ ok: result.ok && visual.ok, file: resolved, errors, warnings: visual.warnings }, null, 2));
   process.exitCode = result.ok && visual.ok ? 0 : 1;
 }
 

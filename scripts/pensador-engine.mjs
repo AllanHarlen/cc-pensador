@@ -302,6 +302,9 @@ export function initState(demanda) {
     // Collected FIRST in RESEARCH: it seeds the search queries, the domain
     // vocabulary and, later, the Open Design brief + imagery pipeline.
     sectorContext: null,
+    // Distinct from brand imageryStrategy: true means demo/seed records need
+    // real image assets and seedBindings even when brand assets are external.
+    seedImageryRequired: null,
     // RESEARCH outcome: competitors, feature inventory, sources and the reusable
     // Prompt System injected into every downstream prompt (see withMarketResearch).
     marketResearch: null,
@@ -845,6 +848,7 @@ export function requirementsIndexPath(featurePath) {
  * @property {'rest'|'graphql'|'grpc'|'events'} apiStyle
  * @property {string} uiPackageDir
  * @property {string[]} existingApiContractGlobs // contractDiscoveryGlobs(), for the consumer to re-run the same discovery
+ * @property {boolean} seedImageryRequired // independent from brand strategy; drives manifest warning and downstream seedBindings
  */
 
 /**
@@ -862,6 +866,22 @@ export function requirementsIndexPath(featurePath) {
  * @param {StageState} state
  * @returns {ProjectBaseline}
  */
+export function inferSeedImageryRequired(state) {
+  if (typeof state?.seedImageryRequired === 'boolean') return state.seedImageryRequired;
+  const { hasFrontend } = classifyProject(state?.consolidated ?? []);
+  if (!hasFrontend) return false;
+  const corpus = [
+    state?.demanda,
+    ...(state?.consolidated ?? []).map((entry) => entry?.text),
+  ].filter(Boolean).join(' ')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /\b(?:seed(?:er)?|demo|demonstracao|dados? de exemplo|dados? iniciais)\b/.test(corpus);
+}
+
+export function withSeedImageryRequirement(state, required) {
+  return { ...state, seedImageryRequired: Boolean(required) };
+}
+
 export function buildProjectBaseline(state) {
   return {
     isGreenfield: state.isGreenfield ?? null,
@@ -869,6 +889,7 @@ export function buildProjectBaseline(state) {
     apiStyle: state.apiStyle ?? DEFAULT_API_STYLE,
     uiPackageDir: state.uiPackageDir ?? 'packages/ui',
     existingApiContractGlobs: contractDiscoveryGlobs(),
+    seedImageryRequired: inferSeedImageryRequired(state),
   };
 }
 

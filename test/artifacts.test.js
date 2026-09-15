@@ -11,6 +11,8 @@ import {
   planArtifacts,
   buildArtifactList,
   buildProjectBaseline,
+  inferSeedImageryRequired,
+  withSeedImageryRequirement,
   withGreenfieldSignal,
   withConsolidated,
   initState,
@@ -657,6 +659,25 @@ describe('buildArtifactList: requirements-index (requirements.json)', () => {
     const artifact = artifacts.find((a) => a.kind === 'requirements-index');
     expect(artifact).toBeDefined();
     expect(artifact.filename).toBe('requirements.json');
+  });
+
+  it('signals seed imagery independently from the brand strategy for a front-end demo', () => {
+    const state = {
+      ...initState('Criar vitrine frontend com dados de demonstracao via seed'),
+      consolidated: [frontendReq(), { id: 's1', text: 'Popular catalogo demo com imagens' }],
+    };
+    expect(inferSeedImageryRequired(state)).toBe(true);
+    expect(buildProjectBaseline(state).seedImageryRequired).toBe(true);
+  });
+
+  it('allows the DESIGN decision to explicitly override the seed imagery inference', () => {
+    const inferred = {
+      ...initState('Frontend com seed de demonstracao'),
+      consolidated: [frontendReq()],
+    };
+    const decided = withSeedImageryRequirement(inferred, false);
+    expect(buildProjectBaseline(decided).seedImageryRequired).toBe(false);
+    expect(inferred.seedImageryRequired).toBeNull();
   });
 
   it('is absent in Spec mode (OpenSpec has its own equivalent via openspec status)', () => {

@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { extractRequirements, buildRequirementsIndex } from '../scripts/lib/requirements-extractor.mjs';
+import { extractRequirements, buildRequirementsIndex, expandRequirementReferences } from '../scripts/lib/requirements-extractor.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const TEMPLATE_PATH = join(REPO_ROOT, 'skills/pensador/assets/prd-template.md');
@@ -76,6 +76,7 @@ describe('extractRequirements — positive path', () => {
     expect(result.acceptanceCriteria[0]).toEqual({
       id: 'CA-01',
       requirementId: 'RF-01',
+      requirementIds: ['RF-01'],
       criterion: 'DADO um admin autenticado, QUANDO ele submete o formulario de reserva, ENTÃO a reserva e criada com status pendente.',
     });
   });
@@ -107,6 +108,46 @@ describe('extractRequirements — positive path', () => {
     const bareHeading = REALISTIC_PRD.replace('## 6. Requisitos Funcionais', '# Requisitos Funcionais');
     const result = extractRequirements(bareHeading);
     expect(result.requirements.length).toBeGreaterThan(0);
+  });
+
+  it('parses domain-qualified bullet requirements and a CA linked to multiple RFs', () => {
+    const bulletPrd = `
+## 6. Requisitos Funcionais
+
+### Autenticacao & Multi-tenancy
+- **RF-AUTH-01**: O sistema DEVE autenticar o operador da plataforma.
+- **RF-AUTH-02**: O sistema DEVE provisionar o primeiro tenant.
+- **RF-OS-02**: O sistema DEVE registrar uma ordem.
+- **RF-OS-02a**: O sistema DEVE registrar uma variante complementar da ordem.
+
+### Area publica
+- **RF-PUB-01**: O sistema DEVE exibir servicos com imagem.
+
+## 14. Criterios de Aceite
+- **CA-01** (RF-AUTH-01/02): DADO um operador autenticado, QUANDO cria o tenant, ENTAO o Admin inicial recebe acesso.
+- **CA-02** (RF-PUB-01): DADO o catalogo, QUANDO abre a vitrine, ENTAO uma imagem real aparece.
+- **CA-03** (RF-OS-02/02a): DADO uma ordem, QUANDO a variante e usada, ENTAO ambas as regras sao rastreadas.
+`;
+    const result = extractRequirements(bulletPrd);
+    expect(result.requirements.map((requirement) => requirement.id)).toEqual([
+      'RF-AUTH-01', 'RF-AUTH-02', 'RF-OS-02', 'RF-OS-02A', 'RF-PUB-01',
+    ]);
+    expect(result.requirements.every((requirement) => requirement.priority === 'Unspecified')).toBe(true);
+    expect(result.acceptanceCriteria[0]).toMatchObject({
+      id: 'CA-01',
+      requirementId: 'RF-AUTH-01',
+      requirementIds: ['RF-AUTH-01', 'RF-AUTH-02'],
+    });
+    expect(result.acceptanceCriteria[2].requirementIds).toEqual(['RF-OS-02', 'RF-OS-02A']);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('expands compact slash lists and inclusive RF ranges completely', () => {
+    expect(expandRequirementReferences('RF-PUB-01/02/03')).toEqual(['RF-PUB-01', 'RF-PUB-02', 'RF-PUB-03']);
+    expect(expandRequirementReferences('RF-OS-02/02a')).toEqual(['RF-OS-02', 'RF-OS-02A']);
+    expect(expandRequirementReferences('RF-ORC-01..11')).toEqual(
+      Array.from({ length: 11 }, (_, index) => `RF-ORC-${String(index + 1).padStart(2, '0')}`),
+    );
   });
 });
 

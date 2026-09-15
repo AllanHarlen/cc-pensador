@@ -153,7 +153,8 @@ export function auditDesignPackage({ resolvedDir, contract, prototypesDir } = {}
       const required = asset.classification === "required";
       const assetFile = inside(join(resolvedDir, "assets"), asset.file) ? join(resolvedDir, "assets", asset.file) : null;
       if (!assetFile || !existsSync(assetFile)) { if (required) add("critical", "REQUIRED_ASSET_MISSING", `Required asset ${asset.id} is missing`, asset.file); continue; }
-      if (!asset.alt || !asset.routes?.length || !asset.componentSlot || !asset.materializeInto) add("high", "ASSET_BINDING_INCOMPLETE", `Asset ${asset.id} lacks semantic placement metadata`, asset.id);
+      const missingSeedBinding = asset.purpose === "seed-demo" && !asset.seedBindings?.length;
+      if (!asset.alt || !asset.routes?.length || !asset.componentSlot || !asset.materializeInto || missingSeedBinding) add("high", "ASSET_BINDING_INCOMPLETE", `Asset ${asset.id} lacks semantic placement metadata${missingSeedBinding ? " or seedBindings" : ""}`, asset.id);
       if (asset.sha256 !== sha256(assetFile)) add("high", "ASSET_HASH_MISMATCH", `Asset ${asset.id} hash does not match`, asset.file);
     }
   }

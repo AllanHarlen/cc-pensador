@@ -323,17 +323,20 @@ export function validateHandoff(handoff) {
  * its own mandatory `summary` explaining the gap (see `validateHandoff()`).
  *
  * @param {unknown} handoff - the parsed JSON content of handoff.json
- * @returns {{ ok: boolean, errors: Array<{ code: string, message: string, path: string|null }> }}
+ * @param {{ projectBaseline?: object|null, assetsManifest?: object|null }} [options]
+ * @returns {{ ok: boolean, errors: Array<{ code: string, message: string, path: string|null }>, warnings: Array<{ code: string, severity: "warning", message: string, path: string|null }> }}
  */
-export function validateVisualCompleteness(handoff) {
+export function validateVisualCompleteness(handoff, options = {}) {
   const errors = [];
+  const warnings = [];
   const push = (code, message, path = null) => errors.push({ code, message, path });
+  const warn = (code, message, path = null) => warnings.push({ code, severity: "warning", message, path });
 
   if (!isPlainObject(handoff) || handoff.stage !== "pensador" || handoff.status !== "DONE" || !Array.isArray(handoff.artifacts)) {
     // Out of scope for this gate: not a Pensador handoff, not DONE (a
     // PARTIAL/BLOCKED status already has to explain itself via `summary`),
     // or structurally broken in a way validateHandoff() already reports.
-    return { ok: true, errors };
+    return { ok: true, errors, warnings };
   }
 
   const byRole = (role) => handoff.artifacts.find((artifact) => isPlainObject(artifact) && artifact.role === role);
@@ -344,7 +347,7 @@ export function validateVisualCompleteness(handoff) {
   // handoff envelope itself. No design artifact at all means either a
   // backend-only demand (nothing to check) or a structural gap
   // `validateHandoff()`/the role vocabulary already would have caught.
-  if (!designFiles && !designFallback) return { ok: true, errors };
+  if (!designFiles && !designFallback) return { ok: true, errors, warnings };
 
   if (designFiles && designFiles.variant !== "resolved") {
     push(
@@ -368,5 +371,18 @@ export function validateVisualCompleteness(handoff) {
     );
   }
 
-  return { ok: errors.length === 0, errors };
+  const seedImageryRequired = options.projectBaseline?.seedImageryRequired === true;
+  const manifestAssets = options.assetsManifest?.assets;
+  const seedAssets = Array.isArray(manifestAssets)
+    ? manifestAssets.filter((asset) => asset?.purpose === "seed-demo" || (Array.isArray(asset?.seedBindings) && asset.seedBindings.length > 0))
+    : [];
+  if (seedImageryRequired && seedAssets.length < 3) {
+    warn(
+      "SEED_IMAGERY_LIKELY_MISSING",
+      `project-baseline.json requires seed/demo imagery, but assets/manifest.json exposes only ${seedAssets.length} seed-bound asset(s). Brand assets may remain external, but generate and bind 3-6 real seed images before handing off the demo flow.`,
+      "artifacts[brand-assets].manifest",
+    );
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
 }

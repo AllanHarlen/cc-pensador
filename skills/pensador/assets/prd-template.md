@@ -95,6 +95,14 @@
 | RF-02 | O sistema DEVE {{REQUISITO_FUNCIONAL_2}}. | {{MoSCoW}} |
 | RF-N  | O sistema DEVE {{REQUISITO_FUNCIONAL_N}}. | {{MoSCoW}} |
 
+Para PRDs extensos, também é sancionado agrupar por domínio usando bullets; o extrator aceita IDs simples e qualificados sem perder compatibilidade com a tabela:
+
+```markdown
+### {{DOMINIO}}
+- **RF-{{DOMINIO}}-01**: O sistema DEVE {{REQUISITO_FUNCIONAL_1}}.
+- **RF-{{DOMINIO}}-02**: O sistema DEVE {{REQUISITO_FUNCIONAL_2}}.
+```
+
 ---
 
 ## 7. Requisitos Não-Funcionais
@@ -242,6 +250,12 @@
 | CA-01 | RF-01 | DADO {{CONTEXTO}}, QUANDO {{ACAO}}, ENTÃO {{RESULTADO_ESPERADO}}. |
 | CA-02 | RF-02 | DADO {{CONTEXTO}}, QUANDO {{ACAO}}, ENTÃO {{RESULTADO_ESPERADO}}. |
 | CA-N  | RF-N  | DADO {{CONTEXTO}}, QUANDO {{ACAO}}, ENTÃO {{RESULTADO_ESPERADO}}. |
+
+Como alternativa para PRDs agrupados por domínio, use bullets. Um CA pode referenciar vários RFs com lista compacta (`RF-PUB-01/02/03`) ou intervalo inclusivo (`RF-ORC-01..11`):
+
+```markdown
+- **CA-01** (RF-PUB-01/02/03): DADO {{CONTEXTO}}, QUANDO {{ACAO}}, ENTÃO {{RESULTADO_ESPERADO}}.
+```
 
 ---
 
