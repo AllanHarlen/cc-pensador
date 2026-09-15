@@ -11,11 +11,17 @@ Classifique cada item como:
 - `required`: necessario para requisito ou criterio de aceite;
 - `recommended`: enriquecimento semantico/visual.
 
-Tome uma unica decisao por execucao: `full-package`, `required-only` ou `external-assets`. Nao pergunte imagem por imagem.
+Separe duas decisões que não são equivalentes:
+
+- **Marca/identidade:** `full-package`, `required-only` ou `external-assets`. `external-assets` pode significar que logo e fotos institucionais serão fornecidos depois.
+- **Seed/demo:** quando requisitos, critérios de aceite ou dados de demonstração renderizam catálogo, vitrine, cards ou qualquer slot de imagem, sempre materialize um conjunto mínimo real e visível de 3 a 6 imagens. Essa obrigação continua existindo mesmo quando a estratégia de marca é `external-assets`; sem ela, o próprio fluxo demo não é verificável.
+
+Não pergunte imagem por imagem. Registre a decisão de seed separadamente e marque esses assets como `required`, com `purpose: "seed-demo"` e `seedBindings` apontando para os itens demonstrativos que os consumirão. Assets estáticos de marca/conteúdo podem manter `seedBindings: []`; o `purpose` impede que essa ausência legítima seja confundida com um seed quebrado.
 
 ## Geracao AGY
 
 - Uma imagem por chamada, sequencialmente; nunca combine geracao de imagem com `--parallel`.
+- Para seed/demo obrigatório, execute 3 a 6 chamadas reais com `--generate-image`; não aceite manifesto vazio, placeholder, URL remota instável ou `imagemUrl: null` como materialização.
 - Inclua sistema resolvido, setor, marca, paleta, proporcao, superficie, rota e slot no prompt.
 - Valide arquivo, extensao, dimensoes, tamanho, SHA-256 e duplicidade.
 - Em `resume`, reutilize o arquivo quando o hash ainda for valido.
@@ -30,4 +36,4 @@ Icones funcionais sao vetoriais e pertencem a uma biblioteca compativel com o st
 
 ## Handoff
 
-O pacote `resolved/` e autoritativo. `original/` preserva o Open Design sem alteracao. O Orquestrador copia cada asset para `materializeInto`, aplica `seedBindings` e comprova no navegador que imagens aparecem nos estados normais e possuem `alt`.
+O pacote `resolved/` é autoritativo. `original/` preserva o Open Design sem alteração. O Orquestrador copia cada asset para `materializeInto`, recebe cada `seedBindings` no relatório de materialização e o aplica na task responsável pelo seed; depois comprova no navegador que as imagens aparecem nos estados normais e possuem `alt`. O handoff deve sinalizar `seedImageryRequired` no `project-baseline.json` quando essa decisão estiver ativa, permitindo ao validador alertar quando houver menos de três assets de seed vinculados antes do consumo.

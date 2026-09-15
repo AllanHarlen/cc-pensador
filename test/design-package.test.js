@@ -32,7 +32,7 @@ function fixture() {
     components: [{ name: 'Button', states: ['default', 'hover', 'focus', 'disabled'] }],
     layouts: [{ route: '/', viewport: 'responsive' }],
     iconography: { package: 'lucide-react', version: '1.0.0', format: 'vector', usages: { home: 'House' } },
-    imagery: { decision: 'required-only', assets: [{ id: 'hero', classification: 'required', requirementRefs: ['RF-001'], routes: ['/'], componentSlot: 'hero.image', file: 'generated/hero.webp', aspectRatio: '16:9', alt: 'Equipe trabalhando', materializeInto: 'apps/web/public/assets/hero.webp', seedBindings: [], approval: 'approved', sha256: createHash('sha256').update(image).digest('hex'), generator: { agent: 'agy', model: 'pro-high', conversationId: 'conv-1' } }] },
+    imagery: { decision: 'required-only', assets: [{ id: 'hero', purpose: 'content', classification: 'required', requirementRefs: ['RF-001'], routes: ['/'], componentSlot: 'hero.image', file: 'generated/hero.webp', aspectRatio: '16:9', alt: 'Equipe trabalhando', materializeInto: 'apps/web/public/assets/hero.webp', seedBindings: [], approval: 'approved', sha256: createHash('sha256').update(image).digest('hex'), generator: { agent: 'agy', model: 'pro-high', conversationId: 'conv-1' } }] },
     microcopy: { tone: 'direct' }, antiPatterns: ['emoji as icon'],
   };
   const contractFile = join(root, 'contract.json');
@@ -62,5 +62,18 @@ describe('resolved design package', () => {
     expect(result.findings.map((finding) => finding.code)).toEqual(expect.arrayContaining([
       'TOKEN_ALIAS_UNDEFINED', 'COMPONENT_STATE_MISSING', 'REQUIRED_ASSET_MISSING',
     ]));
+  });
+
+  it('blocks a seed/demo asset that has no seed binding while allowing static required imagery', () => {
+    const data = fixture();
+    renderDesignPackage(data);
+    const manifestPath = join(data.resolved, 'assets', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.assets[0].purpose = 'seed-demo';
+    manifest.assets[0].seedBindings = [];
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const result = auditDesignPackage({ resolvedDir: data.resolved });
+    expect(result.status).toBe('BLOCKED');
+    expect(result.findings.map((finding) => finding.code)).toContain('ASSET_BINDING_INCOMPLETE');
   });
 });

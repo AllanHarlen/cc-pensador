@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.26.0] — 2026-09-15 — IDs de requisito por dominio, bootstrap multi-tenant, imagens de seed separadas de marca
+
+Continuacao do levantamento de gaps sobre uma run real do Pensador -> Orquestrador (OficinaAI,
+apos a 2.25.0 ja em producao). Ver tambem cc-orchestrador-subagents 4.18.0 (metade Orquestrador
+das mesmas correcoes).
+
+- **`requirements-extractor.mjs`:** `RF_ROW_RE`/`CA_ROW_RE` so aceitavam a tabela `RF-01` do
+  `prd-template.md`; o PRD real gerado usa bullets `- **RF-ORC-06**: ...` com ID por dominio sob
+  subheadings — nem o formato de linha nem o de ID batiam, e o proprio Pensador registrou numa run
+  real que a ferramenta "nao foi aplicada diretamente" (`requirements.json` escrito a mao). Agora
+  aceita tabela e bullet, IDs simples e por dominio (inclusive sufixo alfabetico, `RF-OS-02a`), e
+  uma nova `expandRequirementReferences()` expande listas compactas (`RF-PUB-01/02/03`) e
+  intervalos (`RF-ORC-01..11`) que um CA real referenciava e o parser antigo truncava no primeiro
+  RF. `prd-template.md` agora documenta os dois formatos como igualmente sancionados.
+- **Bootstrap multi-tenant:** `skills/backend-development/SKILL.md` pergunta explicitamente, para
+  demandas multi-tenant, como o operador da propria plataforma (distinto do Admin do tenant)
+  autentica e provisiona o primeiro tenant/Admin — numa run real esse gap so apareceu na review de
+  back-end, ja tarde, porque `POST /api/tenants` exigia um papel que nenhum fluxo de login emitia.
+- **Imagens de seed/demo separadas de brand assets:** `references/imagery.md` deixa de tratar as
+  duas como uma decisao so — `external-assets` para marca (logo/fotos que o tenant fornece depois)
+  nao dispensa gerar 3-6 imagens reais de seed quando o PRD renderiza catalogo/vitrine com dados
+  de demonstracao. Novo campo `project-baseline.json.seedImageryRequired` (heuristica de inferencia
+  por `inferSeedImageryRequired()` a partir da demanda, ou setado explicitamente via
+  `withSeedImageryRequirement()` no estagio DESIGN); `validateVisualCompleteness()` emite o warning
+  nao bloqueante `SEED_IMAGERY_LIKELY_MISSING` quando ha menos de tres assets `purpose: "seed-demo"`
+  vinculados. `design-package.mjs audit` tambem passa a exigir `seedBindings` no asset de seed
+  (bloqueante ali, nao so aviso no handoff) — numa run real, o seed de demo tinha `imagemUrl: null`
+  em todos os 6 itens do catalogo, e nenhuma das tres revisoes (back-end, front-end, E2E) percebeu.
+
 ## [2.25.0] — 2026-09-13 — Gate real para o estagio DESIGN antes de status DONE
 
 Motivacao: numa run real (OficinaAI, 12/09) o estagio DESIGN foi pulado inteiro — o `handoff.json`

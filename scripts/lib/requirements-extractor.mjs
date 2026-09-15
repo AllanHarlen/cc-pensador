@@ -28,11 +28,39 @@
  * attempt to also parse that format.
  */
 
-const RF_ROW_RE = /^\|\s*(RF-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/;
-const CA_ROW_RE = /^\|\s*(CA-\d+)\s*\|\s*(RF-\d+)\s*\|\s*(.+?)\s*\|\s*$/;
+const RF_ID_SOURCE = 'RF-(?:[A-Z]+-)?\\d+[A-Z]?';
+const RF_ROW_RE = new RegExp(`^\\|\\s*(${RF_ID_SOURCE})\\s*\\|\\s*(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*$`, 'i');
+const RF_BULLET_RE = new RegExp(`^-\\s+\\*\\*(${RF_ID_SOURCE})\\*\\*:\\s*(.+)$`, 'i');
+const CA_ROW_RE = /^\|\s*(CA-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/i;
+const CA_BULLET_RE = /^-\s+\*\*(CA-\d+)\*\*\s*\(([^)]+)\)\s*:\s*(.+)$/i;
 
 /** Matches the placeholder template row itself (e.g. `RF-N`, `CA-N`), never a real requirement. */
 const isTemplatePlaceholderId = (id) => /-N$/.test(id);
+
+/** Expands `RF-PUB-01/02/03`, `RF-OS-02/02a`, `RF-ORC-01..11`, and ordinary RF lists. */
+export function expandRequirementReferences(value) {
+  const expressions = String(value ?? '').toUpperCase()
+    .match(/RF-(?:[A-Z]+-)?\d+[A-Z]?(?:(?:\/\d+[A-Z]?)+|\.\.\d+)?/g) ?? [];
+  const ids = [];
+  for (const expression of expressions) {
+    const head = expression.match(/^(RF-(?:[A-Z]+-)?)(\d+)/);
+    if (!head) continue;
+    const [, prefix, firstDigits] = head;
+    if (expression.includes('..')) {
+      const endDigits = expression.split('..')[1];
+      const start = Number(firstDigits);
+      const end = Number(endDigits);
+      if (Number.isInteger(start) && Number.isInteger(end) && end >= start && end - start <= 999) {
+        const width = Math.max(firstDigits.length, endDigits.length);
+        for (let number = start; number <= end; number += 1) ids.push(`${prefix}${String(number).padStart(width, '0')}`);
+      }
+      continue;
+    }
+    const suffixes = expression.slice(prefix.length).split('/');
+    for (const suffix of suffixes) ids.push(`${prefix}${suffix}`);
+  }
+  return [...new Set(ids)];
+}
 
 /**
  * Extracts the body of the FIRST markdown section whose heading matches
@@ -81,7 +109,7 @@ function extractSection(markdown, headingPattern) {
  * @param {string} prdMarkdown
  * @returns {{
  *   requirements: Array<{ id: string, text: string, priority: string }>,
- *   acceptanceCriteria: Array<{ id: string, requirementId: string, criterion: string }>,
+ *   acceptanceCriteria: Array<{ id: string, requirementId: string, requirementIds: string[], criterion: string }>,
  *   warnings: string[],
  * }}
  */
@@ -95,10 +123,15 @@ export function extractRequirements(prdMarkdown) {
     warnings.push('SECTION_NOT_FOUND: "Requisitos Funcionais" (PRD section 6) not found');
   } else {
     for (const line of rfSection.split(/\r?\n/)) {
-      const match = line.match(RF_ROW_RE);
+      const tableMatch = line.match(RF_ROW_RE);
+      const bulletMatch = line.match(RF_BULLET_RE);
+      const match = tableMatch ?? bulletMatch;
       if (!match) continue;
-      const [, id, reqText, priority] = match;
+      const [, rawId, reqText, tablePriority] = match;
+      const id = rawId.toUpperCase();
+      const priority = tableMatch ? tablePriority : 'Unspecified';
       if (isTemplatePlaceholderId(id)) continue;
+      if (requirements.some((requirement) => requirement.id === id)) continue;
       requirements.push({ id, text: reqText, priority });
     }
     if (requirements.length === 0) {
@@ -112,18 +145,23 @@ export function extractRequirements(prdMarkdown) {
     warnings.push('SECTION_NOT_FOUND: "Critérios de Aceite" (PRD section 14) not found');
   } else {
     for (const line of caSection.split(/\r?\n/)) {
-      const match = line.match(CA_ROW_RE);
+      const match = line.match(CA_ROW_RE) ?? line.match(CA_BULLET_RE);
       if (!match) continue;
-      const [, id, requirementId, criterion] = match;
+      const [, rawId, requirementRefs, criterion] = match;
+      const id = rawId.toUpperCase();
       if (isTemplatePlaceholderId(id)) continue;
-      acceptanceCriteria.push({ id, requirementId, criterion });
+      const requirementIds = expandRequirementReferences(requirementRefs);
+      if (requirementIds.length === 0 || acceptanceCriteria.some((criterionEntry) => criterionEntry.id === id)) continue;
+      acceptanceCriteria.push({ id, requirementId: requirementIds[0], requirementIds, criterion });
     }
   }
 
   const requirementIds = new Set(requirements.map((r) => r.id));
   for (const ca of acceptanceCriteria) {
-    if (!requirementIds.has(ca.requirementId)) {
-      warnings.push(`DANGLING_REFERENCE: ${ca.id} references ${ca.requirementId}, which is not in the Requisitos Funcionais table`);
+    for (const requirementId of ca.requirementIds) {
+      if (!requirementIds.has(requirementId)) {
+        warnings.push(`DANGLING_REFERENCE: ${ca.id} references ${requirementId}, which is not in the Requisitos Funcionais section`);
+      }
     }
   }
 
@@ -137,7 +175,7 @@ export function extractRequirements(prdMarkdown) {
  * @param {string} prdMarkdown
  * @returns {{
  *   requirements: Array<{ id: string, text: string, priority: string }>,
- *   acceptanceCriteria: Array<{ id: string, requirementId: string, criterion: string }>,
+ *   acceptanceCriteria: Array<{ id: string, requirementId: string, requirementIds: string[], criterion: string }>,
  *   warnings: string[],
  * }}
  */

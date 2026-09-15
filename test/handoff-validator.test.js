@@ -396,6 +396,41 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     expect(result.errors).toEqual([]);
   });
 
+  it('warns without blocking when seed imagery is required but the manifest is empty', () => {
+    const result = validateVisualCompleteness(resolvedHandoff(), {
+      projectBaseline: { seedImageryRequired: true },
+      assetsManifest: { assets: [] },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({
+      code: 'SEED_IMAGERY_LIKELY_MISSING',
+      severity: 'warning',
+    })]);
+  });
+
+  it('warns without blocking when seed imagery is required but the manifest cannot be loaded', () => {
+    const result = validateVisualCompleteness(resolvedHandoff(), {
+      projectBaseline: { seedImageryRequired: true },
+      assetsManifest: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.map((warning) => warning.code)).toEqual(['SEED_IMAGERY_LIKELY_MISSING']);
+  });
+
+  it('does not warn when required seed imagery has the documented minimum of three bound assets', () => {
+    const result = validateVisualCompleteness(resolvedHandoff(), {
+      projectBaseline: { seedImageryRequired: true },
+      assetsManifest: { assets: Array.from({ length: 3 }, (_, index) => ({
+        id: `service-${index + 1}`,
+        purpose: 'seed-demo',
+        seedBindings: [`ServicoFixo:${index + 1}`],
+      })) },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('checks the fallback-inline "design-system" role the same way as "design-system-files"', () => {
     const handoff = validPensadorHandoff({
       artifacts: [{ role: 'design-system', path: 'design-system.md', required: true }],
@@ -474,6 +509,36 @@ describe('validate-handoff.mjs CLI', () => {
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok).toBe(true);
       expect(parsed.errors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads project-baseline and assets manifest paths and emits the non-blocking seed imagery warning', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { mkdirSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-seed-test-'));
+    try {
+      mkdirSync(join(dir, 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'project-baseline.json'), JSON.stringify({ seedImageryRequired: true }));
+      writeFileSync(join(dir, 'assets', 'manifest.json'), JSON.stringify({ assets: [] }));
+      const file = join(dir, 'handoff.json');
+      writeFileSync(file, JSON.stringify(validPensadorHandoff({
+        artifacts: [
+          { role: 'project-baseline', path: 'project-baseline.json', required: true },
+          { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
+          { role: 'ui-prototype', path: 'prototypes/', required: true },
+          { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
+        ],
+      })));
+      const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.warnings).toEqual([expect.objectContaining({ code: 'SEED_IMAGERY_LIKELY_MISSING', severity: 'warning' })]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

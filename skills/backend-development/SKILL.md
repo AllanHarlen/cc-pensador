@@ -23,12 +23,13 @@ Rode quando houver sinais de back-end (API, servidor, banco de dados, integraç�
 2. **Persistência** — tipo de banco (relacional/NoSQL), estratégia de migração, retenção, backup.
 3. **APIs/contratos** — recursos e operações, estilo (REST/GraphQL/gRPC), versionamento, paginação, filtros.
 4. **Autenticação & autorização** — quem autentica, mecanismo (JWT/sessão/OAuth), papéis e escopos por endpoint.
-5. **Validação & erros** — validação de entrada, códigos/erros padronizados, mensagens.
-6. **Consistência** — transações, idempotência, concorrência, condições de corrida.
-7. **Integrações externas** — quais serviços, protocolos, limites, fallback quando indisponíveis.
-8. **Escalabilidade & desempenho** — carga esperada, limiares (latência/throughput), cache, filas/assíncrono.
-9. **Segurança** — superfície de ataque, segredos, rate limiting, LGPD/dados pessoais.
-10. **Observabilidade** — logs, métricas, tracing, auditoria.
+5. **Bootstrap multi-tenant** — quando a demanda for multi-tenant, pergunte explicitamente como o operador da própria plataforma (fora de qualquer tenant) autentica e provisiona o primeiro tenant/Admin. Não confunda esse ator com o Admin do tenant nem deixe o bootstrap depender de um papel que ainda não existe.
+6. **Validação & erros** — validação de entrada, códigos/erros padronizados, mensagens.
+7. **Consistência** — transações, idempotência, concorrência, condições de corrida.
+8. **Integrações externas** — quais serviços, protocolos, limites, fallback quando indisponíveis.
+9. **Escalabilidade & desempenho** — carga esperada, limiares (latência/throughput), cache, filas/assíncrono.
+10. **Segurança** — superfície de ataque, segredos, rate limiting, LGPD/dados pessoais.
+11. **Observabilidade** — logs, métricas, tracing, auditoria.
 
 ## Saída esperada
 
