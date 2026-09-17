@@ -12,6 +12,7 @@ import {
   buildArtifactList,
   buildProjectBaseline,
   inferSeedImageryRequired,
+  inferVisualImageryPlan,
   withSeedImageryRequirement,
   withGreenfieldSignal,
   withConsolidated,
@@ -659,6 +660,29 @@ describe('buildArtifactList: requirements-index (requirements.json)', () => {
     const artifact = artifacts.find((a) => a.kind === 'requirements-index');
     expect(artifact).toBeDefined();
     expect(artifact.filename).toBe('requirements.json');
+  });
+
+  it('requires AGY imagery for a parts/equipment catalog and preserves task reasons', () => {
+    const state = {
+      ...initState('Criar area publica com catalogo de pecas e equipamentos'),
+      consolidated: [{ id: 'RF-CAT-01', text: 'Vitrine de equipamentos com cards visuais' }],
+    };
+    const plan = inferVisualImageryPlan(state);
+    expect(plan).toMatchObject({ policy: 'required', provider: 'agy', minimumAssets: 3 });
+    expect(plan.reasons).toContain('catalog-visual-merchandising');
+    expect(buildProjectBaseline(state).visualImageryPlan).toEqual(plan);
+    expect(buildProjectBaseline(state).seedImageryRequired).toBe(true);
+  });
+
+  it('recommends AGY imagery for landing/public surfaces without forcing seed bindings', () => {
+    const state = { ...initState('Criar landing page institucional'), consolidated: [frontendReq()] };
+    expect(inferVisualImageryPlan(state)).toMatchObject({ policy: 'recommended', minimumAssets: 1 });
+    expect(inferSeedImageryRequired(state)).toBe(false);
+  });
+
+  it('does not recommend imagery for backend-only work', () => {
+    const state = { ...initState('Corrigir indice SQL'), consolidated: [backendReq()] };
+    expect(inferVisualImageryPlan(state)).toMatchObject({ policy: 'not-applicable', minimumAssets: 0, tasks: [] });
   });
 
   it('signals seed imagery independently from the brand strategy for a front-end demo', () => {

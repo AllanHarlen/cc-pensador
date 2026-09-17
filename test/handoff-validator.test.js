@@ -396,26 +396,22 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     expect(result.errors).toEqual([]);
   });
 
-  it('warns without blocking when seed imagery is required but the manifest is empty', () => {
+  it('blocks DONE when required seed imagery is absent', () => {
     const result = validateVisualCompleteness(resolvedHandoff(), {
       projectBaseline: { seedImageryRequired: true },
       assetsManifest: { assets: [] },
     });
-    expect(result.ok).toBe(true);
-    expect(result.errors).toEqual([]);
-    expect(result.warnings).toEqual([expect.objectContaining({
-      code: 'SEED_IMAGERY_LIKELY_MISSING',
-      severity: 'warning',
-    })]);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual([expect.objectContaining({ code: 'REQUIRED_VISUAL_IMAGERY_MISSING' })]);
   });
 
-  it('warns without blocking when seed imagery is required but the manifest cannot be loaded', () => {
+  it('blocks DONE when required seed imagery manifest cannot be loaded', () => {
     const result = validateVisualCompleteness(resolvedHandoff(), {
       projectBaseline: { seedImageryRequired: true },
       assetsManifest: null,
     });
-    expect(result.ok).toBe(true);
-    expect(result.warnings.map((warning) => warning.code)).toEqual(['SEED_IMAGERY_LIKELY_MISSING']);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.code)).toEqual(['REQUIRED_VISUAL_IMAGERY_MISSING']);
   });
 
   it('does not warn when required seed imagery has the documented minimum of three bound assets', () => {
@@ -514,7 +510,7 @@ describe('validate-handoff.mjs CLI', () => {
     }
   });
 
-  it('loads project-baseline and assets manifest paths and emits the non-blocking seed imagery warning', async () => {
+  it('loads project-baseline and assets manifest paths and blocks missing required imagery', async () => {
     const { spawnSync } = await import('node:child_process');
     const { mkdirSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
@@ -535,10 +531,10 @@ describe('validate-handoff.mjs CLI', () => {
         ],
       })));
       const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
-      expect(result.status).toBe(0);
+      expect(result.status).toBe(1);
       const parsed = JSON.parse(result.stdout);
-      expect(parsed.ok).toBe(true);
-      expect(parsed.warnings).toEqual([expect.objectContaining({ code: 'SEED_IMAGERY_LIKELY_MISSING', severity: 'warning' })]);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.errors).toEqual([expect.objectContaining({ code: 'REQUIRED_VISUAL_IMAGERY_MISSING' })]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

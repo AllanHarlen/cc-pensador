@@ -305,6 +305,9 @@ export function initState(demanda) {
     // Distinct from brand imageryStrategy: true means demo/seed records need
     // real image assets and seedBindings even when brand assets are external.
     seedImageryRequired: null,
+    // Structured signal consumed by downstream task planners so visual asset
+    // needs survive decomposition into implementation tasks.
+    visualImageryPlan: null,
     // RESEARCH outcome: competitors, feature inventory, sources and the reusable
     // Prompt System injected into every downstream prompt (see withMarketResearch).
     marketResearch: null,
@@ -849,6 +852,7 @@ export function requirementsIndexPath(featurePath) {
  * @property {string} uiPackageDir
  * @property {string[]} existingApiContractGlobs // contractDiscoveryGlobs(), for the consumer to re-run the same discovery
  * @property {boolean} seedImageryRequired // independent from brand strategy; drives manifest warning and downstream seedBindings
+ * @property {{policy:'required'|'recommended'|'not-applicable',provider:'agy',minimumAssets:number,reasons:string[],tasks:Array}} visualImageryPlan
  */
 
 /**
@@ -869,13 +873,46 @@ export function requirementsIndexPath(featurePath) {
 export function inferSeedImageryRequired(state) {
   if (typeof state?.seedImageryRequired === 'boolean') return state.seedImageryRequired;
   const { hasFrontend } = classifyProject(state?.consolidated ?? []);
-  if (!hasFrontend) return false;
   const corpus = [
     state?.demanda,
     ...(state?.consolidated ?? []).map((entry) => entry?.text),
   ].filter(Boolean).join(' ')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/\b(?:catalogo|vitrine)\b.*\b(?:pecas|equipamentos|produtos|servicos|itens)\b/.test(corpus)) return true;
+  if (!hasFrontend) return false;
   return /\b(?:seed(?:er)?|demo|demonstracao|dados? de exemplo|dados? iniciais)\b/.test(corpus);
+}
+
+const normalizeVisualText = (value) => String(value ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+export function inferVisualImageryPlan(state) {
+  if (state?.visualImageryPlan?.policy) return structuredClone(state.visualImageryPlan);
+  const entries = [
+    { id: null, text: state?.demanda },
+    ...(Array.isArray(state?.consolidated) ? state.consolidated : []).map((entry) => ({ id: entry?.id ?? null, text: entry?.text })),
+  ];
+  const tasks = [];
+  for (const entry of entries) {
+    const text = normalizeVisualText(entry.text);
+    if (!text) continue;
+    const reasons = [];
+    const explicit = /\b(?:imagem|imagens|foto|fotos|ilustracao|banner|hero|mockup|galeria|thumbnail|asset visual)\b/.test(text);
+    const catalog = /\b(?:catalogo|vitrine)\b.*\b(?:pecas|equipamentos|produtos|servicos|itens)\b|\b(?:pecas|equipamentos)\b.*\b(?:catalogo|vitrine)\b/.test(text);
+    const publicSurface = /\b(?:area publica|pagina publica|site institucional|landing page|homepage|pagina inicial|marketing)\b/.test(text);
+    if (explicit) reasons.push('explicit-imagery');
+    if (catalog) reasons.push('catalog-visual-merchandising');
+    if (publicSurface) reasons.push('public-high-visual-surface');
+    if (reasons.length) tasks.push({ id: entry.id, policy: explicit || catalog ? 'required' : 'recommended', reasons });
+  }
+  const required = tasks.some((task) => task.policy === 'required');
+  return {
+    policy: required ? 'required' : tasks.length ? 'recommended' : 'not-applicable',
+    provider: 'agy',
+    minimumAssets: required ? 3 : tasks.length ? 1 : 0,
+    reasons: [...new Set(tasks.flatMap((task) => task.reasons))],
+    tasks,
+  };
 }
 
 export function withSeedImageryRequirement(state, required) {
@@ -890,6 +927,7 @@ export function buildProjectBaseline(state) {
     uiPackageDir: state.uiPackageDir ?? 'packages/ui',
     existingApiContractGlobs: contractDiscoveryGlobs(),
     seedImageryRequired: inferSeedImageryRequired(state),
+    visualImageryPlan: inferVisualImageryPlan(state),
   };
 }
 
