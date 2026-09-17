@@ -1,5 +1,69 @@
 # Changelog
 
+## [2.27.0] — 2026-09-17 — Superficies de produto, cobertura de contrato (ui-data-map) e plano de seed
+
+Segunda rodada de correcao sobre a mesma run real (OficinaAI, 2026-09-16, apos a 2.26.0 ja em
+producao): a vitrine publica ficou visualmente fraca porque a deteccao de arquetipo so olhava o
+top-1 (SaaS/ERP), e o painel interno inteiro leu de `localStorage` porque `openapi.yaml` tinha 21
+operacoes para 41 RFs sem que nada cruzasse tela x operacao. Ver tambem cc-orchestrador-subagents
+4.19.0 (metade Orquestrador destas mesmas correcoes).
+
+- **`detectProductSurfaces()` substitui a dependencia de um unico arquetipo top-1 para decisao
+  visual.** `detectProductArchetype()` so retorna o melhor casamento; uma demanda "SaaS de gestao
+  com site publico de captacao de leads" tem DUAS superficies (`operational` do SaaS + `conversion`
+  do site), e a segunda ficava invisivel — o arquetipo vencedor (ERP/SaaS) nunca menciona
+  hero/prova-social/CTA/contato em `baselineFeatures`. Nova funcao mapeia arquetipo -> tipo de
+  superficie (`ARCHETYPE_SURFACE_TYPE`) e captura superficies secundarias via
+  `SECONDARY_SURFACE_SIGNALS` (bilingue, incluindo o padrao "catalogo/vitrine de X" que a versao
+  anterior so reconhecia via palavra fixa).
+  - Nova pergunta obrigatoria no RESEARCH (passo 4a): benchmark real (`WebFetch`, nao so
+    `WebSearch`) de >= 3 referencias por superficie `conversion`/`catalog`, com secoes observadas
+    em >=2 referencias promovidas a `benchmarkedSections` (mesma regra `>=2 fontes = table-stakes`
+    ja usada por `classifyFeatureTier`). Novo artefato `surface-benchmark.json` (role
+    `surface-benchmark`, schema `surface-benchmark.schema.json`).
+  - Novo gate de fidelidade no DESIGN: um protótipo de superficie `conversion`/`catalog` precisa
+    cobrir as secoes do benchmark — um wireframe minimo (hero + formulario, sem prova
+    social/diferenciais/contato) deixa de ser aceito como spec visual autoritativa dessa superficie.
+- **`inferVisualImageryPlan()` corrigido: politica agora vem da superficie, nao de palavras
+  soltas.** A versao anterior marcava `required` so por "banner"/"hero"/"mockup" aparecerem no
+  texto (falso bloqueio: uma landing page mencionando "hero banner" virava `required` mesmo sem
+  nenhum outro sinal) e nunca reconhecia uma demanda em ingles ("public storefront with product
+  gallery") por so ter palavras-chave em pt-BR (falso negativo). Agora `required` vem de
+  `detectProductSurfaces()`: toda superficie `catalog`/`conversion` e um sinal estrutural (o
+  benchmark cross-setor mostra fotografia real em toda pagina publica de referencia), nao um
+  match de vocabulario solto.
+  - `validateVisualCompleteness()` (`handoff-validator.mjs`) tinha o mesmo bug de contagem:
+    contava so assets `purpose: "seed-demo"` contra `visualImageryPlan.minimumAssets`, que agora e
+    sobre imagem de CONTEUDO (qualquer `purpose`). Separado em duas checagens: `visualImageryPlan`
+    (conta qualquer asset vinculado, **bloqueante** quando `policy: "required"`) e
+    `seedImageryRequired` (conta so `seed-demo`, `SEED_IMAGERY_LIKELY_MISSING` **nao bloqueante** —
+    revertido ao comportamento documentado; a escalada para bloqueante introduzida na 2.26.0 nunca
+    foi anunciada nem testada contra este cenario). O mesmo fix foi replicado em
+    `pensador-ingest.mjs` do Orquestrador (mesma contagem, mesmo bug).
+- **`ui-data-map.json` (role `ui-data-map`) + `validateContractCoverage()`
+  (`scripts/lib/contract-coverage.mjs`).** Novo artefato: mapa tela -> operacao de contrato
+  (leitura/escrita) por entidade, com `dataSource` fixo em `"api-contract"` — nunca
+  `localStorage`/estado do cliente. `validate-handoff.mjs` cruza cada operacao referenciada contra
+  o contrato real (parser OpenAPI proprio, sem dependencia de YAML — `paths:` isolado por indentacao,
+  robusto a profundidade de schema arbitraria); uma tela sem operacao correspondente e
+  `CONTRACT_COVERAGE_GAP`, bloqueante em `status: DONE`. Formatos fora de REST/OpenAPI (GraphQL/
+  gRPC/AsyncAPI) degradam para `applicable: false` com motivo — nunca um passe silencioso. Testado
+  contra o `openapi.yaml` real da run analisada: reproduz exatamente as 4 telas do painel sem
+  endpoint de listagem que so foram descobertas na E2E do Orquestrador.
+- **`seed-plan.json` (role `seed-plan`).** Esqueleto por entidade (`buildSeedPlanScaffold()`)
+  derivado do `ui-data-map` preenchido: `minimumCount >= 3` para toda entidade lida como lista (uma
+  linha so nao prova que a tela le uma colecao — exatamente o padrao do painel real, que tinha
+  massa de demonstracao fixa em `SEED_ORDENS`/`SEED_CLIENTES` no cliente). `persistenceLayer` e
+  fixo em `"database-seed"`, nunca inferido — dado de demonstracao pertence a camada de
+  seed/migration do banco, independente da stack.
+- `handoff-contract.md` (secao 5, Pensador) ganhou os tres roles novos, replicado byte-identico nos
+  quatro plugins do workflow (Pensador, Orquestrador, Testador, Executor); `feature-isolation.md`
+  atualizado no mesmo commit.
+- `.gitattributes` (`*.mjs`/`*.js` -> `eol=lf`): quatro scripts com shebang tinham CRLF residual de
+  um checkout Windows sem esse arquivo, o que quebrava o parser de shebang do esbuild/vitest (Node
+  em si parseava sem erro) — `design-package.mjs`, `od-mcp-config.mjs`, `preflight.mjs`,
+  `validate-handoff.mjs`.
+
 ## [2.26.0] — 2026-09-15 — IDs de requisito por dominio, bootstrap multi-tenant, imagens de seed separadas de marca
 
 Continuacao do levantamento de gaps sobre uma run real do Pensador -> Orquestrador (OficinaAI,

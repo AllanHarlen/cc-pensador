@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cc-pensador/schemas/seed-plan.schema.json",
+  "title": "Seed Plan",
+  "description": "Plano de dados de demonstracao por entidade (role seed-plan). persistenceLayer e uma REGRA fixa, nunca uma inferencia: dados de demonstracao pertencem a camada de seed/migration do banco, nunca a localStorage/sessionStorage/estado do cliente, independente da stack.",
+  "type": "object",
+  "required": ["schemaVersion", "persistenceLayer", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "persistenceLayer": { "const": "database-seed" },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/entitySeed" }
+    }
+  },
+  "definitions": {
+    "entitySeed": {
+      "type": "object",
+      "required": ["entity", "minimumCount", "requiredStates", "requiredRoles", "imageBindings", "requirementRefs"],
+      "additionalProperties": false,
+      "properties": {
+        "entity": { "type": "string", "minLength": 1 },
+        "minimumCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Piso, nao alvo. >=3 quando alguma tela le esta entidade como lista (uma linha so nao prova que a tela le uma colecao)."
+        },
+        "requiredStates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Estados/status de dominio que a massa de seed precisa cobrir (ex.: AguardandoAprovacao, EmExecucao, Concluida)."
+        },
+        "requiredRoles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Papeis de usuario que precisam enxergar pelo menos um registro desta entidade (ex.: Mecanico, Vendedor)."
+        },
+        "imageBindings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "IDs de asset (assets/manifest.json, purpose: seed-demo) vinculados a registros desta entidade."
+        },
+        "requirementRefs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "RF-XX/CA-XX que dependem desta massa de dados existir."
+        }
+      }
+    }
+  }
+}

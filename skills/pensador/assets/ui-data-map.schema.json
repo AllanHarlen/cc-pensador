@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cc-pensador/schemas/ui-data-map.schema.json",
+  "title": "UI Data Map",
+  "description": "Mapa tela -> operacao de contrato (role ui-data-map). A UNICA fonte de dados de cada tela e uma operacao do contrato (openapi.yaml/schema.graphql/service.proto/asyncapi.yaml) — nunca localStorage/sessionStorage/estado do cliente. Consumido pelo gate contractCoverage do Orquestrador (Fase 4).",
+  "type": "object",
+  "required": ["schemaVersion", "screens"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "screens": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/screen" }
+    }
+  },
+  "definitions": {
+    "screen": {
+      "type": "object",
+      "required": ["id", "surfaceType", "entities", "reads", "writes", "requirementRefs", "dataSource"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Identificador estavel da tela (kebab-case), ex.: painel-os-kanban." },
+        "surfaceType": { "enum": ["conversion", "catalog", "operational", "transactional", "TBD"] },
+        "route": { "type": "string", "description": "Rota/caminho da tela no front-end, quando aplicavel." },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Entidades de dominio que a tela exibe/edita (nomes do modelo de dados do PRD)."
+        },
+        "reads": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/operationRef" },
+          "description": "Operacoes de leitura que alimentam a tela."
+        },
+        "writes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/operationRef" },
+          "description": "Operacoes de escrita que a tela dispara."
+        },
+        "requirementRefs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "RF-XX/CA-XX que esta tela implementa (requirements.json)."
+        },
+        "dataSource": {
+          "const": "api-contract",
+          "description": "Fixo: a unica fonte de dados permitida e o contrato de API. Nunca client-side storage."
+        }
+      }
+    },
+    "operationRef": {
+      "type": "object",
+      "required": ["operation"],
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "type": "string",
+          "description": "\"METODO /caminho\" exatamente como aparece no contrato (ex.: \"GET /ordens-servico\"), ou \"TBD\" enquanto nao resolvido."
+        },
+        "scope": { "enum": ["list", "detail", "search"] },
+        "filters": { "type": "array", "items": { "type": "string" } },
+        "roleScoped": { "type": "boolean", "description": "true quando a operacao filtra por papel do usuario autenticado (ex.: Mecanico ve so as suas OS)." }
+      }
+    }
+  }
+}

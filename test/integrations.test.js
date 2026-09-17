@@ -252,14 +252,18 @@ describe('buildArtifactList in spec mode', () => {
   // architecture / codebase-memory / project-baseline are common to BOTH
   // artifactMode (EXPLORE/ARCH always run in the fixed STAGE_ORDER) — spec
   // mode still excludes prd/userhistory/communication, which ARE mode-specific.
-  it('emits proposal/design/tasks/specs + the common architecture/codebase-memory/project-baseline (no prd/userhistory/communication)', () => {
+  it('emits proposal/design/tasks/specs + the common architecture/codebase-memory/project-baseline/seed-plan (no prd/userhistory/communication)', () => {
     const kinds = buildArtifactList(finalState('spec', [backendReq])).map((a) => a.kind);
     expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks', 'specs']));
     expect(kinds).toEqual(expect.arrayContaining(['architecture', 'codebase-memory', 'project-baseline']));
+    // seed-plan joins the common baseline whenever hasBackend, like
+    // architecture/codebase-memory/project-baseline — common to both modes.
+    expect(kinds).toContain('seed-plan');
+    expect(kinds).not.toContain('ui-data-map'); // backendReq only, no front-end
     expect(kinds).not.toContain('prd');
     expect(kinds).not.toContain('userhistory');
     expect(kinds).not.toContain('communication');
-    expect(kinds).toHaveLength(7);
+    expect(kinds).toHaveLength(8);
   });
 
   it('writes spec artifacts under openspec/changes/<name>/ (not .pensador/); the common baseline artifacts stay under .pensador/', () => {
@@ -280,18 +284,18 @@ describe('buildArtifactList in spec mode', () => {
     }
   });
 
-  it('omits specs/ when skipSpecs is set (6-artifact change set: proposal+design+tasks + the common baseline three)', () => {
+  it('omits specs/ when skipSpecs is set (7-artifact change set: proposal+design+tasks + the common baseline three + seed-plan)', () => {
     const state = { ...finalState('spec', [backendReq]), skipSpecs: true };
     const kinds = buildArtifactList(state).map((a) => a.kind);
     expect(kinds).toEqual(expect.arrayContaining(['proposal', 'design', 'tasks']));
     expect(kinds).toEqual(expect.arrayContaining(['architecture', 'codebase-memory', 'project-baseline']));
     expect(kinds).not.toContain('specs');
-    expect(kinds).toHaveLength(6);
+    expect(kinds).toHaveLength(7);
   });
 
-  it('prd mode emits design-system for a front-end demand (prd + baseline four + userhistory + design-system)', () => {
+  it('prd mode emits design-system for a front-end demand (prd + baseline four + userhistory + ui-data-map + design-system)', () => {
     const kinds = buildArtifactList(finalState('prd', [frontendReq])).map((a) => a.kind);
-    expect(kinds).toEqual(['prd', 'architecture', 'codebase-memory', 'project-baseline', 'requirements-index', 'userhistory', 'design-system']);
+    expect(kinds).toEqual(['prd', 'architecture', 'codebase-memory', 'project-baseline', 'requirements-index', 'userhistory', 'ui-data-map', 'design-system']);
   });
 });
 
@@ -593,7 +597,7 @@ describe('design-system artifact planning (PRD mode, front-end gated)', () => {
     expect(ds.path).toBe('.pensador/locadora-v1/design-system.md');
   });
 
-  it('fullstack demand emits prd + baseline four + userhistory + api-contract + communication + design-system', () => {
+  it('fullstack demand emits prd + baseline four + userhistory + ui-data-map + seed-plan + api-contract + communication + design-system', () => {
     const kinds = buildArtifactList(finalState('prd', [backendReq, frontendReq])).map((a) => a.kind);
     expect(kinds).toEqual([
       'prd',
@@ -602,6 +606,8 @@ describe('design-system artifact planning (PRD mode, front-end gated)', () => {
       'project-baseline',
       'requirements-index',
       'userhistory',
+      'ui-data-map',
+      'seed-plan',
       'api-contract',
       'communication',
       'design-system',
