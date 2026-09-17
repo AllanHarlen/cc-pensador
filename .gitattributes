@@ -1,0 +1,10 @@
+# Force LF for executable Node scripts. A CRLF-terminated shebang line
+# (`#!/usr/bin/env node\r\n`) breaks esbuild/vitest's shebang-stripping,
+# which chokes on the stray `\r` and reports a SyntaxError on the next line's
+# `import` — observed on Windows checkouts with core.autocrlf=true and no
+# .gitattributes (scripts/design-package.mjs, scripts/od-mcp-config.mjs,
+# scripts/preflight.mjs, scripts/validate-handoff.mjs all hit this before
+# this file existed). Node itself parses CRLF scripts fine; only the
+# vitest/esbuild toolchain does not, so this stays scoped to what breaks.
+*.mjs text eol=lf
+*.js text eol=lf

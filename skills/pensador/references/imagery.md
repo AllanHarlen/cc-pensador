@@ -6,7 +6,7 @@ O Pensador e o unico proprietario das decisoes e dos artefatos visuais. O Orques
 
 No brief, colete `imageryStrategy` e `iconography`. Derive assets de requisitos explicitos, hero e paginas publicas, catalogos, institucional, autenticacao/onboarding, estados empty/error/success e dados de demonstracao/seeds.
 
-Execute `inferVisualImageryPlan(state)` antes do inventario. Catalogos/vitrines de pecas, equipamentos, produtos ou servicos sao `required` (minimo 3 assets); landing pages, homepages e areas publicas/institucionais/marketing sao `recommended` (minimo 1). A decisao viaja em `project-baseline.json.visualImageryPlan` com motivos e IDs das tasks/requisitos detectados.
+Execute `detectProductSurfaces(state)` (RESEARCH, passo 2a) antes do inventario, e so entao `inferVisualImageryPlan(state)` — a politica vem da SUPERFICIE detectada, nao de palavras soltas na demanda: toda superficie `catalog` (vitrine/catalogo de pecas, equipamentos, produtos, servicos) ou `conversion` (site/pagina/area publica, landing page, homepage) e `required` (minimo 3 assets vinculados — de qualquer `purpose`, nao so `seed-demo`); um requisito com mandato explicito de imagem por item ("upload de foto do produto") tambem forca `required`, independente de superficie. Sem nenhuma superficie `conversion`/`catalog`/mandato explicito, a politica e `not-applicable`. A decisao viaja em `project-baseline.json.visualImageryPlan` com motivos e IDs das tasks/requisitos detectados.
 
 Classifique cada item como:
 

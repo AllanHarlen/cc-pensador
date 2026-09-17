@@ -68,6 +68,12 @@ Arquetipos reconhecidos (`PRODUCT_ARCHETYPES`, em ordem de prioridade de desempa
 
 Cada arquetipo traz `baselineFeatures`: o table-stakes da categoria, **conhecido antes de qualquer busca**. A pesquisa web serve para **confirmar e estender** essa lista, nao para descobri-la do zero. Uma feature do baseline que o usuario nao quer vira `anti-feature` documentada — nunca omissao silenciosa.
 
+### 2a. Detectar TODAS as superficies (nao so o arquetipo primario)
+
+`detectProductArchetype` retorna o **melhor** casamento — mas uma demanda real quase sempre tem mais de uma superficie (um SaaS/ERP operacional com um site publico de captacao de leads embutido, por exemplo), e a superficie secundaria fica **invisivel** se so o top-1 for consultado. Rode `detectProductSurfaces(demanda)`: ele devolve a superficie primaria (via `detectProductArchetype`, mapeada por `ARCHETYPE_SURFACE_TYPE`) **mais** qualquer superficie que `SECONDARY_SURFACE_SIGNALS` capturar sozinha (`conversion`, `catalog`, `transactional`). Grave com `withSurfaces(state, surfaces)`.
+
+Toda superficie `conversion`/`catalog` (`surfaceBenchmarkRequired()`) precisa de benchmark proprio — ver passo 4 abaixo — porque a anatomia de uma pagina publica de conversao (hero com foto real, prova social, diferenciais, contato com mapa/horario) e completamente diferente do baseline operacional (cadastros, estoque, financeiro) que o arquetipo primario de um ERP/SaaS ja cobre. Isso fecha a lacuna que deixou uma vitrine publica sem nenhum tratamento visual numa run real (OficinaAI, 2026-09-16): o arquetipo vencedor foi ERP, e nada mais tratou a superficie publica que a mesma demanda tambem pedia.
+
 ### 3. Decidir relevancia e profundidade
 
 `researchRelevance({ isInternalOnly, archetype, hasBroadScopeKeywords, isGreenfield })` devolve `{ relevant, depth, reason }`.
@@ -94,6 +100,10 @@ Regras de execucao:
 - Alvo de `budget.minCompetitors` a `budget.maxCompetitors` concorrentes/referencias. Menos de 3 nao e benchmark, e anedota.
 - **Nunca** exceda o orcamento. Pesquisa e um estagio do fluxo, nao uma varredura da internet.
 - Se a pesquisa web nao estiver disponivel (ferramenta ausente/bloqueada), pergunte via `AskUserQuestion`: (A) o usuario informa os concorrentes/referencias manualmente, ou (B) seguir apenas com os `baselineFeatures` do arquetipo. Registre a escolha e marque `status: SKIPPED` ou `PARTIAL`.
+
+### 4a. Benchmark de superficie publica (obrigatorio para `conversion`/`catalog`)
+
+Diferente do plano de consultas geral (que pode viver so de `WebSearch`), toda superficie `conversion`/`catalog` detectada no passo 2a (`buildSurfaceBenchmarkPlan(state)`) exige `WebFetch` de verdade em pelo menos `minReferences` (>= `budget.minCompetitors`, ou seja >= 3) paginas — abrir a pagina, nao so ler o snippet de busca. Pergunte primeiro, via `AskUserQuestion`, se o usuario ja tem referencias/concorrentes reais em mente (`askForUserReferencesFirst: true`); complete com `WebSearch` o que faltar. Para cada referencia, registre as secoes observadas, se usa fotografia real na dobra principal e os sinais de prova social (nota, numero de avaliacoes, anos de mercado). Uma secao presente em >=2 referencias e nao coberta por `baselineSections` vira `benchmarkedSections` (mesma regra `>=2 fontes = table-stakes` do passo 7). Persista em `<featurePath>/surface-benchmark.json` (`surfaceBenchmarkPath()`).
 
 ### 5. Qualidade de fonte
 
@@ -132,7 +142,7 @@ Decisao explicita do usuario **sempre** vence o sinal de mercado: `userRejected`
 
 ### 8. Perguntar o que a pesquisa nao resolve
 
-Cada funcionalidade `table-stakes` que **nao** estava na demanda original vira pergunta `origin = 'web-research'`, `stage = 'RESEARCH'`, apresentada via `AskUserQuestion` — agrupada, com a recomendacao ("o mercado trata como obrigatorio") e a opcao de recusar (virando `anti-feature`). Essas respostas entram em `REQUIREMENT_STAGES` e sao consolidadas como requisitos no `FINAL`.
+Cada funcionalidade `table-stakes` que **nao** estava na demanda original vira pergunta `origin = 'web-research'`, `stage = 'RESEARCH'`, apresentada via `AskUserQuestion` — agrupada, com a recomendacao ("o mercado trata como obrigatorio") e a opcao de recusar (virando `anti-feature`). Essas respostas entram em `REQUIREMENT_STAGES` e sao consolidadas como requisitos no `FINAL`. Inclua toda `benchmarkedSections` do passo 4a na mesma leva — uma secao de pagina publica que 2+ referencias reais mostram e table-stakes tanto quanto uma funcionalidade de produto.
 
 Nao repita no `EXPAND` o que ja foi decidido aqui: deduplique.
 

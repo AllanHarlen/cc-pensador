@@ -396,22 +396,53 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     expect(result.errors).toEqual([]);
   });
 
-  it('blocks DONE when required seed imagery is absent', () => {
+  // Two DISTINCT checks on purpose (a real run conflated them and
+  // miscounted as a result — see visualImageryPlan's docstring in
+  // pensador-engine.mjs). `seedImageryRequired` alone (no `visualImageryPlan`
+  // in the baseline) is the narrower, warning-only signal: demo data
+  // *should* have real photos, but this alone never blocks DONE — brand
+  // assets can legitimately stay external. `visualImageryPlan.policy ===
+  // "required"` (surface-driven) is the broader, BLOCKING signal: a public
+  // conversion/catalog surface with zero bound content assets is a real
+  // defect, counted against ALL manifest assets, not just seed-purpose ones.
+  it('warns (does not block) DONE when only seedImageryRequired is set and the manifest is empty', () => {
     const result = validateVisualCompleteness(resolvedHandoff(), {
       projectBaseline: { seedImageryRequired: true },
       assetsManifest: { assets: [] },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'SEED_IMAGERY_LIKELY_MISSING', severity: 'warning' })]);
+  });
+
+  it('warns (does not block) DONE when only seedImageryRequired is set and the manifest cannot be loaded', () => {
+    const result = validateVisualCompleteness(resolvedHandoff(), {
+      projectBaseline: { seedImageryRequired: true },
+      assetsManifest: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.map((warning) => warning.code)).toEqual(['SEED_IMAGERY_LIKELY_MISSING']);
+  });
+
+  it('blocks DONE when visualImageryPlan.policy is "required" and the manifest has fewer than minimumAssets bound assets (any purpose)', () => {
+    const result = validateVisualCompleteness(resolvedHandoff(), {
+      projectBaseline: { visualImageryPlan: { policy: 'required', minimumAssets: 3, reasons: ['public-conversion-surface'] } },
+      // A content (brand) asset, not seed-demo — the old code miscounted
+      // this scenario as still missing because it only counted seed-bound
+      // assets; the fix counts every bound asset toward this check.
+      assetsManifest: { assets: [{ id: 'hero-1', purpose: 'content' }] },
     });
     expect(result.ok).toBe(false);
     expect(result.errors).toEqual([expect.objectContaining({ code: 'REQUIRED_VISUAL_IMAGERY_MISSING' })]);
   });
 
-  it('blocks DONE when required seed imagery manifest cannot be loaded', () => {
+  it('accepts DONE when visualImageryPlan.policy is "required" and content (non-seed) assets already meet minimumAssets', () => {
     const result = validateVisualCompleteness(resolvedHandoff(), {
-      projectBaseline: { seedImageryRequired: true },
-      assetsManifest: null,
+      projectBaseline: { visualImageryPlan: { policy: 'required', minimumAssets: 3, reasons: ['public-conversion-surface'] } },
+      assetsManifest: { assets: [{ id: 'hero-1', purpose: 'content' }, { id: 'hero-2', purpose: 'content' }, { id: 'hero-3', purpose: 'brand' }] },
     });
-    expect(result.ok).toBe(false);
-    expect(result.errors.map((error) => error.code)).toEqual(['REQUIRED_VISUAL_IMAGERY_MISSING']);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it('does not warn when required seed imagery has the documented minimum of three bound assets', () => {
@@ -510,7 +541,7 @@ describe('validate-handoff.mjs CLI', () => {
     }
   });
 
-  it('loads project-baseline and assets manifest paths and blocks missing required imagery', async () => {
+  it('loads project-baseline and assets manifest paths and warns (non-blocking) about missing seed imagery', async () => {
     const { spawnSync } = await import('node:child_process');
     const { mkdirSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
@@ -520,6 +551,38 @@ describe('validate-handoff.mjs CLI', () => {
     try {
       mkdirSync(join(dir, 'assets'), { recursive: true });
       writeFileSync(join(dir, 'project-baseline.json'), JSON.stringify({ seedImageryRequired: true }));
+      writeFileSync(join(dir, 'assets', 'manifest.json'), JSON.stringify({ assets: [] }));
+      const file = join(dir, 'handoff.json');
+      writeFileSync(file, JSON.stringify(validPensadorHandoff({
+        artifacts: [
+          { role: 'project-baseline', path: 'project-baseline.json', required: true },
+          { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
+          { role: 'ui-prototype', path: 'prototypes/', required: true },
+          { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
+        ],
+      })));
+      const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.warnings).toEqual([expect.objectContaining({ code: 'SEED_IMAGERY_LIKELY_MISSING', severity: 'warning' })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads project-baseline visualImageryPlan and blocks (exit 1) when required content imagery is missing', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { mkdirSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-visual-plan-test-'));
+    try {
+      mkdirSync(join(dir, 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'project-baseline.json'), JSON.stringify({
+        visualImageryPlan: { policy: 'required', minimumAssets: 3, reasons: ['public-conversion-surface'] },
+      }));
       writeFileSync(join(dir, 'assets', 'manifest.json'), JSON.stringify({ assets: [] }));
       const file = join(dir, 'handoff.json');
       writeFileSync(file, JSON.stringify(validPensadorHandoff({
@@ -620,6 +683,144 @@ describe('validate-handoff.mjs CLI', () => {
       });
       expect(result.status).toBe(1);
       expect(JSON.parse(result.stdout).errors[0].code).toBe('INVALID_JSON');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('validate-handoff.mjs CLI — contract coverage (ui-data-map x api-contract)', () => {
+  const SAMPLE_CONTRACT = `paths:
+  /ordens-servico/{id}:
+    get:
+      responses:
+        '200': { description: OK }
+`;
+
+  async function runCli(dir, handoffOverrides) {
+    const { spawnSync } = await import('node:child_process');
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const file = join(dir, 'handoff.json');
+    writeFileSync(file, JSON.stringify(validPensadorHandoff(handoffOverrides)));
+    return spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
+  }
+
+  it('blocks (exit 1) a status:DONE handoff whose ui-data-map references an operation absent from the api-contract', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-coverage-test-'));
+    try {
+      writeFileSync(join(dir, 'openapi.yaml'), SAMPLE_CONTRACT);
+      writeFileSync(join(dir, 'ui-data-map.json'), JSON.stringify({
+        schemaVersion: 1,
+        screens: [{ id: 'painel-os-kanban', reads: [{ operation: 'GET /ordens-servico', scope: 'list' }], writes: [], dataSource: 'api-contract' }],
+      }));
+      const result = await runCli(dir, {
+        artifacts: [
+          { role: 'ui-data-map', path: 'ui-data-map.json', required: true },
+          { role: 'api-contract', path: 'openapi.yaml', required: true, spec: 'openapi' },
+        ],
+      });
+      expect(result.status).toBe(1);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.errors).toEqual([expect.objectContaining({ code: 'CONTRACT_COVERAGE_GAP' })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes (exit 0) when every ui-data-map operation matches the api-contract', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-coverage-test-'));
+    try {
+      writeFileSync(join(dir, 'openapi.yaml'), SAMPLE_CONTRACT);
+      writeFileSync(join(dir, 'ui-data-map.json'), JSON.stringify({
+        schemaVersion: 1,
+        screens: [{ id: 'detalhe-os', reads: [{ operation: 'GET /ordens-servico/{id}', scope: 'detail' }], writes: [], dataSource: 'api-contract' }],
+      }));
+      const result = await runCli(dir, {
+        artifacts: [
+          { role: 'ui-data-map', path: 'ui-data-map.json', required: true },
+          { role: 'api-contract', path: 'openapi.yaml', required: true, spec: 'openapi' },
+        ],
+      });
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.errors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('degrades to a non-blocking warning for a status other than DONE (the summary already discloses the gap)', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-coverage-test-'));
+    try {
+      writeFileSync(join(dir, 'openapi.yaml'), SAMPLE_CONTRACT);
+      writeFileSync(join(dir, 'ui-data-map.json'), JSON.stringify({
+        schemaVersion: 1,
+        screens: [{ id: 'painel-os-kanban', reads: [{ operation: 'GET /ordens-servico', scope: 'list' }], writes: [], dataSource: 'api-contract' }],
+      }));
+      const result = await runCli(dir, {
+        status: 'PARTIAL',
+        summary: 'Falta endpoint de listagem de Ordens de Servico — registrado como pendencia conhecida.',
+        artifacts: [
+          { role: 'ui-data-map', path: 'ui-data-map.json', required: true },
+          { role: 'api-contract', path: 'openapi.yaml', required: true, spec: 'openapi' },
+        ],
+      });
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.warnings).toEqual([expect.objectContaining({ code: 'CONTRACT_COVERAGE_GAP', severity: 'warning' })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('warns instead of failing when a ui-data-map is declared but no api-contract exists to compare against', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-coverage-test-'));
+    try {
+      writeFileSync(join(dir, 'ui-data-map.json'), JSON.stringify({
+        schemaVersion: 1,
+        screens: [{ id: 'painel-os-kanban', reads: [{ operation: 'GET /ordens-servico', scope: 'list' }], writes: [], dataSource: 'api-contract' }],
+      }));
+      const result = await runCli(dir, { artifacts: [{ role: 'ui-data-map', path: 'ui-data-map.json', required: true }] });
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.warnings).toEqual([expect.objectContaining({ code: 'API_CONTRACT_MISSING_FOR_COVERAGE_CHECK' })]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('is a no-op when the handoff declares no ui-data-map artifact at all (backend-only project)', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'handoff-cli-coverage-test-'));
+    try {
+      const result = await runCli(dir, {});
+      expect(result.status).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.warnings.some((w) => String(w.code).startsWith('CONTRACT_COVERAGE') || String(w.code).startsWith('UI_DATA_MAP') || String(w.code).startsWith('API_CONTRACT'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

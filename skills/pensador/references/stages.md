@@ -69,8 +69,10 @@ Sequencia:
 
 1. **`sectorContext` primeiro** — setor/industria do negocio, via `AskUserQuestion` quando nao inferivel. Grave em `state.sectorContext` e reaproveite no brief do Open Design (nao pergunte duas vezes).
 2. **Arquetipo** — `detectProductArchetype(demanda + sectorContext)` sugere; o usuario confirma via `AskUserQuestion`. Grave em `state.productArchetype`. `PRODUCT_ARCHETYPES[<id>].baselineFeatures` ja da o table-stakes conhecido antes de qualquer busca.
+2a. **Todas as superficies** — `detectProductArchetype` so devolve o melhor casamento; `detectProductSurfaces(demanda)` devolve TODAS (primaria + secundarias via `SECONDARY_SURFACE_SIGNALS`), porque uma demanda operacional (ERP/SaaS) rotineiramente embute uma superficie publica de conversao/catalogo que o top-1 nao cobre. Grave com `withSurfaces(state, surfaces)`. Toda superficie `conversion`/`catalog` precisa do benchmark do passo 4a.
 3. **Relevancia e profundidade** — `researchRelevance({ isInternalOnly, archetype, hasBroadScopeKeywords, isGreenfield })`. `lite` = 4 consultas, `completo` = 8. Demanda sem superficie de produto (refactor/infra/CI) e `relevant: false`: o estagio e visitado, registra o motivo e avanca.
 4. **Plano de consultas** — `marketResearchQueryPlan()` com `WebSearch`; `WebFetch` so nos resultados que valem leitura profunda (`budget.maxFetchPerQuery`). Alvo de 3 a 5 concorrentes/referencias.
+4a. **Benchmark de superficie** — para toda superficie `conversion`/`catalog` (`buildSurfaceBenchmarkPlan(state)`), `WebFetch` de verdade em >= 3 referencias (pergunte primeiro se o usuario ja tem alguma em mente). Registre secoes/fotografia/prova social por referencia; uma secao em >=2 referencias vira `benchmarkedSections` e alimenta o passo 8. Grave em `<featurePath>/surface-benchmark.json`.
 5. **Qualidade de fonte** — `official` > `comparison` > `community`; `table-stakes` exige 2 fontes independentes.
 6. **Conformidade** (`WEB_RESEARCH.compliance`) — citar URL, no maximo 30 palavras consecutivas, parafrasear, nunca copiar assets/textos/codigo de concorrente nem imitar marca.
 7. **Classificacao** — `classifyFeatureTier()` em `table-stakes` / `differentiator` / `anti-feature` / `out-of-scope`. Decisao do usuario vence o sinal de mercado.
@@ -306,6 +308,8 @@ Se um participante falhar:
 
 Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/resolved/`: contrato JSON, tokens JSON/CSS, DESIGN.md normativo, componentes, previews, assets/manifest, auditoria e provenance. AGY sintetiza e gera imagens antecipadamente; Codex audita read-only. Sao permitidas no maximo duas rodadas automaticas de correcao. Finding alto/critico, dependencia visual ausente ou asset obrigatorio ausente produz `BLOCKED`. Backend-only visita o estagio e auto-avanca sem trabalho visual.
 
+Para toda superficie `conversion`/`catalog` (`state.surfaces`), o protótipo precisa cobrir as secoes de `surface-benchmark.json` (`baselineSections` + `benchmarkedSections`) nao recusadas pelo usuario — um wireframe minimo (hero + formulario, sem prova social/diferenciais/contato) nao e spec autoritativa para essa superficie. Ver `SKILL.md` › `## DESIGN`, passo 2.
+
 ## FINAL
 
 **Proposito:** consolidar respostas e gerar artefatos finais.
@@ -326,6 +330,9 @@ Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/r
 | `communication.md` (visao legivel derivada do contrato) | Modo PRD, quando ha back-end confirmado |
 | `design-system.md` | Modo PRD, quando ha front-end **e** o Open Design NAO foi usado (fallback inline). Com um system selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` substitui este doc. |
 | `design-systems/<id>/` (arquivos verbatim: `tokens.css`, `DESIGN.md`, `components.html`, …) | Modo PRD e Spec, quando ha front-end **e** um system do Open Design foi selecionado |
+| `ui-data-map.json` (tela -> operacao de contrato) | Modo PRD e Spec, quando ha front-end |
+| `seed-plan.json` (dados de demonstracao por entidade, sempre `database-seed`) | Modo PRD e Spec, quando ha back-end |
+| `surface-benchmark.json` (benchmark de referencias reais por superficie publica) | Modo PRD e Spec, quando ha superficie `conversion`/`catalog` |
 | `openspec/changes/<nome>/` (`proposal.md` · `design.md` · `tasks.md` · `specs/`) | Modo Spec (via `/opsx:propose`) |
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado, caminhos reportados, recap final e handoff entregues.

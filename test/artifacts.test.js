@@ -351,7 +351,11 @@ describe('buildArtifactList(state)', () => {
       ]);
     });
 
-    it('returns 9 artifacts (+ api-contract + communication + design-system) for a fullstack project in FINAL', () => {
+    // ui-data-map/seed-plan join the baseline whenever hasFrontend/hasBackend
+    // (see "UI data map + seed plan" section of pensador-engine.mjs) — none
+    // of the requirement texts here mention a conversion/catalog surface, so
+    // surface-benchmark never joins in this describe block.
+    it('returns 11 artifacts (+ ui-data-map + seed-plan + api-contract + communication + design-system) for a fullstack project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq(), frontendReq()]));
       expect(artifacts.map((a) => a.kind)).toEqual([
         'prd',
@@ -360,13 +364,15 @@ describe('buildArtifactList(state)', () => {
         'project-baseline',
         'requirements-index',
         'userhistory',
+        'ui-data-map',
+        'seed-plan',
         'api-contract',
         'communication',
         'design-system',
       ]);
     });
 
-    it('returns 8 artifacts (+ api-contract + communication) for a back-end-only project in FINAL', () => {
+    it('returns 9 artifacts (+ seed-plan + api-contract + communication) for a back-end-only project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [backendReq()]));
       expect(artifacts.map((a) => a.kind)).toEqual([
         'prd',
@@ -375,12 +381,13 @@ describe('buildArtifactList(state)', () => {
         'project-baseline',
         'requirements-index',
         'userhistory',
+        'seed-plan',
         'api-contract',
         'communication',
       ]);
     });
 
-    it('returns 7 artifacts (+ design-system) for a front-end-only project in FINAL', () => {
+    it('returns 8 artifacts (+ ui-data-map + design-system) for a front-end-only project in FINAL', () => {
       const artifacts = buildArtifactList(stateAt('FINAL', [frontendReq()]));
       expect(artifacts.map((a) => a.kind)).toEqual([
         'prd',
@@ -389,6 +396,7 @@ describe('buildArtifactList(state)', () => {
         'project-baseline',
         'requirements-index',
         'userhistory',
+        'ui-data-map',
         'design-system',
       ]);
     });
@@ -674,10 +682,25 @@ describe('buildArtifactList: requirements-index (requirements.json)', () => {
     expect(buildProjectBaseline(state).seedImageryRequired).toBe(true);
   });
 
-  it('recommends AGY imagery for landing/public surfaces without forcing seed bindings', () => {
+  it('requires AGY imagery for a conversion surface (landing page) without forcing seed bindings', () => {
+    // A conversion surface is now a structural, high-confidence signal (every
+    // public-facing reference in the cross-sector benchmark used real
+    // photography prominently) — required, not merely recommended. The old
+    // "recommended" outcome here came from a loose "public-high-visual-
+    // surface" word match; see inferVisualImageryPlan's docstring.
     const state = { ...initState('Criar landing page institucional'), consolidated: [frontendReq()] };
-    expect(inferVisualImageryPlan(state)).toMatchObject({ policy: 'recommended', minimumAssets: 1 });
+    const plan = inferVisualImageryPlan(state);
+    expect(plan).toMatchObject({ policy: 'required', minimumAssets: 3 });
+    expect(plan.reasons).toContain('public-conversion-surface');
+    // Content imagery for the surface is independent from the seed/demo-data
+    // signal — a landing page needs real hero/content photos regardless of
+    // whether the product also seeds demo data.
     expect(inferSeedImageryRequired(state)).toBe(false);
+  });
+
+  it('recommends nothing (not-applicable) for an operational-only surface with no explicit imagery mandate', () => {
+    const state = { ...initState('Painel administrativo interno com relatorios'), consolidated: [frontendReq()] };
+    expect(inferVisualImageryPlan(state)).toMatchObject({ policy: 'not-applicable', minimumAssets: 0 });
   });
 
   it('does not recommend imagery for backend-only work', () => {

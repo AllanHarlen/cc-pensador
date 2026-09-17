@@ -57,6 +57,9 @@ export const HANDOFF_ROLES_BY_STAGE = Object.freeze({
     "project-baseline",
     "requirements-index",
     "shared-agents",
+    "ui-data-map",
+    "seed-plan",
+    "surface-benchmark",
   ]),
   orchestrador: Object.freeze([
     "implementation-report",
@@ -371,19 +374,34 @@ export function validateVisualCompleteness(handoff, options = {}) {
     );
   }
 
-  const seedImageryRequired = options.projectBaseline?.seedImageryRequired === true;
-  const manifestAssets = options.assetsManifest?.assets;
-  const seedAssets = Array.isArray(manifestAssets)
-    ? manifestAssets.filter((asset) => asset?.purpose === "seed-demo" || (Array.isArray(asset?.seedBindings) && asset.seedBindings.length > 0))
-    : [];
-  const visualMinimum = Number.isInteger(options.projectBaseline?.visualImageryPlan?.minimumAssets)
-    ? options.projectBaseline.visualImageryPlan.minimumAssets
-    : 0;
-  const requiredMinimum = Math.max(seedImageryRequired ? 3 : 0, options.projectBaseline?.visualImageryPlan?.policy === 'required' ? visualMinimum : 0);
-  if (requiredMinimum > 0 && seedAssets.length < requiredMinimum) {
+  // Two DISTINCT checks, deliberately not merged (a real run conflated them
+  // and miscounted as a result — see visualImageryPlan's docstring in
+  // pensador-engine.mjs for the root cause). `visualImageryPlan` is about
+  // CONTENT imagery for a public surface (hero/catalog photos — any asset
+  // purpose counts); `seedImageryRequired` is narrower, about DEMONSTRATION
+  // DATA specifically needing bound `seed-demo` photos. An asset satisfying
+  // one does not automatically satisfy the other, but a seed-demo asset
+  // still counts toward the broader content-imagery minimum.
+  const manifestAssets = Array.isArray(options.assetsManifest?.assets) ? options.assetsManifest.assets : [];
+  const seedAssets = manifestAssets.filter(
+    (asset) => asset?.purpose === "seed-demo" || (Array.isArray(asset?.seedBindings) && asset.seedBindings.length > 0),
+  );
+
+  const visualPlan = options.projectBaseline?.visualImageryPlan;
+  const visualMinimum = Number.isInteger(visualPlan?.minimumAssets) ? visualPlan.minimumAssets : 0;
+  if (visualPlan?.policy === "required" && manifestAssets.length < visualMinimum) {
     push(
       "REQUIRED_VISUAL_IMAGERY_MISSING",
-      `project-baseline.json requires at least ${requiredMinimum} bound visual asset(s), but assets/manifest.json exposes only ${seedAssets.length}. Generate with AGY and bind the real files before status DONE.`,
+      `project-baseline.json.visualImageryPlan requires at least ${visualMinimum} bound visual asset(s) (${(visualPlan.reasons ?? []).join(", ") || "surface requires imagery"}), but assets/manifest.json exposes only ${manifestAssets.length}. Generate with AGY and bind the real files before status DONE.`,
+      "artifacts[brand-assets].manifest",
+    );
+  }
+
+  const seedImageryRequired = options.projectBaseline?.seedImageryRequired === true;
+  if (seedImageryRequired && seedAssets.length < 3) {
+    warn(
+      "SEED_IMAGERY_LIKELY_MISSING",
+      `project-baseline.json requires seed/demo imagery, but assets/manifest.json exposes only ${seedAssets.length} seed-bound asset(s). Brand assets may remain external, but generate and bind 3-6 real seed images before status DONE whenever a CA depends on demo data having real photos.`,
       "artifacts[brand-assets].manifest",
     );
   }

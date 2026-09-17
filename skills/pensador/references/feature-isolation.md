@@ -175,7 +175,7 @@ Regras:
 
 1. `stage: "pensador"`, `upstream: null` (primeiro estagio da cadeia).
 2. `slug` = slug base da demanda (sem o sufixo `-vN`); `artifactRoot` = `<featurePath>` (com `-vN`).
-3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador (identicos aos declarados em `references/handoff-contract.md` secao 5): `prd`, `userhistory`, `architecture`, `codebase-memory`, `project-baseline`, `requirements-index`, `api-contract`, `communication-contract`, `design-system`, `design-system-files`, `ui-prototype`, `brand-assets`, `openspec-change`, `shared-agents`.
+3. Liste em `artifacts[]` cada artefato final com `role`, `path` (relativo a `artifactRoot`), `required` e `description`. Roles validos do Pensador (identicos aos declarados em `references/handoff-contract.md` secao 5): `prd`, `userhistory`, `architecture`, `codebase-memory`, `project-baseline`, `requirements-index`, `ui-data-map`, `seed-plan`, `surface-benchmark`, `api-contract`, `communication-contract`, `design-system`, `design-system-files`, `ui-prototype`, `brand-assets`, `openspec-change`, `shared-agents`.
 4. `status: "DONE"` somente quando todos os gates fecharem; use `PARTIAL`/`BLOCKED` com `summary` explicando, caso contrario.
 5. `nextStage`: `{ consumer: "cc-orchestrador-subagents", entrypoint: "/orquestrador", instructions: "Ingerir os artefatos e implementar o plano." }`.
 

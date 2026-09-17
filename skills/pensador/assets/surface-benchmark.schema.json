@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cc-pensador/schemas/surface-benchmark.schema.json",
+  "title": "Surface Benchmark",
+  "description": "Benchmark de referencias reais por superficie publica de conversao/catalogo (role surface-benchmark). Emitido somente quando buildSurfaceBenchmarkPlan(state) detecta pelo menos uma superficie desse tipo. >=2 referencias mostrando a mesma secao promove a secao a table-stakes (mesma regra ja usada por classifyFeatureTier em market-research.md).",
+  "type": "object",
+  "required": ["schemaVersion", "surfaces"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "surfaces": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/surfaceEntry" }
+    }
+  },
+  "definitions": {
+    "surfaceEntry": {
+      "type": "object",
+      "required": ["surfaceType", "status", "references", "baselineSections", "benchmarkedSections"],
+      "additionalProperties": false,
+      "properties": {
+        "surfaceType": { "enum": ["conversion", "catalog"] },
+        "status": { "enum": ["DONE", "PARTIAL", "SKIPPED"] },
+        "references": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/reference" },
+          "description": "URLs analisadas (fornecidas pelo usuario e/ou achadas via WebSearch), >= WEB_RESEARCH.budget.minCompetitors quando status=DONE."
+        },
+        "baselineSections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Anatomia de secoes esperada antes do benchmark (PRODUCT_ARCHETYPES.baselineFeatures ou PUBLIC_SURFACE_FALLBACK_SECTIONS)."
+        },
+        "benchmarkedSections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Secoes observadas em >=2 referencias e NAO presentes em baselineSections — candidatas a virar pergunta no EXPAND."
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["url", "sections", "usesPhotography"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "providedByUser": { "type": "boolean" },
+        "sections": { "type": "array", "items": { "type": "string" } },
+        "usesPhotography": { "type": "boolean", "description": "true quando a referencia usa fotografia real (nao ilustracao/placeholder) na dobra principal." },
+        "trustSignals": { "type": "array", "items": { "type": "string" }, "description": "Sinais de prova social observados (nota, numero de avaliacoes, anos de mercado, certificacoes)." }
+      }
+    }
+  }
+}

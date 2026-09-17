@@ -853,6 +853,7 @@ export function requirementsIndexPath(featurePath) {
  * @property {string[]} existingApiContractGlobs // contractDiscoveryGlobs(), for the consumer to re-run the same discovery
  * @property {boolean} seedImageryRequired // independent from brand strategy; drives manifest warning and downstream seedBindings
  * @property {{policy:'required'|'recommended'|'not-applicable',provider:'agy',minimumAssets:number,reasons:string[],tasks:Array}} visualImageryPlan
+ * @property {Array<{type:string,archetype:string|null,primary:boolean,score:number,matchedKeywords:string[]}>} surfaces
  */
 
 /**
@@ -886,8 +887,39 @@ export function inferSeedImageryRequired(state) {
 const normalizeVisualText = (value) => String(value ?? '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+/**
+ * Decides whether AGY-generated imagery is required, recommended or
+ * not-applicable, and how many bound assets that implies.
+ *
+ * Root cause this closes (see the "Product surfaces" section above for the
+ * fuller root-cause note): the previous version matched loose words \u2014
+ * "banner", "hero", "mockup", "foto" \u2014 directly against `required`. Those are
+ * generic UI vocabulary a requirement can mention while describing STRUCTURE
+ * ("her\u00f3i com CTA") without demanding real photography, so a landing page
+ * requirement that merely says "hero banner" forced `required`/3 even when
+ * nothing else about the surface called for real imagery, and conversely an
+ * English demand ("public storefront with product gallery") matched nothing
+ * at all because every keyword was pt-BR-only.
+ *
+ * The fix roots policy in SURFACE TYPE (detectProductSurfaces), not loose
+ * vocabulary: a conversion or catalog surface is a structural, high-
+ * confidence signal (every public-facing site/vitrine in the cross-sector
+ * benchmark used real photography prominently) \u2014 `required`. A per-
+ * requirement explicit mandate ("upload de foto do produto") is kept as an
+ * independent, narrower trigger, since that really is unambiguous signal
+ * regardless of surface. Loose words like "hero"/"banner"/"mockup" alone no
+ * longer set policy on their own.
+ *
+ * @param {StageState} state
+ * @returns {{policy:'required'|'recommended'|'not-applicable',provider:'agy',minimumAssets:number,reasons:string[],tasks:Array}}
+ */
 export function inferVisualImageryPlan(state) {
   if (state?.visualImageryPlan?.policy) return structuredClone(state.visualImageryPlan);
+
+  const surfaces = Array.isArray(state?.surfaces) && state.surfaces.length > 0
+    ? state.surfaces
+    : detectProductSurfaces(state?.demanda ?? '');
+
   const entries = [
     { id: null, text: state?.demanda },
     ...(Array.isArray(state?.consolidated) ? state.consolidated : []).map((entry) => ({ id: entry?.id ?? null, text: entry?.text })),
@@ -896,20 +928,29 @@ export function inferVisualImageryPlan(state) {
   for (const entry of entries) {
     const text = normalizeVisualText(entry.text);
     if (!text) continue;
-    const reasons = [];
-    const explicit = /\b(?:imagem|imagens|foto|fotos|ilustracao|banner|hero|mockup|galeria|thumbnail|asset visual)\b/.test(text);
-    const catalog = /\b(?:catalogo|vitrine)\b.*\b(?:pecas|equipamentos|produtos|servicos|itens)\b|\b(?:pecas|equipamentos)\b.*\b(?:catalogo|vitrine)\b/.test(text);
-    const publicSurface = /\b(?:area publica|pagina publica|site institucional|landing page|homepage|pagina inicial|marketing)\b/.test(text);
-    if (explicit) reasons.push('explicit-imagery');
-    if (catalog) reasons.push('catalog-visual-merchandising');
-    if (publicSurface) reasons.push('public-high-visual-surface');
-    if (reasons.length) tasks.push({ id: entry.id, policy: explicit || catalog ? 'required' : 'recommended', reasons });
+    // Narrower than the old "imagem|imagens|foto|fotos|..." bucket on
+    // purpose: this only fires on an explicit per-item mandate, not on UI
+    // vocabulary describing a component's shape.
+    if (/\b(?:upload de foto|fotos? do produto|fotos? do item|galeria de fotos|banner personalizado)\b/.test(text)) {
+      tasks.push({ id: entry.id, policy: 'required', reasons: ['explicit-imagery-requirement'] });
+    }
   }
+
+  const catalogSurface = surfaces.find((surface) => surface.type === 'catalog');
+  if (catalogSurface) {
+    tasks.push({ id: null, policy: 'required', reasons: ['catalog-visual-merchandising'] });
+  }
+  const conversionSurface = surfaces.find((surface) => surface.type === 'conversion');
+  if (conversionSurface) {
+    tasks.push({ id: null, policy: 'required', reasons: ['public-conversion-surface'] });
+  }
+
   const required = tasks.some((task) => task.policy === 'required');
+  const recommended = tasks.length > 0;
   return {
-    policy: required ? 'required' : tasks.length ? 'recommended' : 'not-applicable',
+    policy: required ? 'required' : recommended ? 'recommended' : 'not-applicable',
     provider: 'agy',
-    minimumAssets: required ? 3 : tasks.length ? 1 : 0,
+    minimumAssets: required ? 3 : recommended ? 1 : 0,
     reasons: [...new Set(tasks.flatMap((task) => task.reasons))],
     tasks,
   };
@@ -920,6 +961,9 @@ export function withSeedImageryRequirement(state, required) {
 }
 
 export function buildProjectBaseline(state) {
+  const surfaces = Array.isArray(state.surfaces) && state.surfaces.length > 0
+    ? state.surfaces
+    : detectProductSurfaces(state?.demanda ?? '');
   return {
     isGreenfield: state.isGreenfield ?? null,
     techStack: Array.isArray(state.techStack) ? [...state.techStack] : [],
@@ -928,6 +972,7 @@ export function buildProjectBaseline(state) {
     existingApiContractGlobs: contractDiscoveryGlobs(),
     seedImageryRequired: inferSeedImageryRequired(state),
     visualImageryPlan: inferVisualImageryPlan(state),
+    surfaces,
   };
 }
 
@@ -1682,6 +1727,256 @@ export function classifyFeatureTier(signals = {}) {
   if (coverage >= TABLE_STAKES_COVERAGE_THRESHOLD) return 'table-stakes';
   if (userRequested === true || coverage > 0) return 'differentiator';
   return 'out-of-scope';
+}
+
+// ---------------------------------------------------------------------------
+// Product surfaces (conversion / catalog / operational / transactional)
+//
+// Root cause this closes: a real run (OficinaAI, 2026-09-16) detected a
+// single top-scoring archetype ("erp"/"saas") for a demand that was actually
+// TWO surfaces glued together — an operational back-office AND a public
+// lead-capture site. The single-archetype baselineFeatures (cadastros,
+// estoque, financeiro...) never mention hero/prova-social/CTA/contato, so the
+// public surface's PRD requirements, design direction and benchmark research
+// were never derived from a public-conversion-page baseline at all — it
+// inherited whatever attention the ERP archetype happened to spend on it,
+// which was none. The fix does not invent a parallel classification system:
+// it reuses PRODUCT_ARCHETYPES/detectProductArchetype/classifyFeatureTier
+// (already tested, already the source of baselineFeatures) and adds (a) a
+// map from archetype -> surface type, and (b) a small set of SECONDARY
+// signals that catch a surface the top-1 archetype match missed entirely.
+// ---------------------------------------------------------------------------
+
+/** The four ways a screen/page of the product can be used. */
+export const SURFACE_TYPES = ['conversion', 'catalog', 'operational', 'transactional'];
+
+/**
+ * Maps each PRODUCT_ARCHETYPES id to the SURFACE_TYPES bucket its
+ * baselineFeatures actually describe. Archetypes not listed default to
+ * 'operational' (the conservative default — most registry entries describe
+ * an internal/authenticated tool, never a public page).
+ */
+export const ARCHETYPE_SURFACE_TYPE = Object.freeze({
+  'landing-page': 'conversion',
+  'institutional-site': 'conversion',
+  ecommerce: 'catalog',
+  marketplace: 'catalog',
+});
+
+/**
+ * Resolves the surface type for an archetype id. Pure and total.
+ *
+ * @param {string|null|undefined} archetypeId
+ * @returns {'conversion'|'catalog'|'operational'|'transactional'}
+ */
+export function surfaceTypeForArchetype(archetypeId) {
+  return Object.prototype.hasOwnProperty.call(ARCHETYPE_SURFACE_TYPE, archetypeId)
+    ? ARCHETYPE_SURFACE_TYPE[archetypeId]
+    : 'operational';
+}
+
+/**
+ * Keyword sets that detect a surface the primary archetype match did not
+ * score highest (e.g. a "site publico"/"captacao de leads" mention inside a
+ * demand whose primary archetype is `erp`/`saas`). Bilingual, same
+ * convention as PRODUCT_ARCHETYPES.keywords (which already mixes pt-BR/en,
+ * e.g. 'institutional site', 'online store') — the demanda a developer types
+ * into the Pensador is not guaranteed to be in the product's own language.
+ */
+export const SECONDARY_SURFACE_SIGNALS = Object.freeze({
+  conversion: [
+    'site publico', 'pagina publica', 'area publica', 'landing page', 'vitrine institucional',
+    'captacao de lead', 'captacao de leads', 'formulario de orcamento', 'formulario de contato',
+    'homepage', 'pagina inicial', 'marketing',
+    'public site', 'public page', 'public facing page', 'marketing page', 'lead capture',
+  ],
+  catalog: [
+    'vitrine de pecas', 'vitrine de produtos', 'vitrine de servicos', 'catalogo publico',
+    'galeria de produtos', 'product gallery', 'public catalog', 'storefront', 'product showcase',
+  ],
+  transactional: [
+    'area do cliente', 'portal do cliente', 'aprovacao de orcamento', 'checkout', 'carrinho de compras',
+    'assinatura de plano', 'customer portal', 'client portal', 'budget approval',
+  ],
+});
+
+/**
+ * Regex form of the `catalog` signal, for the shape a demand actually uses
+ * more often than a fixed phrase: "catalogo/vitrine DE {pecas|produtos|...}"
+ * with arbitrary words in between (e.g. "catalogo de pecas e equipamentos").
+ * A fixed keyword list can't express this without enumerating every
+ * combination — same pattern inferSeedImageryRequired() already used before
+ * this module existed; kept identical here so the two signals agree.
+ */
+const CATALOG_MERCHANDISING_RE = /\b(?:catalogo|vitrine)\b.*\b(?:pecas|equipamentos|produtos|servicos|itens)\b|\b(?:pecas|equipamentos)\b.*\b(?:catalogo|vitrine)\b/;
+
+/**
+ * Detects every product surface implied by a demand: the primary archetype's
+ * surface (via detectProductArchetype, same signal already used for market
+ * research) PLUS any secondary surface a SECONDARY_SURFACE_SIGNALS keyword
+ * catches on its own, even when the primary archetype match did not cover
+ * it. A single demand routinely has more than one surface (an operational
+ * SaaS/ERP core plus a public conversion site plus an authenticated customer
+ * portal) — each needs its own research/design/imagery treatment downstream.
+ *
+ * Pure and total: same input -> same output, never throws.
+ *
+ * @param {string|null|undefined} text
+ * @returns {Array<{ type: 'conversion'|'catalog'|'operational'|'transactional',
+ *   archetype: string|null, primary: boolean, score: number, matchedKeywords: string[] }>}
+ */
+export function detectProductSurfaces(text) {
+  const haystack = normalizeResearchText(text);
+  if (haystack === '') return [];
+
+  /** @type {Map<string, { type: string, archetype: string|null, primary: boolean, score: number, matchedKeywords: string[] }>} */
+  const surfaces = new Map();
+
+  const primary = detectProductArchetype(text);
+  if (primary.archetype !== DEFAULT_PRODUCT_ARCHETYPE && primary.score > 0) {
+    const type = surfaceTypeForArchetype(primary.archetype);
+    surfaces.set(type, {
+      type,
+      archetype: primary.archetype,
+      primary: true,
+      score: primary.score,
+      matchedKeywords: [...primary.matches],
+    });
+  }
+
+  for (const [type, keywords] of Object.entries(SECONDARY_SURFACE_SIGNALS)) {
+    const matched = keywords.filter((kw) => matchesKeyword(haystack, kw));
+    if (matched.length === 0) continue;
+    const existing = surfaces.get(type);
+    if (existing) {
+      existing.matchedKeywords = [...new Set([...existing.matchedKeywords, ...matched])];
+      continue;
+    }
+    surfaces.set(type, { type, archetype: null, primary: false, score: matched.length, matchedKeywords: matched });
+  }
+
+  if (CATALOG_MERCHANDISING_RE.test(haystack)) {
+    const existing = surfaces.get('catalog');
+    if (existing) {
+      existing.matchedKeywords = [...new Set([...existing.matchedKeywords, 'catalogo/vitrine de <itens>'])];
+    } else {
+      surfaces.set('catalog', { type: 'catalog', archetype: null, primary: false, score: 1, matchedKeywords: ['catalogo/vitrine de <itens>'] });
+    }
+  }
+
+  return [...surfaces.values()];
+}
+
+/**
+ * A surface needs a real competitor/reference benchmark (WebFetch on at
+ * least WEB_RESEARCH.budget.minCompetitors pages, not just WebSearch
+ * snippets) exactly when it is public and visually load-bearing: conversion
+ * (the site a lead sees first) and catalog (merchandising, wrong without
+ * real photos). Operational/transactional surfaces are validated by
+ * requirements clarity and contract coverage instead — a login form or a
+ * Kanban does not need a design benchmark against competitor storefronts.
+ *
+ * @param {{ type?: string }} surface
+ * @returns {boolean}
+ */
+export function surfaceBenchmarkRequired(surface) {
+  return surface?.type === 'conversion' || surface?.type === 'catalog';
+}
+
+/**
+ * Generic, sector-agnostic anatomy for a public conversion/catalog surface
+ * when it was caught only via SECONDARY_SURFACE_SIGNALS (no archetype won
+ * the top-1 match, so there is no PRODUCT_ARCHETYPES.baselineFeatures list to
+ * reuse). Grounded in a cross-sector local-business benchmark pass (service
+ * benchmark, 2026-09): every reference used a real hero photo, a
+ * differentiators/why-us block, a social-proof signal (rating, review count
+ * or years in business), a step-by-step trust section, and contact with
+ * address/map/hours — none of which a bare "site publico" mention implies on
+ * its own. Sector-agnostic by construction: no sector name appears here.
+ */
+export const PUBLIC_SURFACE_FALLBACK_SECTIONS = Object.freeze({
+  conversion: Object.freeze([
+    'hero com proposta de valor, imagem/foto real do negocio e CTA primario (WhatsApp/formulario)',
+    'diferenciais / por que escolher (3-6 itens com icone)',
+    'prova social: nota/avaliacoes, numero de clientes atendidos ou tempo de mercado',
+    'processo/como funciona em etapas (transparencia do atendimento)',
+    'contato: telefone, WhatsApp, endereco com mapa e horario de funcionamento',
+  ]),
+  catalog: Object.freeze([
+    'vitrine com imagem real de cada item (nunca placeholder vazio)',
+    'destaque/curadoria dos itens principais (nao lista crua sem hierarquia)',
+    'preco ou faixa de preco visivel',
+    'CTA de contato por item (WhatsApp/orcamento)',
+    'categorias ou filtros quando o catalogo crescer',
+  ]),
+});
+
+/**
+ * Builds the benchmark plan the RESEARCH stage must execute for every
+ * public-facing surface: which surfaces need it, the baseline section
+ * anatomy to confirm/extend, and the minimum reference count (reusing
+ * WEB_RESEARCH.budget.minCompetitors — same "table-stakes needs >=2
+ * independent sources" bar the rest of RESEARCH already enforces).
+ *
+ * Pure and total: same input -> same output, never throws.
+ *
+ * @param {{ demanda?: string, surfaces?: Array }} state
+ * @returns {Array<{ surfaceType: string, label: string, minReferences: number,
+ *   baselineSections: string[], askForUserReferencesFirst: true }>}
+ */
+export function buildSurfaceBenchmarkPlan(state) {
+  const surfaces = Array.isArray(state?.surfaces) && state.surfaces.length > 0
+    ? state.surfaces
+    : detectProductSurfaces(state?.demanda ?? '');
+
+  return surfaces
+    .filter(surfaceBenchmarkRequired)
+    .map((surface) => {
+      const archetypeEntry = surface.archetype ? resolveProductArchetype(surface.archetype) : null;
+      const baselineSections = archetypeEntry?.baselineFeatures?.length
+        ? archetypeEntry.baselineFeatures
+        : PUBLIC_SURFACE_FALLBACK_SECTIONS[surface.type] ?? [];
+      return {
+        surfaceType: surface.type,
+        label: archetypeEntry?.label
+          ?? (surface.type === 'conversion' ? 'Superficie publica de conversao/captacao' : 'Vitrine/catalogo publico'),
+        minReferences: WEB_RESEARCH.budget.minCompetitors,
+        baselineSections: [...baselineSections],
+        askForUserReferencesFirst: true,
+      };
+    });
+}
+
+/** Filename of the surface benchmark artifact emitted at FINAL (role `surface-benchmark`). */
+export const SURFACE_BENCHMARK_FILE = 'surface-benchmark.json';
+
+/**
+ * Builds the path of the surface-benchmark artifact inside the update
+ * directory. Emitted only when buildSurfaceBenchmarkPlan(state) is non-empty
+ * (i.e. at least one conversion/catalog surface exists) — see
+ * buildArtifactList().
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function surfaceBenchmarkPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${SURFACE_BENCHMARK_FILE}`;
+}
+
+/**
+ * Records the surfaces detected for this run on state, so downstream stages
+ * (imagery policy, benchmark, ui-data-map, DESIGN fidelity gate) read the
+ * SAME list RESEARCH confirmed with the user instead of re-deriving it
+ * (which could disagree after the user has answered surface-specific
+ * questions in EXPAND).
+ *
+ * @param {StageState} state
+ * @param {Array} surfaces
+ * @returns {StageState}
+ */
+export function withSurfaces(state, surfaces) {
+  return { ...state, surfaces: Array.isArray(surfaces) ? surfaces : [] };
 }
 
 /**
@@ -3417,6 +3712,142 @@ export function classifyContractChange(signals = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// UI data map + seed plan — the screen-to-contract-operation cross-check
+//
+// Root cause this closes: a real run (OficinaAI, 2026-09-16) shipped 41 RFs
+// but only 21 openapi.yaml operations — no list endpoint at all for Ordens
+// de Servico, Clientes, Vendas or Leads. Nothing checked screen coverage
+// against the contract, so the front-end subagent (correctly, given no
+// operation existed to call) filled those screens from client-side
+// localStorage instead, and three review passes (back-end, front-end,
+// manual) all missed it because each reviewed its own side in isolation.
+//
+// These functions build the SCAFFOLD only (screen ids, entities and "TBD"
+// operation refs derived from which consolidated requirements mention a
+// screen noun) — same layered contract as buildPrdBase(): the engine
+// guarantees structural completeness, the LLM fills the scaffold with the
+// real operation refs it is about to write into openapi.yaml. The gate that
+// actually catches a real gap is validateContractCoverage() in
+// scripts/lib/contract-coverage.mjs, run against the FILLED ui-data-map.json
+// and the real contract text.
+// ---------------------------------------------------------------------------
+
+/** Filename of the UI data map artifact (role `ui-data-map`), PRD/Spec modes alike, whenever hasFrontend. */
+export const UI_DATA_MAP_FILE = 'ui-data-map.json';
+
+/**
+ * Builds the path of the ui-data-map artifact inside the update directory.
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function uiDataMapPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${UI_DATA_MAP_FILE}`;
+}
+
+/** Filename of the seed plan artifact (role `seed-plan`), PRD/Spec modes alike, whenever hasBackend. */
+export const SEED_PLAN_FILE = 'seed-plan.json';
+
+/**
+ * Builds the path of the seed-plan artifact inside the update directory.
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function seedPlanPath(featurePath) {
+  const base = featurePath ? `${featurePath}/` : '.pensador/atualizacao-v1/';
+  return `${base}${SEED_PLAN_FILE}`;
+}
+
+/** Words that signal a requirement describes a screen/page, not a pure back-end rule. Bilingual, same convention as the rest of this module. */
+const SCREEN_SIGNAL_RE = /\b(?:tela|telas|pagina|paginas|painel|dashboard|kanban|listagem|area|formulario|screen|page|panel|list view)\b/i;
+
+/**
+ * Builds the ui-data-map SCAFFOLD: one screen entry per consolidated
+ * requirement whose text mentions a screen noun (SCREEN_SIGNAL_RE), with
+ * `"TBD"` placeholders for everything only the LLM can fill correctly
+ * (surfaceType, route, entities, the actual operation refs). Mirrors
+ * buildPrdBase's contract — structural completeness now, content later.
+ * Returns an empty screens list when the project has no front-end.
+ *
+ * Pure and total: same input -> same output, no I/O, never throws.
+ *
+ * @param {StageState} state
+ * @returns {{schemaVersion:1, screens:Array}}
+ */
+export function buildUiDataMapScaffold(state) {
+  const { hasFrontend } = classifyProject(state?.consolidated ?? []);
+  if (!hasFrontend) return { schemaVersion: 1, screens: [] };
+
+  const requirements = Array.isArray(state?.consolidated) ? state.consolidated : [];
+  const screens = [];
+  let counter = 0;
+  for (const requirement of requirements) {
+    const text = String(requirement?.text ?? '');
+    if (!SCREEN_SIGNAL_RE.test(text)) continue;
+    counter += 1;
+    screens.push({
+      id: requirement?.id ? `screen-${String(requirement.id).toLowerCase()}` : `screen-${counter}`,
+      surfaceType: 'TBD',
+      route: 'TBD',
+      entities: ['TBD'],
+      reads: [{ operation: 'TBD', scope: 'list' }],
+      writes: [],
+      requirementRefs: requirement?.id ? [requirement.id] : [],
+      dataSource: 'api-contract',
+    });
+  }
+  return { schemaVersion: 1, screens };
+}
+
+/**
+ * Builds the seed-plan SCAFFOLD from an already-filled ui-data-map: one
+ * entry per distinct entity referenced by a screen, with `minimumCount`
+ * raised to 3 whenever at least one screen reads that entity as a `"list"`
+ * (an empty list screen — exactly the defect the real run shipped — needs
+ * more than one demo row to prove the screen actually reads a collection).
+ * `persistenceLayer` is a fixed rule, not an inference: seed data belongs to
+ * the database seed/migration layer, independent of stack, never the
+ * client — see prd-template.md's seed-credentials note and
+ * SEED_IMAGERY_LIKELY_MISSING's sibling checks.
+ *
+ * Pure and total: same input -> same output, no I/O, never throws.
+ *
+ * @param {{screens?:Array}} uiDataMap
+ * @returns {{schemaVersion:1, persistenceLayer:'database-seed', entities:Array}}
+ */
+export function buildSeedPlanScaffold(uiDataMap) {
+  const screens = Array.isArray(uiDataMap?.screens) ? uiDataMap.screens : [];
+  /** @type {Map<string, {entity:string, minimumCount:number, requiredStates:string[], requiredRoles:string[], imageBindings:string[], requirementRefs:Set<string>}>} */
+  const byEntity = new Map();
+  for (const screen of screens) {
+    const hasListRead = Array.isArray(screen?.reads) && screen.reads.some((read) => read?.scope === 'list');
+    for (const entity of Array.isArray(screen?.entities) ? screen.entities : []) {
+      if (!entity || entity === 'TBD') continue;
+      const existing = byEntity.get(entity) ?? {
+        entity,
+        minimumCount: 1,
+        requiredStates: [],
+        requiredRoles: [],
+        imageBindings: [],
+        requirementRefs: new Set(),
+      };
+      if (hasListRead) existing.minimumCount = Math.max(existing.minimumCount, 3);
+      for (const id of Array.isArray(screen?.requirementRefs) ? screen.requirementRefs : []) {
+        existing.requirementRefs.add(id);
+      }
+      byEntity.set(entity, existing);
+    }
+  }
+  return {
+    schemaVersion: 1,
+    persistenceLayer: 'database-seed',
+    entities: [...byEntity.values()].map((entry) => ({ ...entry, requirementRefs: [...entry.requirementRefs] })),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Artifact planning
 // ---------------------------------------------------------------------------
 
@@ -3460,6 +3891,9 @@ export function planArtifacts(state) {
     requirementsIndex: false,
     uiPrototype: false,
     brandAssets: false,
+    uiDataMap: false,
+    seedPlan: false,
+    surfaceBenchmark: false,
   };
   if (!finalStages.has(state.currentStage)) {
     return empty;
@@ -3467,6 +3901,10 @@ export function planArtifacts(state) {
 
   const spec = resolveArtifactMode(state.artifactMode) === 'spec';
   const { hasBackend, hasFrontend } = classifyProject(state.consolidated);
+  const surfaces = Array.isArray(state.surfaces) && state.surfaces.length > 0
+    ? state.surfaces
+    : detectProductSurfaces(state?.demanda ?? '');
+  const needsSurfaceBenchmark = surfaces.some(surfaceBenchmarkRequired);
   // When Open Design is used (≥1 system selected in BRAINSTORM_GERAL), its
   // verbatim files already include a DESIGN.md — so the Pensador does NOT emit a
   // redundant standalone design-system.md. The standalone doc is written ONLY as
@@ -3505,6 +3943,12 @@ export function planArtifacts(state) {
       requirementsIndex: false,
       uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
       brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
+      // ui-data-map/seed-plan are common to BOTH artifactMode, like
+      // architecture.md/codebase-memory.md/project-baseline.json above —
+      // gated on hasFrontend/hasBackend, not on prd vs spec.
+      uiDataMap: hasFrontend,
+      seedPlan: hasBackend,
+      surfaceBenchmark: needsSurfaceBenchmark,
     };
   }
 
@@ -3537,6 +3981,9 @@ export function planArtifacts(state) {
     requirementsIndex: true,
     uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
     brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
+    uiDataMap: hasFrontend,
+    seedPlan: hasBackend,
+    surfaceBenchmark: needsSurfaceBenchmark,
   };
 }
 
@@ -3660,6 +4107,43 @@ export function buildArtifactList(state) {
       kind: 'userhistory',
       filename: 'userhistory.md',
       path: `${basePath}userhistory.md`,
+    });
+  }
+
+  // ui-data-map.json (role ui-data-map): every screen's data source is the
+  // API contract, never client-side storage — see the "UI data map + seed
+  // plan" section above. Common to PRD and Spec modes.
+  if (plan.uiDataMap) {
+    artifacts.push({
+      kind: 'ui-data-map',
+      role: 'ui-data-map',
+      filename: UI_DATA_MAP_FILE,
+      path: uiDataMapPath(state.featurePath),
+      description: 'Mapa tela -> operacao de contrato (leitura/escrita) por entidade, usado pelo gate de cobertura de contrato do Orquestrador',
+    });
+  }
+
+  // seed-plan.json (role seed-plan): demo data lives in the persistence
+  // layer, never localStorage — see buildSeedPlanScaffold().
+  if (plan.seedPlan) {
+    artifacts.push({
+      kind: 'seed-plan',
+      role: 'seed-plan',
+      filename: SEED_PLAN_FILE,
+      path: seedPlanPath(state.featurePath),
+      description: 'Plano de dados de demonstracao por entidade (quantidade minima, estados, papeis, vinculo de imagem) — sempre na camada de persistencia',
+    });
+  }
+
+  // surface-benchmark.json (role surface-benchmark): only when at least one
+  // conversion/catalog surface exists — see buildSurfaceBenchmarkPlan().
+  if (plan.surfaceBenchmark) {
+    artifacts.push({
+      kind: 'surface-benchmark',
+      role: 'surface-benchmark',
+      filename: SURFACE_BENCHMARK_FILE,
+      path: surfaceBenchmarkPath(state.featurePath),
+      description: 'Benchmark de referencias reais (>=3, WebFetch) por superficie publica de conversao/catalogo, com a anatomia de secoes confirmada',
     });
   }
 
