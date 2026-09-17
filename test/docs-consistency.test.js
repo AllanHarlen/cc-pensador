@@ -114,7 +114,14 @@ describe('docs ↔ engine consistency', () => {
 
   describe('no removed engine identifier is reintroduced', () => {
     // Built from fragments so this test file does not match its own assertion.
-    const removed = ['STAGE4' + '_MODEL', 'agyModelForStage' + '4'];
+    const removed = [
+      'STAGE4' + '_MODEL',
+      'agyModelForStage' + '4',
+      'audit' + 'Prototypes',
+      'MISSING_UI' + '_PROTOTYPE_FOR_DONE_STATUS',
+      'PROTOTYPE' + '_EXTERNAL_CDN',
+      'PROTOTYPE' + '_MISSING_LOCAL_CSS',
+    ];
 
     for (const ident of removed) {
       it(`no file references the removed identifier "${ident}"`, () => {

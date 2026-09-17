@@ -299,18 +299,12 @@ O Pensador preserva o pacote upstream em `design-systems/<id>/original/` e sempr
 
 O Open Design no Pensador evoluiu de um mero catálogo estático de tokens para um motor ativo de design generativo integrado ao estágio `DESIGN`:
 
-### 1. Descoberta e Prototipação de Fluxos Críticos
-- Durante o `DESIGN`, são selecionados de 1 a 3 fluxos críticos do `PRD_Base` (ex.: vitrine/catálogo, carrinho/checkout, onboarding/autenticação).
-- São gerados protótipos HTML standalone interativos em `<featurePath>/prototypes/<fluxo>/index.html`.
-- Cada protótipo consome o CSS local (`tokens.css`), é autocontido (sem dependências de CDNs externas que quebrem offline) e segue acessibilidade WCAG AA.
-- **Gate de Validação Visual:** O usuário recebe os links locais (`file:///...`) via `AskUserQuestion` para validar telas e interações antes de fechar o PRD.
-
-### 2. Geração de Brand Assets com Contexto Semântico do Setor
+### 1. Geração de Brand Assets com Contexto Semântico do Setor
 - Baseado no `sectorContext` definido no `RESEARCH` (ex.: oficina automotiva, SaaS financeiro, e-commerce pet), são gerados assets de mídia reais (SVGs vetoriais para logos e ícones de serviços, imagens rasterizadas para banners e cards).
 - Os assets são persistidos em `<featurePath>/assets/` e indexados no `<featurePath>/assets/manifest.json`.
 - Cada asset possui SHA-256 verificado, rota, slot de componente e dimensões semânticas, eliminando placeholders e links quebrados no downstream.
 
-### 3. Fixtures de Componentes em `components.html`
+### 2. Fixtures de Componentes em `components.html`
 - O arquivo `components.html` serve como a especificação visual viva de todos os componentes do sistema (Botões, Cards, Inputs, Badges, Modais) renderizados nos 4 estados obrigatórios: `default`, `hover`, `focus` e `disabled`.
 - Quando o daemon REST não fornecer fixtures prontas, o Pensador sintetiza deterministicamente as fixtures a partir do `design-contract.json`, garantindo que o agente de front-end do Orquestrador nunca receba um pacote sem marcação HTML real de referência.
 

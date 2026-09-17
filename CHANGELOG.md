@@ -1,5 +1,52 @@
 # Changelog
 
+## [2.28.0] — 2026-09-17 — Remove a sub-etapa de prototipacao do estagio DESIGN
+
+Simplificacao confirmada com o usuario: o estagio `DESIGN` deixa de gerar 1-3 protótipos HTML
+interativos dos fluxos criticos e de gatear o avanco para `FINAL` num `AskUserQuestion` de
+aprovacao visual desses protótipos. O restante do estagio `DESIGN` (pacote de design/contrato
+visual, tokens/Open Design, geracao de midia e brand assets, fixtures de componentes e auditoria)
+continua intacto — `STAGE_ORDER` nao muda, so a sub-atividade de prototipagem sai de dentro dele.
+
+- **`skills/pensador/SKILL.md`:** removidos os passos "Prototipacao no Discovery" e "Gate de
+  Aprovacao Visual" do `## DESIGN` (junto com a checagem de cobertura de benchmark que so fazia
+  sentido contra um protótipo), passos renumerados; `design-package.mjs audit` deixa de receber
+  `--prototypes`; a condicao de fechamento do estagio e a tabela de gates deixam de exigir
+  aprovacao de protótipos; a tabela de Delegacao v2 deixa de listar protótipos como saida do
+  pipeline `resolved-design-package`; `FINAL` deixa de declarar o role `ui-prototype` no
+  `handoff.json` (mantem `brand-assets`).
+- **`scripts/pensador-engine.mjs`:** removidos `OPEN_DESIGN.prototypesDir`, o campo `prototypesDir`
+  de `openDesignDeliveryFor()`, o campo `uiPrototype` de `planArtifacts()` (e a variavel
+  `hasPrototypes`/`state.prototypes` que so o alimentava) e o artefato `kind: 'ui-prototype'` de
+  `buildArtifactList()`. Os typedefs JSDoc de `Artifact`/`kind` deixam de listar `ui-prototype`.
+- **`scripts/design-package.mjs`:** removida a funcao `audit` + `Prototypes()` (auditoria de CDN
+  externo e CSS local dos protótipos) e a chamada correspondente dentro de `auditDesignPackage()`,
+  incluindo o parametro `prototypesDir`; removido o flag `--prototypes` do CLI.
+- **`scripts/lib/handoff-validator.mjs`:** `HANDOFF_ROLES_BY_STAGE.pensador` deixa de aceitar o role
+  `ui-prototype`; `validateVisualCompleteness()` deixa de exigir esse role para `status: DONE`
+  (removido o codigo `MISSING_UI` + `_PROTOTYPE_FOR_DONE_STATUS`) — a checagem irmã de
+  `brand-assets` continua bloqueante.
+- **Handoff contract (replicado verbatim nos quatro plugins — `cc-pensador`,
+  `cc-orchestrador-subagents`, `cc-testador-subagents`, `cc-executor-subagents`):**
+  `references/handoff-contract.md` secao 5 deixa de listar o role `ui-prototype` na tabela de roles
+  do Pensador.
+- **`skills/pensador/references/feature-isolation.md`:** `ui-prototype` removido da lista de roles
+  validos do Pensador (mantida em lockstep com `handoff-contract.md` por
+  `test/handoff-roles-consistency.test.js`).
+- **`skills/pensador/references/open-design.md`:** removida a subsecao "Descoberta e Prototipação de
+  Fluxos Críticos" do Pipeline Generativo e Discovery Visual; subsecoes seguintes renumeradas.
+- **`skills/pensador/references/stages.md`:** removida a mencao ao gate de cobertura de protótipo de
+  superficie `conversion`/`catalog` no resumo do estagio `DESIGN`.
+- **`skills/ui-ux-pro-max/SKILL.md` e `skills/frontend-design/SKILL.md`:** a prosa dessas lentes do
+  `BRAINSTORM_GERAL` deixa de prometer que os fluxos criticos "viram protótipos interativos HTML
+  standalone" — a pergunta sobre fluxos criticos continua existindo para priorizar UX/auditoria
+  visual, sem ficar amarrada a um artefato de protótipo que nao e mais gerado.
+- Testes atualizados: `test/handoff-validator.test.js` e `test/open-design-discovery.test.js`
+  perdem as fixtures/assercoes do role/helper/campo de protótipo; `test/docs-consistency.test.js`
+  ganha guardas para banir a reintroducao acidental dos identificadores removidos (o helper de
+  auditoria de protótipos, o codigo de handoff `MISSING_UI` + `_PROTOTYPE_FOR_DONE_STATUS` e os
+  codigos de achado do antigo auditor de protótipos).
+
 ## [2.27.0] — 2026-09-17 — Superficies de produto, cobertura de contrato (ui-data-map) e plano de seed
 
 Segunda rodada de correcao sobre a mesma run real (OficinaAI, 2026-09-16, apos a 2.26.0 ja em
@@ -107,7 +154,7 @@ estava com drift de versao (2.22.0) contra `package.json`/`plugin.json` (2.24.0)
   `stage: pensador` com `status: DONE` e algum artefato de design (`design-system-files` ou o
   fallback `design-system`), exige `design-system-files[].variant === "resolved"` e a presenca dos
   roles `ui-prototype`/`brand-assets` — os codigos novos sao `DESIGN_PACKAGE_NOT_RESOLVED`,
-  `MISSING_UI_PROTOTYPE_FOR_DONE_STATUS` e `MISSING_BRAND_ASSETS_FOR_DONE_STATUS`. Sem sinal de
+  `MISSING_UI` + `_PROTOTYPE_FOR_DONE_STATUS` e `MISSING_BRAND_ASSETS_FOR_DONE_STATUS`. Sem sinal de
   front-end (nenhum artefato de design) ou com `status` diferente de `DONE`, e um no-op.
 - **`scripts/validate-handoff.mjs`:** passa a rodar as duas funcoes e mesclar os erros; `ok` e
   `false` se qualquer uma reportar violacao.

@@ -3230,8 +3230,6 @@ export const OPEN_DESIGN = {
   ],
   /** Final design-system artifact written under <featurePath>/ in PRD mode. */
   designSystemFile: 'design-system.md',
-  /** Directory for discovery HTML prototypes. */
-  prototypesDir: 'prototypes/',
   /** Directory for brand assets and manifest. */
   brandAssetsDir: 'assets/',
   /** Authoritative components fixture document. */
@@ -3394,7 +3392,7 @@ export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
  *
  * @param {'prd'|'spec'|undefined} artifactMode
  * @param {string} [changeName='<name>']  the OpenSpec change folder name
- * @returns {{ mode: 'prd'|'spec', systemsDir: string, prototypesDir: string, brandAssetsDir: string, componentsDoc: string, standaloneArtifact: boolean, decisionsDoc: string, requirementsDoc: string }}
+ * @returns {{ mode: 'prd'|'spec', systemsDir: string, brandAssetsDir: string, componentsDoc: string, standaloneArtifact: boolean, decisionsDoc: string, requirementsDoc: string }}
  */
 export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
   const spec = resolveArtifactMode(artifactMode) === 'spec';
@@ -3406,7 +3404,6 @@ export function openDesignDeliveryFor(artifactMode, changeName = '<name>') {
     mode: spec ? 'spec' : 'prd',
     // Eventual UI-package target the executor materializes into (both modes).
     systemsDir: OPEN_DESIGN.systemsDir,
-    prototypesDir: OPEN_DESIGN.prototypesDir,
     brandAssetsDir: OPEN_DESIGN.brandAssetsDir,
     componentsDoc: OPEN_DESIGN.componentsDoc,
     // When Open Design is used, its verbatim DESIGN.md IS the design document —
@@ -3894,7 +3891,6 @@ export function planArtifacts(state) {
     codebaseMemory: false,
     projectBaseline: false,
     requirementsIndex: false,
-    uiPrototype: false,
     brandAssets: false,
     uiDataMap: false,
     seedPlan: false,
@@ -3916,7 +3912,6 @@ export function planArtifacts(state) {
   // the inline fallback (Open Design unavailable / declined → no system selected).
   const usesOpenDesign =
     Array.isArray(state.designSystems) && state.designSystems.filter(Boolean).length > 0;
-  const hasPrototypes = Array.isArray(state.prototypes) && state.prototypes.length > 0;
 
   if (spec) {
     // Spec mode delivers ONLY the OpenSpec change set (scaffolded by the
@@ -3946,7 +3941,6 @@ export function planArtifacts(state) {
       codebaseMemory: true,
       projectBaseline: true,
       requirementsIndex: false,
-      uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
       brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
       // ui-data-map/seed-plan are common to BOTH artifactMode, like
       // architecture.md/codebase-memory.md/project-baseline.json above —
@@ -3984,7 +3978,6 @@ export function planArtifacts(state) {
     // #### Scenario: blocks in specs/) is exposed live via `openspec status`,
     // a different, I/O-based path this pure engine does not attempt to mirror.
     requirementsIndex: true,
-    uiPrototype: hasFrontend && (usesOpenDesign || hasPrototypes),
     brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
     uiDataMap: hasFrontend,
     seedPlan: hasBackend,
@@ -4182,16 +4175,6 @@ export function buildArtifactList(state) {
       kind: 'design-system',
       filename: OPEN_DESIGN.designSystemFile,
       path: `${basePath}${OPEN_DESIGN.designSystemFile}`,
-    });
-  }
-
-  if (plan.uiPrototype) {
-    artifacts.push({
-      kind: 'ui-prototype',
-      role: 'ui-prototype',
-      filename: 'prototypes/',
-      path: `${basePath}prototypes/`,
-      description: 'Protótipos HTML estáticos dos fluxos críticos para validação visual e spec de UI',
     });
   }
 
@@ -4484,13 +4467,12 @@ export function deserializeState(serialized) {
  * @property {boolean} [specs]     // OpenSpec (spec mode)
  * @property {boolean} [design]    // OpenSpec (spec mode)
  * @property {boolean} [tasks]     // OpenSpec (spec mode)
- * @property {boolean} [uiPrototype]
  * @property {boolean} [brandAssets]
  */
 
 /**
  * @typedef {Object} Artifact
- * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'ui-prototype'|'brand-assets'|'proposal'|'specs'|'design'|'tasks'|'architecture'|'codebase-memory'|'project-baseline'|'requirements-index'} kind
+ * @property {'prd'|'communication'|'api-contract'|'userhistory'|'design-system'|'design-system-files'|'brand-assets'|'proposal'|'specs'|'design'|'tasks'|'architecture'|'codebase-memory'|'project-baseline'|'requirements-index'} kind
  * @property {string} filename
  * @property {string} path
  * @property {string} [role]

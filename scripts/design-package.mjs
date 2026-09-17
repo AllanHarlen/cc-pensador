@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Deterministic renderer and auditor for the Pensador's resolved visual package. */
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -101,7 +101,7 @@ function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
-export function auditDesignPackage({ resolvedDir, contract, prototypesDir } = {}) {
+export function auditDesignPackage({ resolvedDir, contract } = {}) {
   const findings = [];
   const add = (severity, code, message, path = null) => findings.push({ severity, code, message, path });
 
@@ -159,63 +159,8 @@ export function auditDesignPackage({ resolvedDir, contract, prototypesDir } = {}
     }
   }
 
-  // Prototypes live at <featurePath>/prototypes/ (role ui-prototype), not inside
-  // resolved/ — an explicit prototypesDir must be passed (--prototypes on the
-  // CLI) or already-known resolved/prototypes is checked as a legacy fallback.
-  const effectivePrototypesDir = prototypesDir ?? join(resolvedDir, "prototypes");
-  if (existsSync(effectivePrototypesDir) && statSync(effectivePrototypesDir).isDirectory()) {
-    auditPrototypes({ prototypesDir: effectivePrototypesDir, findings });
-  }
-
   const blocking = findings.filter((item) => ["critical", "high"].includes(item.severity));
   return { status: blocking.length ? "BLOCKED" : "PASS", generatedAt: new Date().toISOString(), findings };
-}
-
-export function auditPrototypes({ prototypesDir, findings = [] }) {
-  if (!prototypesDir || !existsSync(prototypesDir)) return findings;
-
-  function scan(dir) {
-    const entries = readdirSync(dir);
-    for (const entry of entries) {
-      const full = join(dir, entry);
-      const st = statSync(full);
-      if (st.isDirectory()) {
-        scan(full);
-      } else if (entry.endsWith(".html")) {
-        const content = readFileSync(full, "utf8");
-        const rel = relative(prototypesDir, full);
-        // Detect external CDNs
-        const cdnPattern = /https?:\/\/[a-zA-Z0-9.-]+\/(?:npm|ajax|libs|gh|css|js|[a-zA-Z0-9._\-/]+)/g;
-        const cdnMatches = content.match(cdnPattern) || [];
-        const externalCdns = cdnMatches.filter((url) =>
-          /unpkg\.com|jsdelivr\.net|cdnjs\.cloudflare\.com|googleapis\.com|bootstrapcdn\.com/i.test(url)
-        );
-        for (const cdn of externalCdns) {
-          findings.push({
-            severity: "high",
-            code: "PROTOTYPE_EXTERNAL_CDN",
-            message: `Prototype contains external CDN dependency: ${cdn}`,
-            path: rel,
-          });
-        }
-        // Verify local CSS or embedded styling
-        const hasCss =
-          /<link[^>]+rel=["']stylesheet["'][^>]*>/i.test(content) ||
-          /<style[^>]*>[\s\S]*?<\/style>/i.test(content);
-        if (!hasCss) {
-          findings.push({
-            severity: "high",
-            code: "PROTOTYPE_MISSING_LOCAL_CSS",
-            message: "Prototype does not load local CSS or define local styles",
-            path: rel,
-          });
-        }
-      }
-    }
-  }
-
-  scan(prototypesDir);
-  return findings;
 }
 
 export function renderComponentsHtml(contract) {
@@ -363,7 +308,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const resolvedDir = resolve(String(args.resolved ?? args.dir ?? "."));
   const result = command === "render"
     ? renderDesignPackage({ contractFile: resolve(String(args.contract)), originalDir: args.original ? resolve(String(args.original)) : null, resolvedDir })
-    : auditDesignPackage({ resolvedDir, prototypesDir: args.prototypes ? resolve(String(args.prototypes)) : undefined });
+    : auditDesignPackage({ resolvedDir });
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.status === "PASS" ? 0 : 1;
 }

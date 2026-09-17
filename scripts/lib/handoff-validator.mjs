@@ -50,7 +50,6 @@ export const HANDOFF_ROLES_BY_STAGE = Object.freeze({
     "communication-contract",
     "design-system",
     "design-system-files",
-    "ui-prototype",
     "brand-assets",
     "openspec-change",
     "codebase-memory",
@@ -312,8 +311,8 @@ export function validateHandoff(handoff) {
  * `test/handoff-validator.test.js` "accepts every role declared for each
  * stage"), while this function encodes the DESIGN-stage completion rule from
  * `skills/pensador/SKILL.md` ("o estagio fecha somente quando
- * design-audit.json.status=PASS, os prototipos estiverem aprovados... e
- * todos os assets required... gerados e validados") as something the CLI
+ * design-audit.json.status=PASS e todos os assets required... gerados e
+ * validados") as something the CLI
  * actually checks, instead of prose the model can skip.
  *
  * Root cause this closes: a real run (OficinaAI, 2026-09-12) skipped the
@@ -321,7 +320,7 @@ export function validateHandoff(handoff) {
  * `design-system-files[].variant: "legacy-verbatim"`, and
  * `validate-handoff.mjs --file handoff.json` reported `ok: true` anyway —
  * the envelope was structurally fine, so nothing caught the missing
- * prototypes/brand-assets/audit. Only applies to `stage: "pensador"` and
+ * brand-assets/audit. Only applies to `stage: "pensador"` and
  * only to a `status: "DONE"` handoff — `PARTIAL`/`BLOCKED` already carries
  * its own mandatory `summary` explaining the gap (see `validateHandoff()`).
  *
@@ -355,15 +354,8 @@ export function validateVisualCompleteness(handoff, options = {}) {
   if (designFiles && designFiles.variant !== "resolved") {
     push(
       "DESIGN_PACKAGE_NOT_RESOLVED",
-      `status DONE requires the resolved Open Design package (design-system-files.variant: "resolved"), got ${JSON.stringify(designFiles.variant ?? "legacy-verbatim")}. The DESIGN stage (prototypes, brand assets, design-audit.json PASS) was not completed for this handoff — finish it, or close as PARTIAL/BLOCKED with a summary naming the gap (see skills/pensador/SKILL.md, estagio DESIGN).`,
+      `status DONE requires the resolved Open Design package (design-system-files.variant: "resolved"), got ${JSON.stringify(designFiles.variant ?? "legacy-verbatim")}. The DESIGN stage (brand assets, design-audit.json PASS) was not completed for this handoff — finish it, or close as PARTIAL/BLOCKED with a summary naming the gap (see skills/pensador/SKILL.md, estagio DESIGN).`,
       "artifacts[].variant",
-    );
-  }
-  if (!byRole("ui-prototype")) {
-    push(
-      "MISSING_UI_PROTOTYPE_FOR_DONE_STATUS",
-      "status DONE with a front-end demand requires a ui-prototype artifact (DESIGN-stage discovery prototypes, approved by the user via AskUserQuestion) — see references/open-design.md.",
-      "artifacts[]",
     );
   }
   if (!byRole("brand-assets")) {

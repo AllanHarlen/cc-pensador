@@ -11,7 +11,6 @@ import {
 } from '../scripts/pensador-engine.mjs';
 import {
   auditDesignPackage,
-  auditPrototypes,
   renderComponentsHtml,
   renderDesignPackage,
 } from '../scripts/design-package.mjs';
@@ -21,7 +20,7 @@ function sha256(content) {
 }
 
 describe('Open Design Discovery & Prototyping — Engine Integration', () => {
-  it('planArtifacts plans uiPrototype and brandAssets when frontend is present with openDesign', () => {
+  it('planArtifacts plans brandAssets when frontend is present with openDesign', () => {
     const stateWithOD = {
       currentStage: 'FINAL',
       consolidated: [
@@ -31,23 +30,21 @@ describe('Open Design Discovery & Prototyping — Engine Integration', () => {
       designSystems: ['agentic'],
     };
     const plan = planArtifacts(stateWithOD);
-    expect(plan.uiPrototype).toBe(true);
     expect(plan.brandAssets).toBe(true);
     expect(plan.designSystem).toBe(false);
   });
 
-  it('planArtifacts excludes uiPrototype and brandAssets when frontend is absent', () => {
+  it('planArtifacts excludes brandAssets when frontend is absent', () => {
     const backendOnlyState = {
       currentStage: 'FINAL',
       consolidated: [{ id: 'b1', text: 'Worker de fila em Go com banco PostgreSQL backend' }],
       designSystems: ['agentic'],
     };
     const plan = planArtifacts(backendOnlyState);
-    expect(plan.uiPrototype).toBe(false);
     expect(plan.brandAssets).toBe(false);
   });
 
-  it('buildArtifactList includes ui-prototype and brand-assets in FINAL stage', () => {
+  it('buildArtifactList includes brand-assets in FINAL stage', () => {
     const state = {
       currentStage: 'FINAL',
       featurePath: '.pensador/vitrine-produtos-v1',
@@ -56,11 +53,6 @@ describe('Open Design Discovery & Prototyping — Engine Integration', () => {
       artifactMode: 'prd',
     };
     const artifacts = buildArtifactList(state);
-    
-    const uiProto = artifacts.find((a) => a.kind === 'ui-prototype');
-    expect(uiProto).toBeDefined();
-    expect(uiProto.role).toBe('ui-prototype');
-    expect(uiProto.path).toBe('.pensador/vitrine-produtos-v1/prototypes/');
 
     const brandAssets = artifacts.find((a) => a.kind === 'brand-assets');
     expect(brandAssets).toBeDefined();
@@ -77,7 +69,6 @@ describe('Open Design Discovery & Prototyping — Engine Integration', () => {
 
   it('openDesignDeliveryFor and openDesignFetchPlan mark components.html and preview/ as required', () => {
     const delivery = openDesignDeliveryFor('prd');
-    expect(delivery.prototypesDir).toBe('prototypes/');
     expect(delivery.brandAssetsDir).toBe('assets/');
     expect(delivery.componentsDoc).toBe('design-systems/<id>/resolved/components.html');
 
@@ -95,7 +86,7 @@ describe('Open Design Discovery & Prototyping — Engine Integration', () => {
   });
 });
 
-describe('Design Package & Prototypes Auditor', () => {
+describe('Design Package Auditor', () => {
   const tmpDirs = [];
   function makeDir() {
     const d = mkdtempSync(join(tmpdir(), 'od-audit-test-'));
@@ -122,31 +113,6 @@ describe('Design Package & Prototypes Auditor', () => {
     expect(html).toContain('state-focus');
     expect(html).toContain('state-disabled');
     expect(html).toContain('Card');
-  });
-
-  it('auditPrototypes flags external CDN dependencies and missing local CSS', () => {
-    const dir = makeDir();
-    const badProto = join(dir, 'bad.html');
-    writeFileSync(
-      badProto,
-      `<!DOCTYPE html><html><head><script src="https://unpkg.com/react@18/umd/react.production.min.js"></script></head><body><h1>Bad</h1></body></html>`,
-    );
-
-    const findings = auditPrototypes({ prototypesDir: dir });
-    expect(findings.some((f) => f.code === 'PROTOTYPE_EXTERNAL_CDN')).toBe(true);
-    expect(findings.some((f) => f.code === 'PROTOTYPE_MISSING_LOCAL_CSS')).toBe(true);
-  });
-
-  it('auditPrototypes accepts standalone prototype with local CSS and no CDNs', () => {
-    const dir = makeDir();
-    const goodProto = join(dir, 'good.html');
-    writeFileSync(
-      goodProto,
-      `<!DOCTYPE html><html><head><link rel="stylesheet" href="../../design-systems/agentic/tokens.css"></head><body><h1>Good</h1></body></html>`,
-    );
-
-    const findings = auditPrototypes({ prototypesDir: dir });
-    expect(findings).toEqual([]);
   });
 
   it('auditDesignPackage validates assets manifest against real files and hashes', () => {
