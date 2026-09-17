@@ -92,6 +92,56 @@ describe('parseOpenApiOperations', () => {
     expect(parseOpenApiOperations(text)).toEqual([{ method: 'POST', path: '/webhooks' }]);
   });
 
+  it('parses quoted path keys (single and double quotes) — a valid, real-world YAML style some generators use', () => {
+    const doubleQuoted = `paths:
+  "/ordens-servico":
+    get:
+      responses:
+        '200': { description: OK }
+`;
+    expect(parseOpenApiOperations(doubleQuoted)).toEqual([{ method: 'GET', path: '/ordens-servico' }]);
+
+    const singleQuoted = `paths:
+  '/veiculos':
+    post:
+      responses:
+        '201': { description: Created }
+`;
+    expect(parseOpenApiOperations(singleQuoted)).toEqual([{ method: 'POST', path: '/veiculos' }]);
+  });
+
+  it('a single quoted path key does not swallow/hide the operations of an unquoted path around it', () => {
+    // Regression: a quoted path key was invisible to the old path-key
+    // matcher, so it never closed the PRECEDING unquoted path's chunk — the
+    // quoted line's shallower indent then corrupted the "shallowest line in
+    // the chunk is the method key" heuristic, hiding the preceding path's
+    // real operations too. Both /a and /b must be found here.
+    const mixed = `paths:
+  /a:
+    get:
+      responses: {}
+  '/b':
+    post:
+      responses: {}
+  /c:
+    delete:
+      responses: {}
+`;
+    expect(parseOpenApiOperations(mixed)).toEqual([
+      { method: 'GET', path: '/a' },
+      { method: 'POST', path: '/b' },
+      { method: 'DELETE', path: '/c' },
+    ]);
+  });
+
+  it('detects a method with an inline flow-style value ("get: {}"), not just a block-nested one', () => {
+    const text = `paths:
+  /health:
+    get: {}
+`;
+    expect(parseOpenApiOperations(text)).toEqual([{ method: 'GET', path: '/health' }]);
+  });
+
   it('parses JSON OpenAPI documents directly', () => {
     const doc = JSON.stringify({
       openapi: '3.1.0',

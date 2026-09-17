@@ -888,8 +888,8 @@ const normalizeVisualText = (value) => String(value ?? '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 /**
- * Decides whether AGY-generated imagery is required, recommended or
- * not-applicable, and how many bound assets that implies.
+ * Decides whether AGY-generated imagery is required or not-applicable, and
+ * how many bound assets that implies.
  *
  * Root cause this closes (see the "Product surfaces" section above for the
  * fuller root-cause note): the previous version matched loose words \u2014
@@ -911,7 +911,7 @@ const normalizeVisualText = (value) => String(value ?? '')
  * longer set policy on their own.
  *
  * @param {StageState} state
- * @returns {{policy:'required'|'recommended'|'not-applicable',provider:'agy',minimumAssets:number,reasons:string[],tasks:Array}}
+ * @returns {{policy:'required'|'not-applicable',provider:'agy',minimumAssets:number,reasons:string[],tasks:Array}}
  */
 export function inferVisualImageryPlan(state) {
   if (state?.visualImageryPlan?.policy) return structuredClone(state.visualImageryPlan);
@@ -945,12 +945,17 @@ export function inferVisualImageryPlan(state) {
     tasks.push({ id: null, policy: 'required', reasons: ['public-conversion-surface'] });
   }
 
-  const required = tasks.some((task) => task.policy === 'required');
-  const recommended = tasks.length > 0;
+  // Every push site above hardcodes policy: 'required' — there is currently
+  // no signal in this function that produces a merely 'recommended' task,
+  // so the outcome is binary in practice: tasks.length > 0 implies
+  // required. (An already-decided state.visualImageryPlan, handled by the
+  // early return above, can still carry a hand-authored 'recommended' value
+  // — that passthrough is untouched by this simplification.)
+  const required = tasks.length > 0;
   return {
-    policy: required ? 'required' : recommended ? 'recommended' : 'not-applicable',
+    policy: required ? 'required' : 'not-applicable',
     provider: 'agy',
-    minimumAssets: required ? 3 : recommended ? 1 : 0,
+    minimumAssets: required ? 3 : 0,
     reasons: [...new Set(tasks.flatMap((task) => task.reasons))],
     tasks,
   };
