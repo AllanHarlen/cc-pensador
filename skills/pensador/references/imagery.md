@@ -6,6 +6,8 @@ O Pensador e o unico proprietario das decisoes e dos artefatos visuais. O Orques
 
 No brief, colete `imageryStrategy` e `iconography`. Derive assets de requisitos explicitos, hero e paginas publicas, catalogos, institucional, autenticacao/onboarding, estados empty/error/success e dados de demonstracao/seeds.
 
+Execute `inferVisualImageryPlan(state)` antes do inventario. Catalogos/vitrines de pecas, equipamentos, produtos ou servicos sao `required` (minimo 3 assets); landing pages, homepages e areas publicas/institucionais/marketing sao `recommended` (minimo 1). A decisao viaja em `project-baseline.json.visualImageryPlan` com motivos e IDs das tasks/requisitos detectados.
+
 Classifique cada item como:
 
 - `required`: necessario para requisito ou criterio de aceite;
@@ -21,6 +23,7 @@ Não pergunte imagem por imagem. Registre a decisão de seed separadamente e mar
 ## Geracao AGY
 
 - Uma imagem por chamada, sequencialmente; nunca combine geracao de imagem com `--parallel`.
+- Cada chamada precisa emitir `AGY_IMAGE_RESULT` com exatamente um arquivo, destino, bytes e SHA-256. Exit 0 sem esse recibo e falha.
 - Para seed/demo obrigatório, execute 3 a 6 chamadas reais com `--generate-image`; não aceite manifesto vazio, placeholder, URL remota instável ou `imagemUrl: null` como materialização.
 - Inclua sistema resolvido, setor, marca, paleta, proporcao, superficie, rota e slot no prompt.
 - Valide arquivo, extensao, dimensoes, tamanho, SHA-256 e duplicidade.
@@ -36,4 +39,4 @@ Icones funcionais sao vetoriais e pertencem a uma biblioteca compativel com o st
 
 ## Handoff
 
-O pacote `resolved/` é autoritativo. `original/` preserva o Open Design sem alteração. O Orquestrador copia cada asset para `materializeInto`, recebe cada `seedBindings` no relatório de materialização e o aplica na task responsável pelo seed; depois comprova no navegador que as imagens aparecem nos estados normais e possuem `alt`. O handoff deve sinalizar `seedImageryRequired` no `project-baseline.json` quando essa decisão estiver ativa, permitindo ao validador alertar quando houver menos de três assets de seed vinculados antes do consumo.
+O pacote `resolved/` é autoritativo. `original/` preserva o Open Design sem alteração. O Orquestrador copia cada asset para `materializeInto`, recebe cada `seedBindings` no relatório de materialização e o aplica na task responsável pelo seed; depois comprova no navegador que as imagens aparecem nos estados normais e possuem `alt`. O handoff deve sinalizar `seedImageryRequired` e `visualImageryPlan` no `project-baseline.json`. Em `status: DONE`, o validador bloqueia — nao apenas alerta — quando a politica obrigatoria nao tiver o minimo de assets reais vinculados.

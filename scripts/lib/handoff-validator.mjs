@@ -376,10 +376,14 @@ export function validateVisualCompleteness(handoff, options = {}) {
   const seedAssets = Array.isArray(manifestAssets)
     ? manifestAssets.filter((asset) => asset?.purpose === "seed-demo" || (Array.isArray(asset?.seedBindings) && asset.seedBindings.length > 0))
     : [];
-  if (seedImageryRequired && seedAssets.length < 3) {
-    warn(
-      "SEED_IMAGERY_LIKELY_MISSING",
-      `project-baseline.json requires seed/demo imagery, but assets/manifest.json exposes only ${seedAssets.length} seed-bound asset(s). Brand assets may remain external, but generate and bind 3-6 real seed images before handing off the demo flow.`,
+  const visualMinimum = Number.isInteger(options.projectBaseline?.visualImageryPlan?.minimumAssets)
+    ? options.projectBaseline.visualImageryPlan.minimumAssets
+    : 0;
+  const requiredMinimum = Math.max(seedImageryRequired ? 3 : 0, options.projectBaseline?.visualImageryPlan?.policy === 'required' ? visualMinimum : 0);
+  if (requiredMinimum > 0 && seedAssets.length < requiredMinimum) {
+    push(
+      "REQUIRED_VISUAL_IMAGERY_MISSING",
+      `project-baseline.json requires at least ${requiredMinimum} bound visual asset(s), but assets/manifest.json exposes only ${seedAssets.length}. Generate with AGY and bind the real files before status DONE.`,
       "artifacts[brand-assets].manifest",
     );
   }

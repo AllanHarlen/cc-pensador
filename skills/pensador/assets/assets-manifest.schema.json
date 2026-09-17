@@ -11,9 +11,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "classification", "requirementRefs", "routes", "componentSlot", "file", "aspectRatio", "alt", "materializeInto", "seedBindings", "approval", "sha256", "generator"],
+        "required": ["id", "purpose", "classification", "requirementRefs", "routes", "componentSlot", "file", "aspectRatio", "alt", "materializeInto", "seedBindings", "approval", "sha256", "generator"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
+          "purpose": { "enum": ["content", "brand", "seed-demo"] },
           "classification": { "enum": ["required", "recommended"] },
           "requirementRefs": { "type": "array", "items": { "type": "string" } },
           "routes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
