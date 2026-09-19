@@ -130,4 +130,23 @@ describe('docs ↔ engine consistency', () => {
       });
     }
   });
+
+  describe('the Open Design catalog is no longer part of the flow (Fase 1)', () => {
+    // CHANGELOG.md is a dated historical record and legitimately names them.
+    const catalogRemoved = [
+      'od-fetch' + '-system',
+      'od-verify' + '-system',
+      'openDesign' + 'FetchPlan',
+      'accept-design' + '-divergence',
+      'design-consistency' + '.json',
+    ];
+    const nonChangelog = FILES.filter((f) => rel(f) !== 'CHANGELOG.md');
+
+    for (const ident of catalogRemoved) {
+      it(`no file (other than CHANGELOG.md) references "${ident}"`, () => {
+        const offenders = nonChangelog.filter((f) => readFileSync(f, 'utf8').includes(ident)).map(rel);
+        expect(offenders, `removed catalog identifier found in: ${offenders.join(', ')}`).toEqual([]);
+      });
+    }
+  });
 });

@@ -1,0 +1,22 @@
+{
+  "colorPrimary": "#0F766E",
+  "colorSuccess": "#16A34A",
+  "colorWarning": "#D97706",
+  "colorError": "#DC2626",
+  "colorInfo": "#0284C7",
+  "colorLink": "",
+  "colorTextBase": "#000000",
+  "colorBgBase": "#ffffff",
+  "fontFamily": "Inter, sans-serif",
+  "fontFamilyCode": "JetBrains Mono, monospace",
+  "fontSize": 14,
+  "borderRadius": 8,
+  "sizeUnit": 4,
+  "sizeStep": 4,
+  "controlHeight": 36,
+  "lineWidth": 1,
+  "motionUnit": 0.1,
+  "motionBase": 0,
+  "wireframe": false,
+  "motion": true
+}

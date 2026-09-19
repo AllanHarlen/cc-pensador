@@ -317,11 +317,25 @@ export function initState(demanda) {
     // Researched CURRENT versions, patterns, conventions and anti-patterns of the
     // stack (see withTechResearch). Status may be DEFERRED when ARCH resolves the stack.
     techResearch: null,
-    // Open Design: system ids chosen at BRAINSTORM_GERAL. buildArtifactList
-    // reads this to emit design-system-files entries for the handoff. Must be
-    // set by the LLM when hasFrontend and a system is selected; empty array
-    // means no verbatim files are planned (inline fallback or no OD).
+    // Open Design: ids of the design systems GENERATED for this feature (derived
+    // from the product, e.g. "gestuor" — never catalog ids). buildArtifactList
+    // reads this to emit design-system-files entries for the handoff. Set by the
+    // skill layer in DESIGN when hasFrontend; empty array means no design
+    // package (inline fallback or no OD).
     designSystems: [],
+    // Real outcome of design-package.mjs per system id:
+    // { auditStatus: 'PASS'|'FAIL', contractSha256: '<hex>' }. The engine does no
+    // I/O, so the skill layer records it here before FINAL (handoff P12).
+    designPackages: {},
+    // Path of the persisted design brief (designBriefPath(featurePath)), written in
+    // BRAINSTORM_GERAL when hasFrontend. Null until the brief is collected.
+    designBriefPath: null,
+    // Agent bound (AskUserQuestion header AgenteDesign) to the OPTIONAL Open Design prototype/Critique:
+    // null = not asked yet, { id: 'none' } = skipped, { id, where, chosenAt } = chosen (validateDesignAgent).
+    designAgent: null,
+    // Result of od-register-system.mjs per design system id (the user accepted writing it into the daemon):
+    // { registeredAt, daemonWhere: 'host'|'container', daemonVersion, contractSha256, tokensBytes }. Empty = not registered.
+    designRegistrations: {},
     // Target UI package where the executor will MATERIALIZE the verbatim system
     // files during implementation (packages/ui monorepo / src/styles single-app).
     // The Pensador itself persists the files under <featurePath>/design-systems/
@@ -3110,39 +3124,16 @@ export const OPEN_DESIGN = {
     mcp: 'od mcp install claude',
   },
   /**
-   * Open Design does NOT synthesize a DESIGN.md from a prose brief; it curates /
-   * imports DESIGN.md systems and uses them to skin generated prototypes. So the
-   * Pensador drives it with these REAL verbs: list/show the curated systems (or
-   * import one from a real brand/repo), pull the chosen DESIGN.md, then
-   * consolidate + adapt it into <featurePath>/design-system.md.
-   *
-   * The `od …` forms assume the pnpm/local install (a host `od` binary). With the
-   * Docker install there is no host `od`, so the same data is read straight from
-   * the daemon's REST API (the endpoints the `od` verbs wrap).
+   * The Pensador does NOT consume the Open Design catalog. Design tokens are
+   * derived by the Open Design brand engine (POST /api/brand/build, or
+   * `pnpm brand:build` in the local clone) from the seed built out of the
+   * user's design brief; the resolved package is rendered from the resulting
+   * design-contract.json (see references/open-design.md). Only the verbs below
+   * remain relevant to the flow: MCP wiring and the optional lint.
    */
   commands: {
-    designSystemsList: 'od design-systems list --json',
-    designSystemShow: 'od design-systems show <id> --json',
-    importGithub: 'od design-systems import-github <url>',
-    importShadcn: 'od design-systems import-shadcn <reference>',
     mcpInstall: 'od mcp install claude',
     mcpConfigHelper: 'node scripts/od-mcp-config.mjs --config <.mcp.json> --daemon-url http://localhost:7456',
-    apiDesignSystems: 'GET http://localhost:7456/api/design-systems',
-    /**
-     * Canonical file-access verbs, in order of preference:
-     *   1. `od get-file design-systems/<id>/<file>` — CLI verb, routes through the
-     *      daemon which compiles tokens.css on demand (most reliable for all files).
-     *   2. MCP `get_file` tool — same daemon route, agent-native.
-     *   3. On-disk clone `open-design/design-systems/<id>/` — fastest, no network,
-     *      but requires a local clone; tokens.css may be absent for DESIGN.md-only
-     *      systems (the daemon compiles it; the clone may not have it pre-built).
-     *
-     * Do NOT fabricate a REST file endpoint — `GET /api/design-systems/<id>` returns
-     * only metadata + DESIGN.md, not raw file bodies for tokens.css/components.html.
-     */
-    odGetFile: 'od get-file design-systems/<id>/<file>',
-    mcpGetFile: 'get_file (Open Design MCP tool) — pulls a system file verbatim (tokens.css, components.html, …)',
-    clonedSystemsDir: 'open-design/design-systems/<id>/  (filesystem source when no REST/MCP file access)',
     /**
      * Deterministic artifact-quality gate (upstream 0.20.0+, unverified locally —
      * see the "Suposições não verificadas" note in the implementation plan).
@@ -3156,54 +3147,6 @@ export const OPEN_DESIGN = {
     pluginDoctor: 'od plugin doctor',
     marketplaceAdd: 'od marketplace add <url>',
   },
-  /**
-   * The verbatim artifacts every curated/imported system ships. Entries ending
-   * with '/' are directories copied recursively; entries without are plain files.
-   * The Pensador must fetch ALL of these — not just DESIGN.md — and persist them
-   * into the target repo so the front-end agent consumes tokens.css/components.html
-   * DIRECTLY, never a prose re-write. `tokens.css` is the source of truth;
-   * inventing tokens is forbidden by the Open Design skills protocol.
-   *
-   * Read order (agent consumption): manifest.json → USAGE.md → DESIGN.md →
-   * tokens.css (paste first) → design-tokens.json / tailwind-v4.css (alternate
-   * consumption forms of the same tokens) → components.html →
-   * components.manifest.json → preview/ (visual sanity check) → system/
-   * (rendered kit + example artifacts) → source/ (audit evidence) → assets/ →
-   * fonts/ (typography fidelity).
-   *
-   * The FILE entries are the FALLBACK used when a system ships no manifest.json
-   * (legacy DESIGN.md-only systems). When manifest.json IS present,
-   * od-fetch-system.mjs derives the authoritative file list from its
-   * `files`/`usage`/`componentsManifest`/`preview.pages[]`/`sourceFiles` fields
-   * instead — see that script's `deriveExpectedFiles()`.
-   *
-   * The DIRECTORY entries ('/'-suffixed) are NOT a fallback: manifest.json has
-   * no field that declares a directory, so od-fetch-system.mjs copies them
-   * best-effort from the clone on BOTH paths (see its PACKAGE_DIRS, derived from
-   * this list). Getting this list wrong silently drops files from a run that
-   * otherwise reports ok — which is exactly what happened to system/ before
-   * 2.19.0. Measured against the 152 curated systems in the upstream clone
-   * (2026-09-05): system/ 150, source/ 151, preview/ 152, assets/ 0, fonts/ 0.
-   * assets/ and fonts/ are kept because an IMPORTED system (import-github /
-   * import-shadcn) can ship them; they are simply absent from the bundled set.
-   */
-  systemArtifacts: [
-    'manifest.json',         // machine-readable entry point — schemaVersion 'od-design-system-project/v1' when present; drives od-fetch-system.mjs's per-system file list
-    'USAGE.md',              // router: how to consume the package (read first)
-    'DESIGN.md',             // intent: prose (>=7 H2 sections upstream; this repo targets the 9-section designSchema below) + anti-patterns
-    'tokens.css',            // SOURCE OF TRUTH: compiled CSS custom properties — paste before any component CSS
-    'design-tokens.json',    // machine-readable token export (same values as tokens.css, structured)
-    'tailwind-v4.css',       // Tailwind v4 @theme mapping onto the same custom properties
-    'components.html',       // fixtures: real component HTML/CSS + states
-    'components.manifest.json', // component inventory
-    'preview/',              // visual sanity-check dir — contents vary by system (colors.html / spacing.html / typography.html / …)
-    'system/',               // rendered kit (kit.html / kit.dark.html / index.html / tokens.default.json) + system/artifacts/ example pages (landing, form, email, deck, newsletter, poster)
-    'source/',               // provenance/audit evidence (evidence.md, tokens.source.json, token-contract.report.json) — manifest.sourceFiles names the files, this copies whatever else the dir holds
-    'assets/',               // optional brand assets directory — absent from the bundled curated set; imported systems can ship it
-    'fonts/',                // optional webfont files (typography fidelity) — absent from the bundled curated set; imported systems can ship it
-  ],
-  /** Schema version manifest.json declares when present (upstream 'design-systems' contract). */
-  manifestSchemaVersion: 'od-design-system-project/v1',
   /** Eventual UI-package location the executor MATERIALIZES the verbatim files
    *  into during implementation. The Pensador itself persists them under
    *  <featurePath>/design-systems/<id>/ (see designSystemFilesRoot). */
@@ -3292,78 +3235,325 @@ export function openDesignBriefPlan() {
     'microcopy',           // voz/tom de textos, mensagens de estado
     'imageryStrategy',     // estilo e slots de imagens/banners sem placeholders
     'iconography',         // conjunto de ícones vetoriais e semântica de interface
+    'themeDefault',        // tema padrão do app: light | dark | system
+    'themeExposure',       // o app expõe o tema? toggle | system | light-only
   ];
 }
 
 /**
- * Routes each design-brief dimension (collected via AskUserQuestion) to WHERE it
- * acts on Open Design — instead of dissolving every answer into the prose of
- * design-system.md, which is what produced a flat theme. There are four
- * destinations, not one:
- *
- *  - 'selection'  → picks/imports the curated system (and its `theme` enum input).
- *  - 'input'      → typed `od.inputs` of the generation skill (content/components).
- *  - 'parameter'  → tweakable `od.parameters` sliders (hue, spacing, opacity).
- *  - 'constraint' → a validation gate over the output (e.g. WCAG AA contrast).
- *
- * A user answer that MATCHES the chosen system becomes an input/parameter; one
- * that CONFLICTS becomes a documented override in design-system.md — never a new
- * invented token (forbidden by the Open Design skills protocol). Pure and total:
- * same input → same output, never throws, no I/O.
- *
- * @returns {Record<string, 'selection'|'input'|'parameter'|'constraint'>}
+ * Seed fields the Open Design brand engine accepts (`SeedToken`, 20 fields). The
+ * display font is NOT a seed field (it lives in the contract), so it is not here.
  */
-export function openDesignBriefRouting() {
+export const OPEN_DESIGN_SEED_FIELDS = [
+  'colorPrimary', 'colorSuccess', 'colorWarning', 'colorError', 'colorInfo',
+  'colorLink', 'colorTextBase', 'colorBgBase', 'fontFamily', 'fontFamilyCode',
+  'fontSize', 'borderRadius', 'sizeUnit', 'sizeStep', 'controlHeight', 'lineWidth',
+  'motionUnit', 'motionBase', 'wireframe', 'motion',
+];
+
+/**
+ * Brief fields that carry a decision (each one `{ value, locked, questionRef }`
+ * inside `design-brief.json`). `locked: true` means the user decided it
+ * explicitly and it prevails over ANY proposal (briefToSeed never overrides it).
+ */
+export const DESIGN_BRIEF_FIELDS = [
+  'colorPrimary', 'colorSuccess', 'colorWarning', 'colorError', 'colorInfo', // colorPalette
+  'fontFamily', 'fontFamilyCode', 'fontSize',                                 // typography
+  'density',                                                                  // responsiveness
+  'borderRadius', 'motion',                                                   // component style / motion
+  'themeDefault', 'themeExposure',                                            // themes
+  'sectorContext', 'visualTone', 'brandReferences',                           // free (context/mood)
+  'accessibility', 'microcopy',                                               // constraints / voice
+  'brandUrl',                                                                 // optional: site of the brand (engine derives a seed proposal, no LLM)
+];
+
+/** Density preset → seed fields (4px grid; 8px = sizeUnit*2). */
+export const DESIGN_BRIEF_DENSITY = {
+  compact: { sizeUnit: 4, sizeStep: 4, controlHeight: 28 },
+  comfortable: { sizeUnit: 4, sizeStep: 4, controlHeight: 32 },
+  spacious: { sizeUnit: 4, sizeStep: 4, controlHeight: 40 },
+};
+
+/** Motion preset → seed fields. */
+export const DESIGN_BRIEF_MOTION = {
+  none: { motion: false, motionUnit: 0.1 },
+  subtle: { motion: true, motionUnit: 0.08 },
+  standard: { motion: true, motionUnit: 0.1 },
+};
+
+export const DESIGN_BRIEF_THEME_DEFAULTS = ['light', 'dark', 'system'];
+export const DESIGN_BRIEF_THEME_EXPOSURES = ['toggle', 'system', 'light-only'];
+
+// colorInfo must always be sent explicitly: the engine equals it to the primary otherwise.
+export const DESIGN_BRIEF_DEFAULT_COLOR_INFO = '#1677ff';
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const isHex = (v) => typeof v === 'string' && HEX_COLOR.test(v);
+const isText = (v) => typeof v === 'string' && v.trim().length > 0;
+const DESIGN_BRIEF_VALIDATORS = {
+  colorPrimary: isHex,
+  colorSuccess: isHex,
+  colorWarning: isHex,
+  colorError: isHex,
+  colorInfo: isHex,
+  fontFamily: isText,
+  fontFamilyCode: isText,
+  fontSize: (v) => isFiniteNum(v) && v >= 10 && v <= 24,
+  density: (v) => typeof v === 'string' && Object.hasOwn(DESIGN_BRIEF_DENSITY, v),
+  borderRadius: (v) => isFiniteNum(v) && v >= 0 && v <= 32,
+  motion: (v) => typeof v === 'string' && Object.hasOwn(DESIGN_BRIEF_MOTION, v),
+  themeDefault: (v) => DESIGN_BRIEF_THEME_DEFAULTS.includes(v),
+  themeExposure: (v) => DESIGN_BRIEF_THEME_EXPOSURES.includes(v),
+  sectorContext: isText,
+  visualTone: isText,
+  brandReferences: (v) => isText(v)
+    || (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string')),
+  accessibility: isText,
+  microcopy: isText,
+  brandUrl: (v) => typeof v === 'string' && v.length <= 2048 && /^https?:\/\/[^\s/]+\.[^\s/]+\S*$/i.test(v),
+};
+
+/**
+ * Builds the persisted design brief (`<featurePath>/design-brief.json`) from the
+ * AskUserQuestion answers. Every answer becomes a field
+ * `{ value, locked, questionRef }`; `locked: true` means an explicit user decision
+ * that prevails over any proposal (see briefToSeed). Pure and total (never throws,
+ * no I/O): an unknown field or an invalid value is dropped and reported in `issues`
+ * — it never becomes a silent default.
+ *
+ * `answers` maps a field of DESIGN_BRIEF_FIELDS to either the bare value (treated
+ * as locked) or `{ value, locked?, questionRef? }`.
+ *
+ * @param {{ product?: { name?: string, slug?: string }, answers?: Record<string, unknown> }} [input]
+ * @returns {{ schemaVersion: 1, product: { name: string, slug: string },
+ *   fields: Record<string, { value: unknown, locked: boolean, questionRef: string|null }>,
+ *   issues: Array<{ field: string, reason: 'unknown-field'|'invalid-value' }>,
+ *   approvedAt: string|null, approvedSha256: string|null }}
+ */
+export function buildDesignBrief(input = {}) {
+  const src = input && typeof input === 'object' ? input : {};
+  const answers = src.answers && typeof src.answers === 'object' ? src.answers : {};
+  const fields = {};
+  const issues = [];
+  for (const [field, raw] of Object.entries(answers)) {
+    if (!DESIGN_BRIEF_FIELDS.includes(field)) {
+      issues.push({ field, reason: 'unknown-field' });
+      continue;
+    }
+    const wrapped = raw !== null && typeof raw === 'object' && !Array.isArray(raw) && 'value' in raw;
+    const value = wrapped ? raw.value : raw;
+    if (!DESIGN_BRIEF_VALIDATORS[field](value)) {
+      issues.push({ field, reason: 'invalid-value' });
+      continue;
+    }
+    fields[field] = {
+      value,
+      locked: !(wrapped && raw.locked === false),
+      questionRef: wrapped && typeof raw.questionRef === 'string' ? raw.questionRef : null,
+    };
+  }
+  const product = src.product && typeof src.product === 'object' ? src.product : {};
   return {
-    sectorContext: 'input',       // orienta imagery/iconografia de produto-serviço e o
-                                   // vocabulário de domínio da microcopy (não é tema visual)
-    visualTone: 'selection',      // casa o system curado mais próximo + `theme` enum
-    brandReferences: 'selection', // marca real citada → import-github do system
-    colorPalette: 'parameter',    // accent_hue / accent_strength sobre o token
-    typography: 'parameter',      // escala/família (section override quando conflita)
-    componentStates: 'input',     // estados exigidos, validados vs components.html
-    responsiveness: 'parameter',  // section_spacing / densidade
-    accessibility: 'constraint',  // gate WCAG (contraste AA) sobre o output
-    microcopy: 'input',           // tagline + copy das seções + CTAs
-    imageryStrategy: 'input',     // diretriz para geração e seleção de imagens
-    iconography: 'constraint',    // restrição visual de ícones
+    schemaVersion: 1,
+    product: { name: String(product.name ?? ''), slug: String(product.slug ?? '') },
+    fields,
+    issues,
+    approvedAt: null,
+    approvedSha256: null,
   };
 }
 
 /**
- * Plans the verbatim system files to fetch from Open Design and where each lands
- * in the target repo, so the front-end agent consumes tokens.css/components.html
- * directly. This is a deterministic descriptor — the engine performs NO I/O; the
- * skill/LLM layer (MCP `get_file` or the cloned repo) does the actual fetch.
+ * Deterministic mapping brief → engine seed (`source/seed.json`), the only input of
+ * the Open Design brand engine. Precedence per field:
  *
- * `tokens.css` and `DESIGN.md` are marked required (a system is unusable without
- * them); the rest are best-effort. `od-fetch-system.mjs` attempts all three
- * resolution paths (clone → od get-file → REST) before declaring required files
- * missing. Pure and total: same input → same output.
+ *   locked brief field ▸ `proposals` (AGY, for NON-locked fields; user-confirmed)
+ *   ▸ unlocked brief value ▸ engine default (field omitted).
  *
- * The `rootDir` is the directory under which `design-systems/<id>/` is created.
- * In the Pensador flow this is the FEATURE ROOT (`.pensador/<slug>-vN/`, via
- * designSystemFilesRoot) so the verbatim files stay inside the producer's
- * artifact root — NOT the eventual UI package. The legacy default remains
- * `packages/ui` only for direct/standalone callers.
+ * A locked field is NEVER overridden by a proposal. Emits only the 20 `SeedToken`
+ * fields (OPEN_DESIGN_SEED_FIELDS) and ALWAYS sends `colorInfo` explicitly (the
+ * engine would otherwise equal it to the primary). `provenance` records the origin
+ * per seed field: 'brief' (locked) | 'proposed' | 'brief-unlocked' | 'engine-default'.
+ * Invalid values are ignored (never emitted). Pure and total: same input → same
+ * output, never throws, no I/O.
  *
- * @param {string[]|null|undefined} systemIds  selected/imported system slugs
- * @param {string} [rootDir='packages/ui']  base dir under which design-systems/<id>/ lands
- * @returns {{ id: string, destDir: string, files: { source: string, dest: string, required: boolean }[] }[]}
+ * @param {ReturnType<typeof buildDesignBrief>} brief
+ * @param {Record<string, unknown>} [proposals]  same keys as DESIGN_BRIEF_FIELDS
+ * @returns {{ seed: Record<string, string|number|boolean>,
+ *   provenance: Record<string, 'brief'|'proposed'|'brief-unlocked'|'engine-default'> }}
  */
-export function openDesignFetchPlan(systemIds, rootDir = 'packages/ui') {
-  const ids = Array.isArray(systemIds) ? systemIds.filter(Boolean) : [];
-  const base = `${String(rootDir).replace(/\/+$/, '')}/design-systems`;
-  const required = new Set(['tokens.css', 'DESIGN.md', 'components.html', 'preview/']);
-  return ids.map((id) => ({
-    id,
-    destDir: `${base}/${id}/original`,
-    files: OPEN_DESIGN.systemArtifacts.map((source) => ({
-      source,
-      dest: `${base}/${id}/original/${source}`,
-      required: required.has(source),
-    })),
-  }));
+export function briefToSeed(brief, proposals = {}) {
+  const fields = brief && typeof brief === 'object' && brief.fields && typeof brief.fields === 'object'
+    ? brief.fields : {};
+  const props = proposals && typeof proposals === 'object' ? proposals : {};
+
+  // Resolves one brief field to { value, origin } honoring the precedence above.
+  const resolve = (name) => {
+    const valid = DESIGN_BRIEF_VALIDATORS[name];
+    const f = Object.hasOwn(fields, name) ? fields[name] : null;
+    const has = Boolean(f) && typeof f === 'object' && valid(f.value);
+    if (has && f.locked === true) return { value: f.value, origin: 'brief' };
+    if (Object.hasOwn(props, name) && valid(props[name])) return { value: props[name], origin: 'proposed' };
+    if (has) return { value: f.value, origin: 'brief-unlocked' };
+    return null;
+  };
+
+  const seed = {};
+  const provenance = {};
+  const put = (key, hit, value = hit.value) => {
+    seed[key] = value;
+    provenance[key] = hit.origin;
+  };
+
+  for (const key of ['colorPrimary', 'colorSuccess', 'colorWarning', 'colorError', 'colorInfo',
+    'fontFamily', 'fontFamilyCode', 'fontSize', 'borderRadius']) {
+    const hit = resolve(key);
+    if (hit) put(key, hit);
+  }
+  const density = resolve('density');
+  if (density) for (const [k, v] of Object.entries(DESIGN_BRIEF_DENSITY[density.value])) put(k, density, v);
+  const motion = resolve('motion');
+  if (motion) for (const [k, v] of Object.entries(DESIGN_BRIEF_MOTION[motion.value])) put(k, motion, v);
+
+  if (!('colorInfo' in seed)) {
+    seed.colorInfo = DESIGN_BRIEF_DEFAULT_COLOR_INFO;
+    provenance.colorInfo = 'engine-default';
+  }
+  return { seed, provenance };
+}
+
+/**
+ * Path of the persisted brief, at the feature root next to design-systems/.
+ * Pure and total (same fallback as designSystemFilesRoot).
+ *
+ * @param {string|null|undefined} featurePath
+ * @returns {string}
+ */
+export function designBriefPath(featurePath) {
+  return `${designSystemFilesRoot(featurePath)}/design-brief.json`;
+}
+
+/** Brief fields the visual approval offers as quick adjustments (each one re-derives the seed and re-renders). */
+export const DESIGN_BRIEF_QUICK_ADJUSTMENTS = ['colorPrimary', 'density', 'borderRadius', 'fontFamily', 'themeDefault'];
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * Applies the user's quick adjustments from the visual approval to the brief. An adjustment is an
+ * explicit decision, so the field becomes `locked: true` (questionRef `approval-adjust`), and any
+ * earlier approval is cleared: what was approved no longer exists. Only DESIGN_BRIEF_QUICK_ADJUSTMENTS
+ * are accepted; an unknown field or invalid value is reported in `issues` and leaves the brief as is.
+ * Pure and total (no I/O, never throws).
+ *
+ * @param {ReturnType<typeof buildDesignBrief>} brief
+ * @param {Record<string, unknown>} adjustments
+ * @returns {{ brief: object, applied: string[], issues: Array<{ field: string, reason: 'not-adjustable'|'invalid-value' }> }}
+ */
+export function applyDesignAdjustments(brief, adjustments = {}) {
+  const base = brief && typeof brief === 'object' ? brief : buildDesignBrief();
+  const fields = { ...(base.fields && typeof base.fields === 'object' ? base.fields : {}) };
+  const applied = [];
+  const issues = [];
+  const entries = adjustments && typeof adjustments === 'object' ? Object.entries(adjustments) : [];
+  for (const [field, value] of entries) {
+    if (!DESIGN_BRIEF_QUICK_ADJUSTMENTS.includes(field)) issues.push({ field, reason: 'not-adjustable' });
+    else if (!DESIGN_BRIEF_VALIDATORS[field](value)) issues.push({ field, reason: 'invalid-value' });
+    else {
+      fields[field] = { value, locked: true, questionRef: 'approval-adjust' };
+      applied.push(field);
+    }
+  }
+  const next = applied.length > 0 ? { ...base, fields, approvedAt: null, approvedSha256: null } : base;
+  return { brief: next, applied, issues };
+}
+
+/**
+ * Records the visual approval in the brief: `approvedAt` (ISO-8601) and `approvedSha256`, the sha256
+ * of the design-contract.json the user actually saw in `preview/`. Refuses a malformed timestamp or
+ * hash (`ok: false`, brief unchanged). Pure and total.
+ *
+ * @returns {{ ok: boolean, brief: object, issue: null|'invalid-approvedAt'|'invalid-sha256' }}
+ */
+export function approveDesignBrief(brief, { approvedAt, contractSha256 } = {}) {
+  const base = brief && typeof brief === 'object' ? brief : buildDesignBrief();
+  if (typeof approvedAt !== 'string' || Number.isNaN(Date.parse(approvedAt)) || !/^\d{4}-\d{2}-\d{2}T/.test(approvedAt)) return { ok: false, brief: base, issue: 'invalid-approvedAt' };
+  if (typeof contractSha256 !== 'string' || !SHA256_HEX.test(contractSha256)) return { ok: false, brief: base, issue: 'invalid-sha256' };
+  return { ok: true, brief: { ...base, approvedAt, approvedSha256: contractSha256 }, issue: null };
+}
+
+/** True only when the brief was approved for THIS contract (an approval of an older contract does not count). */
+export function isDesignApproved(brief, contractSha256) {
+  return Boolean(brief && typeof brief === 'object' && typeof brief.approvedAt === 'string' && brief.approvedAt
+    && typeof contractSha256 === 'string' && SHA256_HEX.test(contractSha256) && brief.approvedSha256 === contractSha256);
+}
+
+/** `header` of the AskUserQuestion that binds the agent used for the design prototype/Critique (<= 12 chars). */
+export const DESIGN_AGENT_HEADER = 'AgenteDesign';
+/** Option label (and `designAgent.id`) for "no agent": prototype and Critique stay off. */
+export const DESIGN_AGENT_NONE = 'none';
+export const DESIGN_AGENT_LOCATIONS = ['host', 'container'];
+
+/**
+ * Validates a persisted `state.designAgent`: `null` (not asked yet), `{ id: 'none' }` or
+ * `{ id, where: 'host'|'container', chosenAt: ISO-8601 }`. Pure and total.
+ *
+ * @returns {{ ok: boolean, issues: string[] }}
+ */
+export function validateDesignAgent(value) {
+  if (value === null || value === undefined) return { ok: true, issues: [] };
+  const issues = [];
+  if (typeof value !== 'object' || Array.isArray(value)) return { ok: false, issues: ['not-an-object'] };
+  if (typeof value.id !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(value.id)) issues.push('invalid-id');
+  if (value.id !== DESIGN_AGENT_NONE) {
+    if (!DESIGN_AGENT_LOCATIONS.includes(value.where)) issues.push('invalid-where');
+    if (typeof value.chosenAt !== 'string' || Number.isNaN(Date.parse(value.chosenAt))) issues.push('invalid-chosenAt');
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Binds the agent the user picked for the design prototype/Critique to what was detected.
+ *
+ * `agents` is the preflight `designAgents.agents` list: `{ id, where: 'host'|'container', available,
+ * authenticated?: true|false|'unknown' }`. `choice` is the AskUserQuestion answer: an agent id, or
+ * `'none'` / `{ id: 'none' }`. `daemonWhere` is where the Open Design daemon runs (`'host'` |
+ * `'container'` | null when unreachable): the daemon can only launch an agent that lives in ITS
+ * environment, so a host-only agent with a container daemon (or the reverse) is refused with the two
+ * remediations instead of being accepted silently. `now` is injected to keep the function pure.
+ *
+ * Returns `{ ok, designAgent, prototypeEnabled, issues, remediations }`. Only an accepted, launchable
+ * agent sets `prototypeEnabled`; even then the run itself still needs the user's explicit consent
+ * (it costs tokens) — this function never decides that.
+ */
+export function resolveDesignAgent(agents, choice, { daemonWhere = null, now = new Date().toISOString() } = {}) {
+  const list = Array.isArray(agents) ? agents.filter((a) => a && typeof a.id === 'string') : [];
+  const id = typeof choice === 'string' ? choice : choice && typeof choice === 'object' ? choice.id : null;
+  const refuse = (issue, remediations = []) => ({ ok: false, designAgent: null, prototypeEnabled: false, issues: [issue], remediations });
+  if (typeof id !== 'string' || !id) return refuse('no-choice');
+  if (id === DESIGN_AGENT_NONE) return { ok: true, designAgent: { id: DESIGN_AGENT_NONE }, prototypeEnabled: false, issues: [], remediations: [] };
+  const matches = list.filter((a) => a.id === id && a.available === true);
+  if (matches.length === 0) return refuse('agent-not-detected');
+  const usable = daemonWhere ? matches.find((a) => a.where === daemonWhere) : null;
+  if (usable) {
+    const issues = usable.authenticated === false ? ['agent-not-authenticated'] : [];
+    return {
+      ok: usable.authenticated !== false,
+      designAgent: usable.authenticated === false ? null : { id, where: usable.where, chosenAt: now },
+      prototypeEnabled: usable.authenticated !== false,
+      issues,
+      remediations: usable.authenticated === false ? [`authenticate-${id}-in-${usable.where}`] : [],
+    };
+  }
+  const where = matches[0].where;
+  if (!daemonWhere) {
+    // The agent exists but the daemon is not reachable: record the choice, keep the prototype off.
+    return { ok: true, designAgent: { id, where, chosenAt: now }, prototypeEnabled: false, issues: ['daemon-unreachable'], remediations: ['start-open-design-daemon'] };
+  }
+  return refuse('agent-not-visible-to-daemon', [
+    daemonWhere === 'container' ? `install-and-authenticate-${id}-in-container` : `install-and-authenticate-${id}-in-daemon-host`,
+    daemonWhere === 'container' ? 'run-daemon-on-host' : 'run-daemon-in-container',
+  ]);
 }
 
 /**
@@ -3471,7 +3661,7 @@ export function openDesignSpecContract(featurePath, systemIds, uiPackageDir = 'p
     capabilitySpec: `${changeDir}/specs/ui-design-system/spec.md`,
     systems: ids.map((id) => {
       const src = `${root}/design-systems/${id}/resolved`;
-      const dst = `${uiRoot}/styles/design-systems/${id}`;
+      const dst = `${uiRoot}/design-systems/${id}`;
       return {
         id,
         verbatimDir: `${src}/`,
@@ -4190,7 +4380,7 @@ export function buildArtifactList(state) {
   }
 
   // The resolved package is authoritative. Open Design input remains immutable
-  // under original/ and is never handed to an executor as the implementation source.
+  // under source/ (engine provenance) and is never handed to an executor as the implementation source.
   const isFinalStage = plan.prd || plan.proposal || plan.designSystem || plan.userhistory;
   const { hasFrontend } = classifyProject(state.consolidated);
   const selectedSystems = Array.isArray(state.designSystems)
@@ -4198,23 +4388,33 @@ export function buildArtifactList(state) {
     : [];
   if (isFinalStage && hasFrontend && selectedSystems.length > 0) {
     const materializeRoot = String(state.uiPackageDir || 'packages/ui').replace(/\/+$/, '');
-    for (const entry of openDesignFetchPlan(selectedSystems, designSystemFilesRoot(state.featurePath))) {
+    const root =designSystemFilesRoot(state.featurePath);
+    const packages = state.designPackages && typeof state.designPackages === 'object' ? state.designPackages : {};
+    for (const id of selectedSystems) {
+      // The engine performs no I/O: the skill layer runs design-package.mjs
+      // (render + audit) and records the REAL outcome in state.designPackages[id].
+      // Without that evidence the status is UNVERIFIED — never a hardcoded PASS.
+      const pkg = packages[id] && typeof packages[id] === 'object' ? packages[id] : {};
+      const auditStatus = typeof pkg.auditStatus === 'string' && pkg.auditStatus ? pkg.auditStatus : 'UNVERIFIED';
       artifacts.push({
         kind: 'design-system-files',
-        filename: `design-systems/${entry.id}/resolved/`,
-        path: `${designSystemFilesRoot(state.featurePath)}/design-systems/${entry.id}/resolved`,
+        filename: `design-systems/${id}/resolved/`,
+        path: `${root}/design-systems/${id}/resolved`,
         variant: 'resolved',
         authoritative: true,
-        sourcePath: `design-systems/${entry.id}/original/`,
+        // Engine provenance (brand.json, seed.json, raw engine output, engine-run.json).
+        sourcePath: `design-systems/${id}/source/`,
         verbatim: false,
-        // Written by od-fetch-system.mjs for every complete bundle. The
-        // consumer inspects this deterministic status before materializing.
-        consistencyReport: `design-systems/${entry.id}/resolved/design-audit.json`,
+        consistencyReport: `design-systems/${id}/resolved/design-audit.json`,
         consistencyGate: 'resolved-contract-authoritative',
         assetsManifest: 'assets/manifest.json',
-        validation: { status: 'PASS', audit: 'design-audit.json' },
+        contractSha256: typeof pkg.contractSha256 === 'string' && pkg.contractSha256 ? pkg.contractSha256 : null,
+        // Light and dark are always derived from the same seed (plan decision 2).
+        themes: Array.isArray(pkg.themes) && pkg.themes.length ? pkg.themes : ['light', 'dark'],
+        designBriefPath: state.designBriefPath ? 'design-brief.json' : null,
+        validation: { status: auditStatus, audit: 'design-audit.json' },
         // The eventual UI package the executor materializes these into.
-        materializeInto: `${materializeRoot}/styles/design-systems/${entry.id}/`,
+        materializeInto: `${materializeRoot}/design-systems/${id}/`,
       });
     }
   }
@@ -4451,8 +4651,9 @@ export function deserializeState(serialized) {
  * @property {MarketResearch|null} [marketResearch] // RESEARCH business track + reusable Prompt System
  * @property {string[]} [techStack]                 // technologies detected in RESEARCH (detectTechStack)
  * @property {TechResearch|null} [techResearch]     // RESEARCH technical track (may be DEFERRED to ARCH)
- * @property {string[]} [designSystems]  // Open Design system ids chosen at BRAINSTORM_GERAL (hasFrontend)
- * @property {string} [uiPackageDir]     // UI package root for verbatim system files (default 'packages/ui')
+ * @property {string[]} [designSystems]  // ids of the design systems generated in DESIGN (derived from the product; hasFrontend)
+ * @property {Record<string, {auditStatus?: string, contractSha256?: string}>} [designPackages] // real design-audit.json status + contract sha256 per system id, recorded by the skill layer after render+audit
+ * @property {string} [uiPackageDir]     // UI package root the resolved design system is materialized into (default 'packages/ui')
  * @property {'rest'|'graphql'|'grpc'|'events'} [apiStyle] // API style detected in ARCH → machine-readable contract format
  */
 
@@ -4481,10 +4682,14 @@ export function deserializeState(serialized) {
  * @property {'resolved'|'legacy-verbatim'} [variant]
  * @property {boolean} [authoritative]
  * @property {string} [sourcePath]
+ * @property {string|null} [contractSha256] // sha256 of resolved/design-contract.json (null until recorded)
  * @property {string} [assetsManifest]
+ * @property {string|null} [contractSha256]
+ * @property {string[]} [themes]
+ * @property {string|null} [designBriefPath]
  * @property {string} [manifest]      // path to asset manifest for brand-assets
  * @property {string} [description]   // human-readable summary
- * @property {string} [consistencyReport] // design-system-files sidecar generated by od-fetch-system.mjs
+ * @property {string} [consistencyReport] // design-system-files sidecar (design-audit.json) generated by design-package.mjs
  * @property {'tokens.css-authoritative'|'resolved-contract-authoritative'} [consistencyGate]
  * @property {string} [spec]          // contract spec family for api-contract (openapi/graphql-sdl/protobuf/asyncapi)
  * @property {{ spec?: string, mock?: string, validate?: string, status?: string, audit?: string }} [validation]

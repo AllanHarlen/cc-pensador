@@ -118,6 +118,8 @@ Leia tambem o bloco `integrations`:
 - `integrations.openspec` (opcional): se detectado, o INIT deve oferecer PRD vs Spec.
 - `integrations.openDesign` (opcional, condicional a front-end): se a demanda tiver front-end e o Open Design (`od`) nao for detectado, ofereca instalacao via `AskUserQuestion` rodando o script `scripts/install-open-design.ps1` (Windows) ou `scripts/install-open-design.sh` (macOS/Linux), que sobe o Open Design via Docker e conecta o MCP; ou caia para `design-system.md` inline. Com o Open Design no ar, puxe o DESIGN.md via `od design-systems list/show` (ou pela API do daemon, no modo Docker). Veja `skills/pensador/references/open-design.md`.
 
+- `integrations.designAgents` (opcional, condicional a front-end): agentes que podem gerar o prototipo/Critique do Open Design (`agents[]` com `id`, `where` = `host`|`container`, `available`, `authenticated`; `daemonWhere` indica onde o daemon roda). Com front-end e ao menos um agente disponivel, pergunte **uma vez** via `AskUserQuestion` (`header: "AgenteDesign"`, opcoes = agentes detectados + "Nenhum (pular prototipo)"), grave com `scripts/design-brief.mjs agent --agents <preflight.json> --choose <id|none>` e use `--agent <id>` no `od run start` so apos o aceite explicito do usuario (custo). Veja `skills/pensador/references/open-design.md`.
+
 Se o preflight falhar, nao aborte. Trate como `partial`.
 
 ### Passo 2 - Carregar Pensador
@@ -216,7 +218,7 @@ Ao concluir FINAL, informe:
 - Caminho de `prd.md` (modo PRD) ou do change set `openspec/changes/<nome>/` (modo Spec).
 - Caminho de `userhistory.md` (modo PRD).
 - Caminho do contrato maquina-legivel (`openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml`) e de `communication.md` (visao derivada), se houver back-end confirmado (modo PRD).
-- Caminho dos arquivos do design system, se houver front-end (modo PRD): quando o Open Design foi usado, `design-systems/<id>/` (arquivos verbatim, incl. `DESIGN.md`); no fallback (sem Open Design), o `design-system.md` inline.
+- Caminho dos arquivos do design system, se houver front-end (modo PRD): quando o design system foi gerado, `design-systems/<id>/` (`resolved/`, incl. `DESIGN.md`); no fallback (sem Open Design), o `design-system.md` inline.
 - Caminho de `codebase-memory.md`, `market-research.md`, `tech-research.md` e `architecture.md`.
 - Caminho de `shared-agents/agent.response.md`.
 - Caminho de `handoff.json` (manifesto de handoff para o Orquestrador).

@@ -448,8 +448,28 @@ describe('buildArtifactList(state)', () => {
       expect(dsf[0].verbatim).toBe(false);
       expect(dsf[0].consistencyReport).toBe('design-systems/agentic/resolved/design-audit.json');
       expect(dsf[0].consistencyGate).toBe('resolved-contract-authoritative');
+      // Provenance now lives under source/ (engine output), never original/.
+      expect(dsf[0].sourcePath).toBe('design-systems/agentic/source/');
+      // No I/O evidence recorded -> never a hardcoded PASS.
+      expect(dsf[0].validation).toEqual({ status: 'UNVERIFIED', audit: 'design-audit.json' });
+      expect(dsf[0].contractSha256).toBeNull();
+      expect(dsf[0].themes).toEqual(['light', 'dark']);
+      expect(dsf[0].designBriefPath).toBeNull();
       // uiPackageDir is only the downstream materialization hint, not the path.
-      expect(dsf[0].materializeInto).toBe('packages/ui/styles/design-systems/agentic/');
+      expect(dsf[0].materializeInto).toBe('packages/ui/design-systems/agentic/');
+    });
+
+    it('records the real audit status and contractSha256 from state.designPackages (P12)', () => {
+      const state = {
+        ...stateAt('FINAL', [frontendReq()]),
+        designSystems: ['gestuor', 'outro'],
+        designPackages: { gestuor: { auditStatus: 'PASS', contractSha256: 'abc123' }, outro: { auditStatus: 'FAIL' } },
+      };
+      const [a, b] = buildArtifactList(state).filter((x) => x.kind === 'design-system-files');
+      expect(a.validation.status).toBe('PASS');
+      expect(a.contractSha256).toBe('abc123');
+      expect(b.validation.status).toBe('FAIL');
+      expect(b.contractSha256).toBeNull();
     });
 
     it('roots verbatim files under the concrete featurePath', () => {
@@ -488,7 +508,7 @@ describe('buildArtifactList(state)', () => {
       const dsf = buildArtifactList(state).find((a) => a.kind === 'design-system-files');
       // Persisted inside the feature root regardless of the UI package target.
       expect(dsf.path).toBe('.pensador/checkout-v2/design-systems/vercel/resolved');
-      expect(dsf.materializeInto).toBe('frontend/packages/ui/styles/design-systems/vercel/');
+      expect(dsf.materializeInto).toBe('frontend/packages/ui/design-systems/vercel/');
     });
 
     it('is gated on the final stage and on hasFrontend', () => {

@@ -26,7 +26,7 @@ O Pensador v2 isola cada execucao em um diretorio proprio sob `.pensador/`, nome
     communication.md
     design-system.md              # so no fallback (front-end sem Open Design)
     design-systems/
-      <id>/                     # arquivos verbatim do Open Design (tokens.css, DESIGN.md, components.html, preview/, …)
+      <id>/                     # design system gerado: source/ (proveniencia do engine) e resolved/ (tokens.css, DESIGN.md, components.html, preview/, …)
   carrinho-checkout-v1/
     ...
 ```
@@ -153,8 +153,8 @@ Arquivos:
 - `prd.md`: modo PRD. No modo Spec, o entregavel e o change set OpenSpec em `openspec/changes/<nome>/` (criado por `/opsx:propose`), fora de `.pensador/`.
 - `userhistory.md`: modo PRD (nao se aplica no modo Spec).
 - `communication.md`: modo PRD, somente quando ha back-end confirmado (nao se aplica no modo Spec).
-- `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`) **e o Open Design NAO foi usado** (fallback inline das 9 secoes). Quando um system e selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design. Nao se aplica no modo Spec.
-- `design-systems/<id>/`: arquivos verbatim do Open Design (`tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), quando `hasFrontend` e um system foi selecionado — nos dois modos. Ficam dentro da pasta da feature; o Executor os materializa depois em `packages/ui`/`src/styles` (`state.uiPackageDir`).
+- `design-system.md`: modo PRD, somente quando ha front-end (`hasFrontend`) **e o Open Design NAO foi usado** (fallback inline das 9 secoes). Quando um design system e gerado, o `DESIGN.md` de `design-systems/<id>/resolved/` e o documento de design. Nao se aplica no modo Spec.
+- `design-systems/<id>/`: design system gerado (`source/` + `resolved/` com `tokens.css`, `DESIGN.md`, `components.html`, `preview/`, …), quando `hasFrontend` e um design system foi gerado — nos dois modos. Ficam dentro da pasta da feature; o Executor os materializa depois em `packages/ui`/`src/styles` (`state.uiPackageDir`).
 
 Alem dos artefatos finais, `<featurePath>/` contem quatro arquivos de trabalho: `codebase-memory.md` (exploracao do Code Base Memory, gravado no EXPLORE), `market-research.md` e `tech-research.md` (os dois tracks do RESEARCH) e `architecture.md` (gravado no ARCH).
 - `prd.md`: sempre.

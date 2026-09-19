@@ -8,6 +8,7 @@
  *   - planArtifacts / buildArtifactList in spec mode (OpenSpec change set).
  */
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import {
   CODEBASE_MEMORY,
   codebaseMemorySnapshotPath,
@@ -23,8 +24,11 @@ import {
   designSystemArtifactPath,
   designSystemFilesRoot,
   openDesignBriefPlan,
-  openDesignBriefRouting,
-  openDesignFetchPlan,
+  buildDesignBrief,
+  briefToSeed,
+  designBriefPath,
+  OPEN_DESIGN_SEED_FIELDS,
+  DESIGN_BRIEF_FIELDS,
   openDesignDeliveryFor,
   openDesignSpecContract,
   resolveUiPackageDir,
@@ -329,13 +333,14 @@ describe('Open Design descriptor', () => {
     expect(OPEN_DESIGN.installCommands.local).toContain('pnpm tools-dev');
     // `od mcp install` is the real post-setup wiring step.
     expect(OPEN_DESIGN.installCommands.mcp).toContain('od mcp install');
-    // Real design verbs the Pensador drives.
-    expect(OPEN_DESIGN.commands.designSystemsList).toContain('od design-systems list');
-    expect(OPEN_DESIGN.commands.designSystemShow).toContain('od design-systems show');
+    // The catalog verbs are gone: the Pensador no longer lists/imports/downloads systems.
+    for (const removed of ['designSystemsList', 'designSystemShow', 'importGithub', 'importShadcn', 'apiDesignSystems', 'odGetFile', 'mcpGetFile', 'clonedSystemsDir']) {
+      expect(OPEN_DESIGN.commands[removed]).toBeUndefined();
+    }
+    expect(OPEN_DESIGN.systemArtifacts).toBeUndefined();
+    expect(OPEN_DESIGN.manifestSchemaVersion).toBeUndefined();
     expect(OPEN_DESIGN.commands.mcpInstall).toContain('od mcp install');
     expect(OPEN_DESIGN.commands.mcpConfigHelper).toContain('od-mcp-config.mjs');
-    // Docker-friendly REST fallback the verbs wrap.
-    expect(OPEN_DESIGN.commands.apiDesignSystems).toContain('/api/design-systems');
     // Upstream documents a hosted one-line installer (open-design.ai/install.sh),
     // but this repo deliberately never drives it: it is opaque (nothing to
     // review before running) and this repo already clones the source, which
@@ -370,104 +375,129 @@ describe('Open Design descriptor', () => {
       'microcopy',
       'imageryStrategy',
       'iconography',
+      'themeDefault',
+      'themeExposure',
     ]);
     expect(() => openDesignBriefPlan()).not.toThrow();
   });
 
-  it('ships the verbatim system artifacts in USAGE.md read order (tokens.css is the source of truth)', () => {
-    // The bug this guards: pulling only DESIGN.md (prose) and re-writing it.
-    // Directory entries (trailing '/') are copied recursively and are the ONLY
-    // way a directory reaches the output — manifest.json declares files, never
-    // directories, so od-fetch-system.mjs derives PACKAGE_DIRS from this list on
-    // BOTH the manifest and the legacy path. Measured over the 152 curated
-    // systems in the upstream clone (2026-09-05): preview/ 152, source/ 151,
-    // system/ 150, assets/ 0, fonts/ 0. system/ was missing from this list until
-    // 2.19.0, silently dropping 11 files per system from runs reporting ok.
-    expect(OPEN_DESIGN.systemArtifacts).toEqual([
-      'manifest.json',
-      'USAGE.md',
-      'DESIGN.md',
-      'tokens.css',
-      'design-tokens.json',
-      'tailwind-v4.css',
-      'components.html',
-      'components.manifest.json',
-      'preview/',
-      'system/',
-      'source/',
-      'assets/',
-      'fonts/',
-    ]);
-    expect(OPEN_DESIGN.manifestSchemaVersion).toBe('od-design-system-project/v1');
+  it('keeps the runtime UI-package target aligned with the docs and the OpenSpec requirement', () => {
     expect(OPEN_DESIGN.systemsDir).toBe('packages/ui/design-systems');
-    // Canonical file-access path: od get-file, then MCP get_file, then cloned repo.
-    // The REST endpoint /api/design-systems/<id> returns metadata only, not raw file bodies.
-    expect(OPEN_DESIGN.commands.odGetFile).toContain('od get-file');
-    expect(OPEN_DESIGN.commands.mcpGetFile).toContain('get_file');
-    expect(OPEN_DESIGN.commands.clonedSystemsDir).toContain('design-systems/<id>');
   });
 
-  it('openDesignBriefRouting sends every brief dimension to a structured destination (not prose)', () => {
-    const routing = openDesignBriefRouting();
-    // Every brief dimension from openDesignBriefPlan must be routed.
-    for (const dim of openDesignBriefPlan()) {
-      expect(routing[dim]).toBeDefined();
-    }
-    expect(routing).toEqual({
-      sectorContext: 'input',
-      visualTone: 'selection',
-      brandReferences: 'selection',
-      colorPalette: 'parameter',
-      typography: 'parameter',
-      componentStates: 'input',
-      responsiveness: 'parameter',
-      accessibility: 'constraint',
-      microcopy: 'input',
-      imageryStrategy: 'input',
-      iconography: 'constraint',
+  describe('design brief as contract (buildDesignBrief / briefToSeed)', () => {
+    const answers = {
+      colorPrimary: { value: '#0F766E', locked: true, questionRef: 'brainstorm-q3' },
+      colorSuccess: '#16A34A',
+      fontFamily: 'Inter, sans-serif',
+      borderRadius: 8,
+      density: 'comfortable',
+      motion: 'subtle',
+      themeDefault: 'system',
+      themeExposure: 'toggle',
+      visualTone: { value: 'clean e sóbrio', locked: false },
+    };
+
+    it('buildDesignBrief records locked flag and questionRef per field, and reports invalid input', () => {
+      const brief = buildDesignBrief({
+        product: { name: 'Gestuor', slug: 'gestuor' },
+        answers: { ...answers, colorError: 'red', bogus: 1 },
+      });
+      expect(brief.schemaVersion).toBe(1);
+      expect(brief.product).toEqual({ name: 'Gestuor', slug: 'gestuor' });
+      expect(brief.fields.colorPrimary).toEqual({ value: '#0F766E', locked: true, questionRef: 'brainstorm-q3' });
+      expect(brief.fields.colorSuccess.locked).toBe(true); // bare value = explicit decision
+      expect(brief.fields.visualTone.locked).toBe(false);
+      expect(brief.fields.colorError).toBeUndefined();
+      expect(brief.issues).toEqual([
+        { field: 'colorError', reason: 'invalid-value' },
+        { field: 'bogus', reason: 'unknown-field' },
+      ]);
+      expect(brief.approvedAt).toBeNull();
+      expect(() => buildDesignBrief(null)).not.toThrow();
+      expect(() => buildDesignBrief(undefined)).not.toThrow();
     });
-    // Only the four documented destinations exist.
-    const allowed = new Set(['selection', 'input', 'parameter', 'constraint']);
-    for (const dest of Object.values(routing)) expect(allowed.has(dest)).toBe(true);
-    expect(() => openDesignBriefRouting()).not.toThrow();
-  });
 
-  it('openDesignFetchPlan persists every system file under packages/ui/design-systems, tokens.css required', () => {
-    const plan = openDesignFetchPlan(['bmw', 'clean']);
-    expect(plan).toHaveLength(2);
-    const bmw = plan[0];
-    expect(bmw.id).toBe('bmw');
-    expect(bmw.destDir).toBe('packages/ui/design-systems/bmw/original');
-    expect(bmw.files.map((f) => f.source)).toEqual(OPEN_DESIGN.systemArtifacts);
-    const tokens = bmw.files.find((f) => f.source === 'tokens.css');
-    expect(tokens.dest).toBe('packages/ui/design-systems/bmw/original/tokens.css');
-    expect(tokens.required).toBe(true);
-    expect(bmw.files.find((f) => f.source === 'DESIGN.md').required).toBe(true);
-    // Optional artifacts — present when the system ships them, never fatal if absent.
-    expect(bmw.files.find((f) => f.source === 'manifest.json').required).toBe(false);
-    expect(bmw.files.find((f) => f.source === 'preview/').required).toBe(true);
-    for (const dir of ['system/', 'source/', 'assets/', 'fonts/']) {
-      expect(bmw.files.find((f) => f.source === dir).required).toBe(false);
-    }
-  });
+    it('briefToSeed emits only SeedToken fields and always sends colorInfo explicitly', () => {
+      const { seed, provenance } = briefToSeed(buildDesignBrief({ answers }));
+      for (const key of Object.keys(seed)) expect(OPEN_DESIGN_SEED_FIELDS).toContain(key);
+      expect(seed).toMatchObject({
+        colorPrimary: '#0F766E', colorSuccess: '#16A34A', fontFamily: 'Inter, sans-serif',
+        borderRadius: 8, sizeUnit: 4, sizeStep: 4, controlHeight: 32, motion: true, motionUnit: 0.08,
+      });
+      expect(seed.colorInfo).toBeDefined();
+      expect(seed.colorInfo).not.toBe(seed.colorPrimary);
+      expect(provenance.colorInfo).toBe('engine-default');
+      expect(provenance.colorPrimary).toBe('brief');
+      // theme/tone/context fields are not seed fields
+      expect(seed).not.toHaveProperty('themeDefault');
+      expect(seed).not.toHaveProperty('visualTone');
+    });
 
-  it('requires preview while keeping non-preview source directories best-effort', () => {
-    // Guards the invariant PACKAGE_DIRS relies on: a directory is never in
-    // BASE_REQUIRED, so a system that ships none of them still exits 0.
-    const dirs = OPEN_DESIGN.systemArtifacts.filter((f) => f.endsWith('/'));
-    expect(dirs).toEqual(['preview/', 'system/', 'source/', 'assets/', 'fonts/']);
-    const [plan] = openDesignFetchPlan(['bmw']);
-    expect(plan.files.find((f) => f.source === 'preview/').required).toBe(true);
-    for (const dir of dirs.filter((entry) => entry !== 'preview/')) expect(plan.files.find((f) => f.source === dir).required).toBe(false);
-  });
+    it('briefToSeed uses proposals only for non-locked fields', () => {
+      const brief = buildDesignBrief({
+        answers: { colorPrimary: '#0F766E', borderRadius: { value: 4, locked: false } },
+      });
+      const { seed, provenance } = briefToSeed(brief, {
+        colorPrimary: '#FF0000', borderRadius: 12, fontFamily: 'Geist, sans-serif',
+      });
+      expect(seed.colorPrimary).toBe('#0F766E');
+      expect(seed.borderRadius).toBe(12);
+      expect(seed.fontFamily).toBe('Geist, sans-serif');
+      expect(provenance).toMatchObject({ colorPrimary: 'brief', borderRadius: 'proposed', fontFamily: 'proposed' });
+    });
 
-  it('openDesignFetchPlan honors a custom root dir and is total on bad input', () => {
-    const [ds] = openDesignFetchPlan(['vercel'], 'frontend/packages/ui/');
-    expect(ds.destDir).toBe('frontend/packages/ui/design-systems/vercel/original');
-    expect(openDesignFetchPlan(null)).toEqual([]);
-    expect(openDesignFetchPlan(undefined)).toEqual([]);
-    expect(openDesignFetchPlan([null, '', 'bmw'])).toHaveLength(1);
-    expect(() => openDesignFetchPlan('not-an-array')).not.toThrow();
+    it('briefToSeed is total: junk input never throws and yields at least colorInfo', () => {
+      for (const junk of [null, undefined, {}, { fields: null }, { fields: { colorPrimary: null } }, 'x', 3]) {
+        expect(() => briefToSeed(junk)).not.toThrow();
+        expect(briefToSeed(junk).seed.colorInfo).toBeDefined();
+      }
+      expect(() => briefToSeed({}, null)).not.toThrow();
+    });
+
+    it('property: a locked brief field is never overridden by any proposal', () => {
+      const hex = fc.integer({ min: 0, max: 0xffffff }).map((n) => `#${n.toString(16).padStart(6, '0')}`);
+      const family = fc.stringMatching(/^[A-Za-z][A-Za-z ]{0,15}$/).map((f) => `${f}, sans-serif`);
+      fc.assert(fc.property(
+        fc.record({
+          colorPrimary: hex, colorSuccess: hex, colorWarning: hex, colorError: hex, colorInfo: hex,
+          fontFamily: family, fontSize: fc.integer({ min: 10, max: 24 }), borderRadius: fc.integer({ min: 0, max: 32 }),
+          density: fc.constantFrom('compact', 'comfortable', 'spacious'),
+          motion: fc.constantFrom('none', 'subtle', 'standard'),
+        }),
+        fc.record({
+          colorPrimary: fc.option(hex), colorSuccess: fc.option(hex), colorInfo: fc.option(hex),
+          fontFamily: fc.option(family), fontSize: fc.option(fc.integer({ min: 10, max: 24 })),
+          borderRadius: fc.option(fc.integer({ min: 0, max: 32 })),
+          density: fc.option(fc.constantFrom('compact', 'comfortable', 'spacious')),
+          motion: fc.option(fc.constantFrom('none', 'subtle', 'standard')),
+        }, { requiredKeys: [] }),
+        (locked, proposals) => {
+          const brief = buildDesignBrief({
+            answers: Object.fromEntries(Object.entries(locked).map(([k, v]) => [k, { value: v, locked: true }])),
+          });
+          expect(brief.issues).toEqual([]);
+          const { seed } = briefToSeed(brief, proposals);
+          for (const k of ['colorPrimary', 'colorSuccess', 'colorWarning', 'colorError', 'colorInfo', 'fontFamily', 'fontSize', 'borderRadius']) {
+            expect(seed[k]).toBe(locked[k]);
+          }
+          const d = { compact: 28, comfortable: 32, spacious: 40 }[locked.density];
+          expect(seed.controlHeight).toBe(d);
+          expect(seed.motion).toBe(locked.motion !== 'none');
+          for (const key of Object.keys(seed)) expect(OPEN_DESIGN_SEED_FIELDS).toContain(key);
+          // deterministic
+          expect(briefToSeed(brief, proposals)).toEqual(briefToSeed(brief, proposals));
+        },
+      ), { numRuns: 200 });
+    });
+
+    it('designBriefPath sits at the feature root and every brief field has a validator', () => {
+      expect(designBriefPath('.pensador/login-v1/')).toBe('.pensador/login-v1/design-brief.json');
+      expect(designBriefPath(null)).toBe('.pensador/atualizacao-v1/design-brief.json');
+      const brief = buildDesignBrief({ answers: { sectorContext: '' } });
+      expect(brief.issues).toEqual([{ field: 'sectorContext', reason: 'invalid-value' }]);
+      expect(DESIGN_BRIEF_FIELDS).toContain('themeExposure');
+    });
   });
 
   it('designSystemFilesRoot roots verbatim files under the feature dir (never the project source tree)', () => {
@@ -478,9 +508,6 @@ describe('Open Design descriptor', () => {
     // Fallback mirrors designSystemArtifactPath when featurePath is unset.
     expect(designSystemFilesRoot(null)).toBe('.pensador/atualizacao-v1');
     expect(designSystemFilesRoot(undefined)).toBe('.pensador/atualizacao-v1');
-    // Composed with openDesignFetchPlan the destination stays inside the feature root.
-    const [ds] = openDesignFetchPlan(['agentic'], designSystemFilesRoot('.pensador/login-social-v1'));
-    expect(ds.destDir).toBe('.pensador/login-social-v1/design-systems/agentic/original');
   });
 
   it('openDesignDeliveryFor: PRD mode uses the verbatim DESIGN.md (no standalone doc)', () => {
@@ -524,14 +551,14 @@ describe('Open Design descriptor', () => {
     expect(s.designMd).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/DESIGN.md');
     expect(s.components).toBe('.pensador/login-social-v1/design-systems/agentic/resolved/components.html');
     // RUNTIME target the executor materializes into, cited by the ui-design-system spec.
-    expect(s.materializeInto).toBe('packages/ui/styles/design-systems/agentic/');
-    expect(s.materializedTokens).toBe('packages/ui/styles/design-systems/agentic/tokens.css');
+    expect(s.materializeInto).toBe('packages/ui/design-systems/agentic/');
+    expect(s.materializedTokens).toBe('packages/ui/design-systems/agentic/tokens.css');
   });
 
   it('openDesignSpecContract honors a custom UI package dir, supports multiple systems, and is total', () => {
     const c = openDesignSpecContract('.pensador/checkout-v2', ['bmw', 'clean'], 'frontend/packages/ui/');
     expect(c.systems.map((s) => s.id)).toEqual(['bmw', 'clean']);
-    expect(c.systems[0].materializedTokens).toBe('frontend/packages/ui/styles/design-systems/bmw/tokens.css');
+    expect(c.systems[0].materializedTokens).toBe('frontend/packages/ui/design-systems/bmw/tokens.css');
     expect(c.systems[1].verbatimDir).toBe('.pensador/checkout-v2/design-systems/clean/resolved/');
     // No systems selected → empty list, still a valid contract with the change paths.
     const empty = openDesignSpecContract('.pensador/checkout-v2', []);
@@ -685,5 +712,13 @@ describe('API contract (Spec-Driven Development)', () => {
     expect(planArtifacts(finalState('prd', [frontendReq])).apiContract).toBe(false);
     // Folded into the change set in spec mode — no standalone contract artifact.
     expect(planArtifacts(finalState('spec', [backendReq])).apiContract).toBe(false);
+  });
+});
+
+describe('design-brief.schema.json', () => {
+  it('lists exactly the brief fields of the engine', async () => {
+    const { readFileSync } = await import('node:fs');
+    const schema = JSON.parse(readFileSync(new URL('../skills/pensador/assets/design-brief.schema.json', import.meta.url), 'utf8'));
+    expect(Object.keys(schema.properties.fields.properties).sort()).toEqual([...DESIGN_BRIEF_FIELDS].sort());
   });
 });

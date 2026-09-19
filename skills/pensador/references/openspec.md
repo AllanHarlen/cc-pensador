@@ -125,7 +125,7 @@ openspec archive <nome> --json --yes     # (+ --skip-specs quando skip_specs)
 
 No modo Spec, `userhistory.md` e `communication.md` **não se aplicam** — o entregável é o change set OpenSpec.
 
-**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set. Os arquivos verbatim do system (`tokens.css`, `DESIGN.md`, `components.html`, …) vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD; o Executor os materializa em `packages/ui` depois). Como o change set (`openspec/changes/<nome>/`) e os arquivos do design system (`.pensador/<nome>/design-systems/<id>/`) vivem em **árvores diferentes**, existe um contrato explícito que liga um ao outro — ver abaixo.
+**Exceção: o Open Design (design system) continua valendo quando `hasFrontend`.** Diferente dos dois acima, o design não é descartado no modo Spec — ele é **redirecionado** para dentro do change set. Os arquivos do design system gerado (`resolved/`: `tokens.css`, `DESIGN.md`, `components.html`, …) vão para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD; o Executor os materializa em `packages/ui` depois). Como o change set (`openspec/changes/<nome>/`) e os arquivos do design system (`.pensador/<nome>/design-systems/<id>/`) vivem em **árvores diferentes**, existe um contrato explícito que liga um ao outro — ver abaixo.
 
 ### Contrato Spec ↔ Open Design (`openDesignSpecContract()`)
 
@@ -140,7 +140,7 @@ No modo Spec, `userhistory.md` e `communication.md` **não se aplicam** — o en
 
 O Pensador alimenta `/opsx:propose` e os artefatos gerados de modo que:
 
-1. **`design.md` › Decisions** registra o(s) `<id>` escolhido(s), a **origem verbatim** (`verbatimDir`) e o **alvo de materialização** (`materializeInto`) — mais os overrides justificados. Ex.: *"Design system `agentic` (Open Design). Origem: `.pensador/<nome>/design-systems/agentic/`. Materializar em: `packages/ui/design-systems/agentic/`. Override: accent_hue ajustado para a cor de marca (justificativa …)."*
+1. **`design.md` › Decisions** registra o(s) `<id>` escolhido(s), a **origem** (`verbatimDir`, o `resolved/` gerado) e o **alvo de materialização** (`materializeInto`) — mais os overrides justificados. Ex.: *"Design system `agentic` (Open Design). Origem: `.pensador/<nome>/design-systems/agentic/`. Materializar em: `packages/ui/design-systems/agentic/`. Override: accent_hue ajustado para a cor de marca (justificativa …)."*
 2. **`specs/ui-design-system/spec.md`** vira requisito normativo que cita o `materializedTokens` como fonte de estilo:
 
    ```markdown
@@ -157,7 +157,7 @@ O Pensador alimenta `/opsx:propose` e os artefatos gerados de modo que:
 
 3. O `proposal.md` lista a capability `ui-design-system` na seção **Capabilities**.
 
-Assim `openspec validate <nome> --strict --json` valida os cenários (exatamente 4 `#`, todo requisito com ≥ 1 cenário) e a referência ao design system fica rastreável do change set até os arquivos verbatim. Ver `references/open-design.md` › **Modo Spec** e `references/handoff-contract.md` (role `design-system-files`).
+Assim `openspec validate <nome> --strict --json` valida os cenários (exatamente 4 `#`, todo requisito com ≥ 1 cenário) e a referência ao design system fica rastreável do change set até o pacote gerado. Ver `references/open-design.md` › **Modo Spec** e `references/handoff-contract.md` (role `design-system-files`).
 
 ---
 

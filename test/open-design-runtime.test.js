@@ -31,13 +31,13 @@ function isolatedHome() {
 describe('Open Design REST preflight', () => {
   it('accepts an authenticated daemon without CLI/MCP and never leaks its token', async () => {
     const secret = 'sentinel-never-log';
-    const result = await detectOpenDesign({ home: isolatedHome(), timeoutMs: 100, cliCheck: { ok: false }, env: { OD_DAEMON_URL: await endpoint(200, secret), OD_API_TOKEN: secret } });
+    const result = await detectOpenDesign({ home: isolatedHome(), timeoutMs: 5000, cliCheck: { ok: false }, env: { OD_DAEMON_URL: await endpoint(200, secret), OD_API_TOKEN: secret } });
     expect(result).toMatchObject({ detected: true, available: true, source: 'daemon-rest', reasonCode: null, mcpFunctional: false, daemon: { authenticated: true, authSource: 'environment' } });
     expect(JSON.stringify(result)).not.toContain(secret);
   });
 
   it('classifies 401 as AUTH_REQUIRED without suggesting reinstall', async () => {
-    const result = await detectOpenDesign({ home: isolatedHome(), timeoutMs: 100, cliCheck: { ok: false }, env: { OD_DAEMON_URL: await endpoint(401) } });
+    const result = await detectOpenDesign({ home: isolatedHome(), timeoutMs: 5000, cliCheck: { ok: false }, env: { OD_DAEMON_URL: await endpoint(401) } });
     expect(result.detected).toBe(true);
     expect(result.available).toBe(false);
     expect(result.reasonCode).toBe('AUTH_REQUIRED');

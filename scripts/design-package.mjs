@@ -1,294 +1,271 @@
 #!/usr/bin/env node
-/** Deterministic renderer and auditor for the Pensador's resolved visual package. */
-import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+/**
+ * Deterministic renderer and auditor for the Pensador's resolved visual package.
+ * `render` builds every artifact from design-contract.json (v2); nothing is copied from elsewhere.
+ * `audit` checks the package on disk (Phase 4 extends it with brief conformance and re-render integrity).
+ */
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+  checkBriefConformance, checkComponentStates, checkContrastMatrix, checkScales, isBlocking,
+} from './lib/design-gates.mjs';
+import {
+  DEFAULT_COMPONENTS, REQUIRED_COMPONENT_STATES, renderComponentsHtml, renderComponentsManifest, renderDesignMarkdown,
+  renderDtcg, renderManifest, renderPreviewPages, renderTailwind, renderTokensCss, renderUsageMarkdown,
+} from './lib/design-render.mjs';
+import {
+  ALL_TOKENS, CONTRACT_SCHEMA_VERSION, SCHEMA_SHARED_TOKENS, SCHEMA_THEME_TOKENS,
+  canonicalJson, canonicalize, contractSha256, finalizeContract,
+} from './lib/token-mapper.mjs';
 
-export const REQUIRED_TOKEN_FAMILIES = [
-  "colors", "typography", "spacing", "breakpoints", "radius", "borders", "elevation", "motion",
+export { REQUIRED_COMPONENT_STATES, renderComponentsHtml };
+export const REQUIRED_PACKAGE_FILES = [
+  'design-contract.json', 'tokens.css', 'design-tokens.json', 'tailwind-v4.css', 'DESIGN.md', 'components.html', 'USAGE.md', 'manifest.json', 'provenance.json',
 ];
-export const REQUIRED_COMPONENT_STATES = ["default", "hover", "focus", "disabled"];
 
 function readJson(file) {
-  return JSON.parse(readFileSync(file, "utf8"));
+  return JSON.parse(readFileSync(file, 'utf8'));
 }
 
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-}
-
-function writeJson(file, value) {
+function writeText(file, text) {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(stable(value), null, 2)}\n`, "utf8");
-}
-
-function flatten(value, prefix = "", out = {}) {
-  for (const [key, item] of Object.entries(value ?? {})) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (item && typeof item === "object" && !Array.isArray(item) && !("value" in item)) flatten(item, path, out);
-    else out[path] = item && typeof item === "object" && "value" in item ? item.value : item;
-  }
-  return out;
-}
-
-function cssName(path) {
-  return `--${path.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`;
-}
-
-function resolveAlias(value, flat, stack = []) {
-  if (typeof value !== "string") return value;
-  const match = value.match(/^\{([^}]+)\}$/) || value.match(/^\$([a-zA-Z0-9_.-]+)$/);
-  if (!match) return value;
-  const key = match[1];
-  if (stack.includes(key) || !(key in flat)) return undefined;
-  return resolveAlias(flat[key], flat, [...stack, key]);
-}
-
-function renderCss(tokens) {
-  const flat = flatten(tokens);
-  const lines = Object.keys(flat).sort().map((key) => {
-    const value = resolveAlias(flat[key], flat);
-    return `  ${cssName(key)}: ${value};`;
-  });
-  return `/* Generated from design-contract.json. Do not edit. */\n:root {\n${lines.join("\n")}\n}\n`;
-}
-
-function renderDesignMarkdown(contract) {
-  const families = REQUIRED_TOKEN_FAMILIES.map((family) => {
-    const rows = Object.entries(flatten(contract.tokens?.[family] ?? {}))
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, value]) => `| \`${name}\` | \`${String(value)}\` |`).join("\n");
-    return `## ${family}\n\n| Token | Value |\n|---|---|\n${rows || "| _missing_ | _missing_ |"}`;
-  }).join("\n\n");
-  const components = (contract.components ?? []).map((component) =>
-    `| ${component.name} | ${(component.states ?? []).join(", ")} |`,
-  ).join("\n");
-  return `# ${contract.systemId} — Resolved Design System\n\n` +
-    `Generated from the authoritative \`design-contract.json\`.\n\n${families}\n\n` +
-    `## Components\n\n| Component | States |\n|---|---|\n${components}\n\n` +
-    `## Iconography\n\n- Package: \`${contract.iconography?.package}\`\n- Version: \`${contract.iconography?.version}\`\n- Format: vector\n\n` +
-    `## Imagery\n\nDecision: \`${contract.imagery?.decision}\`. See \`assets/manifest.json\`.\n\n` +
-    `## Anti-patterns\n\n${(contract.antiPatterns ?? []).map((item) => `- ${item}`).join("\n")}\n`;
-}
-
-function channel(hex) {
-  const value = Number.parseInt(hex, 16) / 255;
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-function luminance(color) {
-  const match = String(color).match(/^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!match) return null;
-  return 0.2126 * channel(match[1]) + 0.7152 * channel(match[2]) + 0.0722 * channel(match[3]);
-}
-
-function contrast(left, right) {
-  const a = luminance(left);
-  const b = luminance(right);
-  if (a == null || b == null) return null;
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  writeFileSync(file, text, 'utf8');
 }
 
 function inside(root, candidate) {
   const rel = relative(resolve(root), resolve(root, candidate));
-  return rel && !rel.startsWith("..") && !rel.split(sep).includes("..");
+  return rel && !rel.startsWith('..') && !rel.split(sep).includes('..');
 }
 
 function sha256(file) {
-  return createHash("sha256").update(readFileSync(file)).digest("hex");
+  return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
-export function auditDesignPackage({ resolvedDir, contract } = {}) {
+const VAR_REF = /var\(\s*(--[a-z0-9-]+)/gi;
+
+/** Where the feature keeps the brief: <feature>/design-systems/<id>/resolved -> <feature>/design-brief.json. */
+export function defaultBriefFile(resolvedDir) {
+  return join(resolvedDir, '..', '..', '..', 'design-brief.json');
+}
+
+const sha256Text = (text) => createHash('sha256').update(text).digest('hex');
+
+/** Hash over the per-file hashes: one value that changes when any rendered file changes. */
+export function packageSha256(files) {
+  return sha256Text(Object.keys(files).sort().map((name) => `${name}:${files[name]}`).join('\n'));
+}
+
+/**
+ * Re-renders the package in memory and compares it with the files on disk, byte for byte, plus the
+ * hashes recorded in provenance.json. A hand-edited tokens.css or DESIGN.md cannot pass.
+ */
+export function checkIntegrity({ resolvedDir, contract }) {
+  const findings = [];
+  const add = (code, message, path) => findings.push({ severity: 'high', code, message, path });
+  const expected = renderPackageFiles(contract);
+  const expectedHashes = {};
+  for (const [name, text] of Object.entries(expected)) {
+    expectedHashes[name] = sha256Text(text);
+    const file = join(resolvedDir, name);
+    if (!existsSync(file)) add('INTEGRITY_FILE_MISSING', `${name} is missing; it is rendered from the contract`, name);
+    else if (readFileSync(file, 'utf8') !== text) add('INTEGRITY_DRIFT', `${name} differs from a fresh render of design-contract.json; do not edit rendered files, change the seed and derive again`, name);
+  }
+  const provenanceFile = join(resolvedDir, 'provenance.json');
+  if (!existsSync(provenanceFile)) add('PROVENANCE_MISSING', 'provenance.json is missing', 'provenance.json');
+  else {
+    let provenance = null;
+    try { provenance = readJson(provenanceFile); } catch { add('PROVENANCE_INVALID', 'provenance.json is not valid JSON', 'provenance.json'); }
+    if (provenance) {
+      if (provenance.contractSha256 !== contract.sha256) add('PROVENANCE_HASH_MISMATCH', 'provenance.json contractSha256 does not match design-contract.json', 'provenance.json');
+      for (const [name, hash] of Object.entries(expectedHashes)) {
+        if (provenance.files?.[name] !== hash) add('PROVENANCE_HASH_MISMATCH', `provenance.json hash for ${name} does not match a fresh render`, 'provenance.json');
+      }
+      if (provenance.packageSha256 !== packageSha256(expectedHashes)) add('PROVENANCE_HASH_MISMATCH', 'provenance.json packageSha256 does not match a fresh render', 'provenance.json');
+    }
+  }
+  return findings;
+}
+
+/** source/engine-run.json must exist, report success and belong to this very contract. */
+export function checkEngineRun({ resolvedDir, contract }) {
+  const file = join(resolvedDir, '..', 'source', 'engine-run.json');
+  const bad = (code, message) => [{ severity: 'high', code, message, path: 'source/engine-run.json' }];
+  if (!existsSync(file)) return bad('ENGINE_RUN_MISSING', 'source/engine-run.json is missing; the design system was not derived by od-brand-build.mjs');
+  let run = null;
+  try { run = readJson(file); } catch { return bad('ENGINE_RUN_INVALID', 'source/engine-run.json is not valid JSON'); }
+  if (run.status !== 'ok') return bad('ENGINE_RUN_FAILED', `source/engine-run.json status is ${JSON.stringify(run.status)}${run.reasonCode ? ` (${run.reasonCode})` : ''}, not "ok"`);
+  if (run.contractSha256 !== contract.sha256) return bad('ENGINE_RUN_CONTRACT_MISMATCH', 'source/engine-run.json contractSha256 does not match design-contract.json; the contract was edited after derivation');
+  return [];
+}
+
+/**
+ * Audit v2. `checks` splits the verdict per gate so the stage gate can demand each one:
+ * structure (files, tokens, states, scales, assets), contrast (WCAG matrix, both themes),
+ * conformance (locked brief fields), integrity (re-render byte compare), engineRun.
+ * `strict` (the CLI default) turns a missing brief / engine-run into a blocking finding;
+ * otherwise those checks are reported as SKIPPED, which the stage gate refuses.
+ */
+export function auditDesignPackage({ resolvedDir, contract, brief, briefFile, strict = false } = {}) {
   const findings = [];
   const add = (severity, code, message, path = null) => findings.push({ severity, code, message, path });
+  const checks = { structure: 'PASS', contrast: 'PASS', conformance: 'SKIPPED', integrity: 'PASS', engineRun: 'SKIPPED' };
+  const blocked = () => ({ status: 'BLOCKED', generatedAt: new Date().toISOString(), contractSha256: contract?.sha256 ?? null, checks: { ...checks, structure: 'BLOCKED' }, findings });
+  const verdict = (start) => (findings.slice(start).some(isBlocking) ? 'BLOCKED' : 'PASS');
 
   if (!resolvedDir || !existsSync(resolvedDir)) {
-    add("critical", "PACKAGE_MISSING", `Resolved design package not found at ${resolvedDir ?? "(no --dir given)"}`, resolvedDir);
-    return { status: "BLOCKED", generatedAt: new Date().toISOString(), findings };
+    add('critical', 'PACKAGE_MISSING', `Resolved design package not found at ${resolvedDir ?? '(no --dir given)'}`, resolvedDir);
+    return blocked();
   }
   if (contract === undefined) {
-    const contractFile = join(resolvedDir, "design-contract.json");
+    const contractFile = join(resolvedDir, 'design-contract.json');
     if (!existsSync(contractFile)) {
-      add("critical", "CONTRACT_MISSING", "design-contract.json is missing", "design-contract.json");
-      return { status: "BLOCKED", generatedAt: new Date().toISOString(), findings };
+      add('critical', 'CONTRACT_MISSING', 'design-contract.json is missing', 'design-contract.json');
+      return blocked();
     }
     contract = readJson(contractFile);
   }
+  if (contract.schemaVersion !== CONTRACT_SCHEMA_VERSION) {
+    add('critical', 'CONTRACT_VERSION_UNSUPPORTED', `design-contract.json must have schemaVersion ${CONTRACT_SCHEMA_VERSION} (found ${JSON.stringify(contract.schemaVersion)}); re-derive it with od-brand-build.mjs`, 'schemaVersion');
+    return blocked();
+  }
 
-  for (const family of REQUIRED_TOKEN_FAMILIES) {
-    if (!contract.tokens?.[family] || Object.keys(flatten(contract.tokens[family])).length === 0) add("high", "TOKEN_FAMILY_MISSING", `Missing token family: ${family}`, `tokens.${family}`);
-  }
-  const flat = flatten(contract.tokens ?? {});
-  for (const [name, value] of Object.entries(flat)) {
-    if (typeof value === "string" && (/^\{[^}]+\}$/.test(value) || /^\$[\w.-]+$/.test(value)) && resolveAlias(value, flat) === undefined) add("high", "TOKEN_ALIAS_UNDEFINED", `Undefined or cyclic alias at ${name}`, name);
-  }
-  if (!Array.isArray(contract.components) || contract.components.length === 0) add("high", "COMPONENTS_MISSING", "At least one component contract is required", "components");
-  for (const component of contract.components ?? []) {
-    for (const state of REQUIRED_COMPONENT_STATES) if (!component.states?.includes(state)) add("high", "COMPONENT_STATE_MISSING", `${component.name} is missing state ${state}`, `components.${component.name}`);
-  }
-  if (contract.iconography?.format !== "vector" || !contract.iconography?.package || !contract.iconography?.version) add("high", "ICONOGRAPHY_INVALID", "A versioned vector icon package is required", "iconography");
-  const serialized = JSON.stringify(contract.iconography?.usages ?? {});
-  if (/\p{Extended_Pictographic}/u.test(serialized)) add("high", "EMOJI_ICON", "Emoji cannot substitute a functional icon", "iconography.usages");
-  for (const pair of contract.contrastPairs ?? []) {
-    const fg = resolveAlias(pair.foreground, flat) ?? pair.foreground;
-    const bg = resolveAlias(pair.background, flat) ?? pair.background;
-    const ratio = contrast(fg, bg);
-    if (ratio == null || ratio < Number(pair.minimum ?? 4.5)) add("high", "WCAG_CONTRAST", `Contrast ${pair.foreground}/${pair.background} is ${ratio?.toFixed(2) ?? "invalid"}`, "contrastPairs");
-  }
-  for (const file of ["tokens.css", "design-tokens.json", "DESIGN.md", "components.html"]) if (!existsSync(join(resolvedDir, file))) add("high", "REQUIRED_FILE_MISSING", `${file} is missing`, file);
-  const previewDir = join(resolvedDir, "preview");
-  if (!existsSync(previewDir) || !statSync(previewDir).isDirectory()) add("high", "PREVIEW_MISSING", "preview/ is required", "preview");
+  let mark = findings.length;
+  if (contract.sha256 !== contractSha256(contract)) add('high', 'CONTRACT_HASH_MISMATCH', 'contract sha256 does not match its content; the contract was edited after render', 'sha256');
 
-  const manifestFile = join(resolvedDir, "assets", "manifest.json");
-  if (!existsSync(manifestFile)) add("high", "ASSET_MANIFEST_MISSING", "assets/manifest.json is required", "assets/manifest.json");
+  for (const theme of ['light', 'dark']) {
+    if (!contract.themes?.[theme]) { add('high', 'THEME_MISSING', `themes.${theme} is required (light and dark are always shipped)`, `themes.${theme}`); continue; }
+    for (const name of SCHEMA_THEME_TOKENS) if (!(name in contract.themes[theme])) add('high', 'TOKEN_MISSING', `themes.${theme} lacks ${name}`, `themes.${theme}.${name}`);
+  }
+  for (const name of SCHEMA_SHARED_TOKENS) if (!(name in (contract.tokens ?? {}))) add('high', 'TOKEN_MISSING', `tokens lacks ${name}`, `tokens.${name}`);
+
+  const defined = new Set([...ALL_TOKENS, ...Object.keys(contract.tokens ?? {}), ...Object.keys(contract.themes?.light ?? {}), ...Object.keys(contract.themes?.dark ?? {})]);
+  const scanned = [...Object.entries(contract.tokens ?? {}), ...Object.values(contract.themes ?? {}).flatMap((values) => Object.entries(values))];
+  for (const [name, value] of scanned) {
+    for (const match of String(value).matchAll(VAR_REF)) if (!defined.has(match[1])) add('high', 'TOKEN_ALIAS_UNDEFINED', `${name} references undefined ${match[1]}`, name);
+  }
+
+  findings.push(...checkScales(contract), ...checkComponentStates(contract));
+  if (contract.iconography?.format !== 'vector' || !contract.iconography?.package || !contract.iconography?.version) add('high', 'ICONOGRAPHY_INVALID', 'A versioned vector icon package is required', 'iconography');
+  if (/\p{Extended_Pictographic}/u.test(JSON.stringify(contract.iconography?.usages ?? {}))) add('high', 'EMOJI_ICON', 'Emoji cannot substitute a functional icon', 'iconography.usages');
+
+  for (const file of REQUIRED_PACKAGE_FILES) if (!existsSync(join(resolvedDir, file))) add('high', 'REQUIRED_FILE_MISSING', `${file} is missing`, file);
+  const cssFile = join(resolvedDir, 'tokens.css');
+  if (existsSync(cssFile)) {
+    const css = readFileSync(cssFile, 'utf8');
+    if (!css.includes('[data-theme="dark"]') || !css.includes('prefers-color-scheme: dark')) add('high', 'THEME_CSS_MISSING', 'tokens.css must declare [data-theme="dark"] and a prefers-color-scheme: dark block', 'tokens.css');
+  }
+  const previewDir = join(resolvedDir, 'preview');
+  if (!existsSync(previewDir) || !statSync(previewDir).isDirectory() || !existsSync(join(previewDir, 'index.html'))) add('high', 'PREVIEW_MISSING', 'preview/index.html is required', 'preview');
+
+  const manifestFile = join(resolvedDir, 'assets', 'manifest.json');
+  if (!existsSync(manifestFile)) add('high', 'ASSET_MANIFEST_MISSING', 'assets/manifest.json is required', 'assets/manifest.json');
   else {
     const manifest = readJson(manifestFile);
     const ids = new Set();
     for (const asset of manifest.assets ?? []) {
-      if (ids.has(asset.id)) add("high", "ASSET_DUPLICATE_ID", `Duplicate asset id ${asset.id}`, asset.id);
+      if (ids.has(asset.id)) add('high', 'ASSET_DUPLICATE_ID', `Duplicate asset id ${asset.id}`, asset.id);
       ids.add(asset.id);
-      const required = asset.classification === "required";
-      const assetFile = inside(join(resolvedDir, "assets"), asset.file) ? join(resolvedDir, "assets", asset.file) : null;
-      if (!assetFile || !existsSync(assetFile)) { if (required) add("critical", "REQUIRED_ASSET_MISSING", `Required asset ${asset.id} is missing`, asset.file); continue; }
-      const missingSeedBinding = asset.purpose === "seed-demo" && !asset.seedBindings?.length;
-      if (!asset.alt || !asset.routes?.length || !asset.componentSlot || !asset.materializeInto || missingSeedBinding) add("high", "ASSET_BINDING_INCOMPLETE", `Asset ${asset.id} lacks semantic placement metadata${missingSeedBinding ? " or seedBindings" : ""}`, asset.id);
-      if (asset.sha256 !== sha256(assetFile)) add("high", "ASSET_HASH_MISMATCH", `Asset ${asset.id} hash does not match`, asset.file);
+      const required = asset.classification === 'required';
+      const assetFile = inside(join(resolvedDir, 'assets'), asset.file) ? join(resolvedDir, 'assets', asset.file) : null;
+      if (!assetFile || !existsSync(assetFile)) { if (required) add('critical', 'REQUIRED_ASSET_MISSING', `Required asset ${asset.id} is missing`, asset.file); continue; }
+      const missingSeedBinding = asset.purpose === 'seed-demo' && !asset.seedBindings?.length;
+      if (!asset.alt || !asset.routes?.length || !asset.componentSlot || !asset.materializeInto || missingSeedBinding) add('high', 'ASSET_BINDING_INCOMPLETE', `Asset ${asset.id} lacks semantic placement metadata${missingSeedBinding ? ' or seedBindings' : ''}`, asset.id);
+      if (asset.sha256 !== sha256(assetFile)) add('high', 'ASSET_HASH_MISMATCH', `Asset ${asset.id} hash does not match`, asset.file);
     }
   }
+  checks.structure = verdict(mark);
 
-  const blocking = findings.filter((item) => ["critical", "high"].includes(item.severity));
-  return { status: blocking.length ? "BLOCKED" : "PASS", generatedAt: new Date().toISOString(), findings };
+  mark = findings.length;
+  findings.push(...checkContrastMatrix(contract));
+  checks.contrast = verdict(mark);
+
+  mark = findings.length;
+  const briefPath = briefFile ?? defaultBriefFile(resolvedDir);
+  if (brief === undefined && existsSync(briefPath)) {
+    try { brief = readJson(briefPath); } catch { brief = null; }
+  }
+  if (brief === undefined) {
+    if (strict) { add('high', 'BRIEF_MISSING', `design-brief.json not found at ${briefPath}; conformance with the brief cannot be checked`, 'design-brief.json'); checks.conformance = 'BLOCKED'; }
+  } else {
+    findings.push(...checkBriefConformance(brief, contract).findings);
+    checks.conformance = verdict(mark);
+  }
+
+  mark = findings.length;
+  findings.push(...checkIntegrity({ resolvedDir, contract }));
+  checks.integrity = verdict(mark);
+
+  mark = findings.length;
+  const engineRunFile = join(resolvedDir, '..', 'source', 'engine-run.json');
+  if (existsSync(engineRunFile) || strict) {
+    findings.push(...checkEngineRun({ resolvedDir, contract }));
+    checks.engineRun = verdict(mark);
+  }
+
+  const blocking = findings.filter(isBlocking);
+  return { status: blocking.length ? 'BLOCKED' : 'PASS', generatedAt: new Date().toISOString(), contractSha256: contract.sha256, checks, findings };
 }
 
-export function renderComponentsHtml(contract) {
-  const components = Array.isArray(contract?.components) && contract.components.length > 0
-    ? contract.components
-    : [
-        { name: "Button", states: REQUIRED_COMPONENT_STATES },
-        { name: "Card", states: REQUIRED_COMPONENT_STATES },
-        { name: "Input", states: REQUIRED_COMPONENT_STATES },
-        { name: "Badge", states: REQUIRED_COMPONENT_STATES },
-        { name: "Modal", states: REQUIRED_COMPONENT_STATES },
-      ];
-
-  const sections = components.map((comp) => {
-    const states = Array.isArray(comp.states) && comp.states.length > 0 ? comp.states : REQUIRED_COMPONENT_STATES;
-    const stateBlocks = states.map((state) => {
-      const stateClass = `state-${state}`;
-      let markup = "";
-      switch (comp.name.toLowerCase()) {
-        case "button":
-        case "botao":
-          markup = `<button type="button" class="btn ${stateClass}" ${state === "disabled" ? "disabled" : ""}>Button (${state})</button>`;
-          break;
-        case "card":
-          markup = `<div class="card ${stateClass}"><div class="card-header">Card Title</div><div class="card-body">Card content displaying ${state} state.</div></div>`;
-          break;
-        case "input":
-        case "campo":
-          markup = `<input type="text" class="input ${stateClass}" placeholder="Input state: ${state}" ${state === "disabled" ? "disabled" : ""} ${state === "focus" ? "autofocus" : ""} value="${state === "disabled" ? "Valor desabilitado" : ""}" />`;
-          break;
-        case "badge":
-          markup = `<span class="badge ${stateClass}">Badge (${state})</span>`;
-          break;
-        case "modal":
-          markup = `<div class="modal ${stateClass}"><div class="modal-dialog"><div class="modal-header">Modal Title</div><div class="modal-body">Modal showing ${state} state.</div></div></div>`;
-          break;
-        default:
-          markup = `<div class="component component-${comp.name.toLowerCase()} ${stateClass}" ${state === "disabled" ? 'data-disabled="true"' : ""}><span>${comp.name} [${state}]</span></div>`;
-          break;
-      }
-      return `        <div class="fixture-state">
-          <span class="state-label">${state}</span>
-          <div class="state-render">${markup}</div>
-        </div>`;
-    }).join("\n");
-
-    return `    <section class="component-section" id="component-${comp.name.toLowerCase()}">
-      <h2>${comp.name}</h2>
-      <div class="fixtures-grid">
-${stateBlocks}
-      </div>
-    </section>`;
-  }).join("\n");
-
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${contract?.systemId ?? "Design System"} — Component Fixtures</title>
-  <link rel="stylesheet" href="./tokens.css">
-  <style>
-    :root {
-      font-family: var(--typography-font-family, system-ui, -apple-system, sans-serif);
-      background-color: var(--colors-background, #fafafa);
-      color: var(--colors-text, #18181b);
-    }
-    body { margin: 0; padding: 2rem; }
-    h1 { font-size: 1.875rem; margin-bottom: 1.5rem; }
-    h2 { font-size: 1.25rem; margin-bottom: 1rem; border-bottom: 1px solid var(--borders-default, #e4e4e7); padding-bottom: 0.5rem; }
-    .component-section { margin-bottom: 2.5rem; }
-    .fixtures-grid { display: flex; flex-wrap: wrap; gap: 1.5rem; }
-    .fixture-state { display: flex; flex-direction: column; gap: 0.5rem; }
-    .state-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--colors-muted, #71717a); }
-    .btn { padding: 0.5rem 1rem; border-radius: var(--radius-md, 0.375rem); border: 1px solid transparent; background: var(--colors-primary, #2563eb); color: #fff; cursor: pointer; transition: all 0.15s ease-in-out; }
-    .btn.state-hover { filter: brightness(0.9); }
-    .btn.state-focus { outline: 2px solid var(--colors-primary, #2563eb); outline-offset: 2px; }
-    .btn:disabled, .btn.state-disabled { opacity: 0.5; cursor: not-allowed; }
-    .card { padding: 1rem; border-radius: var(--radius-md, 0.375rem); border: 1px solid var(--borders-default, #e4e4e7); background: #fff; box-shadow: var(--elevation-sm, 0 1px 2px rgba(0,0,0,0.05)); }
-    .card.state-hover { box-shadow: var(--elevation-md, 0 4px 6px rgba(0,0,0,0.1)); }
-    .card.state-focus { border-color: var(--colors-primary, #2563eb); }
-    .card.state-disabled { opacity: 0.6; background: #f4f4f5; }
-    .input { padding: 0.5rem 0.75rem; border-radius: var(--radius-md, 0.375rem); border: 1px solid var(--borders-default, #e4e4e7); background: #fff; }
-    .input.state-hover { border-color: var(--colors-primary, #2563eb); }
-    .input.state-focus { outline: 2px solid var(--colors-primary, #2563eb); border-color: transparent; }
-    .input:disabled, .input.state-disabled { opacity: 0.5; background: #f4f4f5; cursor: not-allowed; }
-    .badge { display: inline-flex; align-items: center; padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 500; border-radius: var(--radius-full, 9999px); background: var(--colors-primary-light, #dbeafe); color: var(--colors-primary, #1e40af); }
-    .badge.state-hover { filter: brightness(0.95); }
-    .badge.state-focus { ring: 2px solid var(--colors-primary, #2563eb); }
-    .badge.state-disabled { opacity: 0.5; }
-    .modal { padding: 1rem; border-radius: var(--radius-lg, 0.5rem); border: 1px solid var(--borders-default, #e4e4e7); background: #fff; box-shadow: var(--elevation-lg, 0 10px 15px -3px rgba(0,0,0,0.1)); min-width: 250px; }
-  </style>
-</head>
-<body>
-  <h1>${contract?.systemId ?? "Design System"} — Component Fixtures</h1>
-${sections}
-</body>
-</html>
-`;
+/** Every file `render` writes (relative to resolved/), as text, from an already signed contract. */
+export function renderPackageFiles(input) {
+  const contract = canonicalize(input); // key order must never leak into the output
+  const files = {
+    'design-contract.json': canonicalJson(contract),
+    'tokens.css': renderTokensCss(contract),
+    'design-tokens.json': renderDtcg(contract),
+    'tailwind-v4.css': renderTailwind(contract),
+    'DESIGN.md': renderDesignMarkdown(contract),
+    'components.html': renderComponentsHtml(contract),
+    'USAGE.md': renderUsageMarkdown(contract),
+    'manifest.json': `${JSON.stringify(renderManifest(contract), null, 2)}\n`,
+    'components.manifest.json': `${JSON.stringify(renderComponentsManifest(contract), null, 2)}\n`,
+  };
+  for (const [name, text] of Object.entries(renderPreviewPages(contract))) files[`preview/${name}`] = text;
+  return files;
 }
 
-export function renderDesignPackage({ contractFile, originalDir, resolvedDir, original, resolved, provenance = {} }) {
-  originalDir ??= original;
+function readEngineRun(resolvedDir) {
+  const file = join(resolvedDir, '..', 'source', 'engine-run.json');
+  if (!existsSync(file)) return null;
+  try {
+    const run = readJson(file);
+    return { path: run.engine ?? null, version: run.version ?? null, commit: run.commit ?? null, deriveSha256: run.deriveSha256 ?? null };
+  } catch {
+    return null;
+  }
+}
+
+export function renderDesignPackage({ contractFile, resolvedDir, resolved, provenance = {}, briefFile, strict = false }) {
   resolvedDir ??= resolved;
-  if (!contractFile || !resolvedDir) throw new TypeError("contractFile and resolvedDir are required");
-  const contract = readJson(contractFile);
-  mkdirSync(resolvedDir, { recursive: true });
-  for (const entry of ["components.html", "preview"]) {
-    const source = originalDir ? join(originalDir, entry) : null;
-    if (source && existsSync(source) && !existsSync(join(resolvedDir, entry))) cpSync(source, join(resolvedDir, entry), { recursive: true });
+  if (!contractFile || !resolvedDir) throw new TypeError('contractFile and resolvedDir are required');
+  const contract = finalizeContract(readJson(contractFile));
+  if (contract.schemaVersion !== CONTRACT_SCHEMA_VERSION) {
+    throw new TypeError(`design-contract.json must have schemaVersion ${CONTRACT_SCHEMA_VERSION}; derive it with od-brand-build.mjs`);
   }
-  if (!existsSync(join(resolvedDir, "components.html"))) {
-    writeFileSync(join(resolvedDir, "components.html"), renderComponentsHtml(contract), "utf8");
+  if (!contract.themes?.light || !contract.themes?.dark) throw new TypeError('design-contract.json needs themes.light and themes.dark');
+  const files = renderPackageFiles(contract);
+  const hashes = {};
+  for (const [name, text] of Object.entries(files)) {
+    writeText(join(resolvedDir, name), text);
+    hashes[name] = createHash('sha256').update(text).digest('hex');
   }
-  const previewDir = join(resolvedDir, "preview");
-  if (!existsSync(previewDir)) {
-    mkdirSync(previewDir, { recursive: true });
-    writeFileSync(join(previewDir, "index.html"), `<!DOCTYPE html><html><head><title>Preview</title><link rel="stylesheet" href="../tokens.css"></head><body><h1>Design Preview</h1><p>Preview page for tokens and typography.</p></body></html>`, "utf8");
-  }
-  writeJson(join(resolvedDir, "design-contract.json"), contract);
-  writeJson(join(resolvedDir, "design-tokens.json"), contract.tokens ?? {});
-  writeFileSync(join(resolvedDir, "tokens.css"), renderCss(contract.tokens ?? {}), "utf8");
-  writeFileSync(join(resolvedDir, "DESIGN.md"), renderDesignMarkdown(contract), "utf8");
   const assets = { schemaVersion: 1, decision: contract.imagery?.decision, assets: contract.imagery?.assets ?? [] };
-  if (!existsSync(join(resolvedDir, "assets", "manifest.json"))) writeJson(join(resolvedDir, "assets", "manifest.json"), assets);
-  writeJson(join(resolvedDir, "provenance.json"), { schemaVersion: 1, generatedAt: new Date().toISOString(), sourceSystem: basename(dirname(originalDir || resolvedDir)), ...provenance });
-  const audit = auditDesignPackage({ resolvedDir, contract });
-  writeJson(join(resolvedDir, "design-audit.json"), audit);
+  if (!existsSync(join(resolvedDir, 'assets', 'manifest.json'))) writeText(join(resolvedDir, 'assets', 'manifest.json'), canonicalJson(assets));
+  writeText(join(resolvedDir, 'provenance.json'), canonicalJson({
+    schemaVersion: 2,
+    systemId: contract.systemId,
+    contractSha256: contract.sha256,
+    version: contract.version,
+    briefRef: contract.briefRef ?? null,
+    engine: { ...contract.engine, run: readEngineRun(resolvedDir) },
+    files: hashes,
+    packageSha256: packageSha256(hashes),
+    ...provenance,
+  }));
+  const audit = auditDesignPackage({ resolvedDir, contract, briefFile, strict });
+  writeText(join(resolvedDir, 'design-audit.json'), canonicalJson(audit));
   return audit;
 }
 
@@ -296,19 +273,31 @@ function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const item = argv[i];
-    if (!item.startsWith("--")) out._.push(item);
-    else out[item.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+    if (!item.startsWith('--')) out._.push(item);
+    else out[item.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
   }
   return out;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2));
-  const command = args._[0] ?? "audit";
-  const resolvedDir = resolve(String(args.resolved ?? args.dir ?? "."));
-  const result = command === "render"
-    ? renderDesignPackage({ contractFile: resolve(String(args.contract)), originalDir: args.original ? resolve(String(args.original)) : null, resolvedDir })
-    : auditDesignPackage({ resolvedDir });
-  console.log(JSON.stringify(result, null, 2));
-  process.exitCode = result.status === "PASS" ? 0 : 1;
+  const command = args._[0] ?? 'audit';
+  const resolvedDir = resolve(String(args.resolved ?? args.dir ?? '.'));
+  const briefFile = typeof args.brief === 'string' ? resolve(args.brief) : undefined;
+  // The CLI is the real gate: a missing brief or engine-run is a blocking finding, never a skip.
+  const audit = command === 'render'
+    ? renderDesignPackage({ contractFile: resolve(String(args.contract ?? join(resolvedDir, 'design-contract.json'))), resolvedDir, briefFile, strict: true })
+    : auditDesignPackage({ resolvedDir, briefFile, strict: true });
+  if (command !== 'render' && existsSync(resolvedDir)) writeText(join(resolvedDir, 'design-audit.json'), canonicalJson(audit));
+  // What the skill layer records in state.designPackages[<id>] and state.designBriefPath (P12).
+  const systemId = existsSync(join(resolvedDir, 'design-contract.json')) ? readJson(join(resolvedDir, 'design-contract.json')).systemId : null;
+  const briefPath = briefFile ?? defaultBriefFile(resolvedDir);
+  const statePatch = {
+    designPackages: systemId ? { [systemId]: { auditStatus: audit.status, contractSha256: audit.contractSha256 ?? null } } : {},
+    designBriefPath: existsSync(briefPath) ? briefPath : null,
+  };
+  console.log(JSON.stringify({ ...audit, statePatch }, null, 2));
+  process.exitCode = audit.status === 'PASS' ? 0 : 1;
 }
+
+export { DEFAULT_COMPONENTS };

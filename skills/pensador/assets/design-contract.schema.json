@@ -1,40 +1,65 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://allan.local/cc-pensador/design-contract.schema.json",
-  "title": "Resolved Design Contract",
+  "title": "Resolved Design Contract v2",
+  "description": "Single editable source of the design system. Written by od-brand-build.mjs (tokens derived by the Open Design brand engine, never by an LLM); design-package.mjs renders every other file from it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "systemId", "tokens", "contrastPairs", "components",
-    "layouts", "iconography", "imagery", "microcopy", "antiPatterns"
+    "schemaVersion", "systemId", "version", "engine", "seed", "themes", "tokens", "provenance", "contrastPairs",
+    "components", "layouts", "iconography", "imagery", "microcopy", "antiPatterns", "sha256"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "systemId": { "type": "string", "minLength": 1 },
-    "tokens": {
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "briefRef": { "type": ["string", "null"], "description": "Path of design-brief.json this contract was derived from." },
+    "defaultTheme": { "enum": ["light", "dark", "system"] },
+    "engine": {
       "type": "object",
-      "required": ["colors", "typography", "spacing", "breakpoints", "radius", "borders", "elevation", "motion"],
-      "additionalProperties": { "type": "object" },
+      "required": ["name", "version"],
+      "additionalProperties": false,
       "properties": {
-        "colors": { "$ref": "#/$defs/tokenFamily" },
-        "typography": { "$ref": "#/$defs/tokenFamily" },
-        "spacing": { "$ref": "#/$defs/tokenFamily" },
-        "breakpoints": { "$ref": "#/$defs/tokenFamily" },
-        "radius": { "$ref": "#/$defs/tokenFamily" },
-        "borders": { "$ref": "#/$defs/tokenFamily" },
-        "elevation": { "$ref": "#/$defs/tokenFamily" },
-        "motion": { "$ref": "#/$defs/tokenFamily" }
+        "name": { "const": "open-design-brand-engine" },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "description": "Engine identity only. Which path ran (container or clone), the commit and the derive hash live in source/engine-run.json so the contract bytes do not depend on the path."
+    },
+    "seed": { "type": "object", "description": "Merged SeedToken sent to the engine (20 fields)." },
+    "themes": {
+      "type": "object",
+      "required": ["light", "dark"],
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/themeTokens" },
+        "dark": { "$ref": "#/$defs/themeTokens" },
+        "compact": { "$ref": "#/$defs/cssValues", "description": "Density overrides (space and control heights). Not a color theme." }
+      }
+    },
+    "tokens": { "$ref": "#/$defs/sharedTokens" },
+    "primitives": { "type": "object", "description": "Engine ladders (10 steps) kept for reference." },
+    "provenance": {
+      "type": "object",
+      "required": ["light", "dark", "shared", "seed"],
+      "properties": {
+        "light": { "$ref": "#/$defs/originMap" },
+        "dark": { "$ref": "#/$defs/originMap" },
+        "shared": { "$ref": "#/$defs/originMap" },
+        "seed": { "$ref": "#/$defs/originMap" }
       }
     },
     "contrastPairs": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["foreground", "background", "minimum"],
+        "required": ["theme", "foreground", "background", "minimum"],
         "properties": {
+          "theme": { "enum": ["light", "dark"] },
           "foreground": { "type": "string" },
           "background": { "type": "string" },
-          "minimum": { "type": "number", "minimum": 3 }
+          "minimum": { "type": "number", "minimum": 3 },
+          "kind": { "enum": ["text", "non-text"] }
         }
       }
     },
@@ -75,9 +100,41 @@
       }
     },
     "microcopy": { "type": "object" },
-    "antiPatterns": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+    "antiPatterns": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "rationale": {
+      "type": "object",
+      "description": "Prose written by the AGY (justification only, never token values): theme, colors, typography, components, layout, depth, responsive, agentGuide.",
+      "additionalProperties": { "type": "string" }
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "sha256 of the canonical JSON of this contract without this field." }
   },
   "$defs": {
-    "tokenFamily": { "type": "object", "minProperties": 1 }
+    "cssValues": {
+      "type": "object",
+      "propertyNames": { "pattern": "^--[a-z0-9-]+$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "themeTokens": {
+      "allOf": [{ "$ref": "#/$defs/cssValues" }],
+      "required": ["--bg", "--surface", "--surface-warm", "--fg", "--fg-2", "--muted", "--meta", "--border", "--border-soft", "--accent", "--accent-on", "--accent-hover", "--accent-active", "--success", "--warn", "--danger", "--info", "--success-text", "--warn-text", "--danger-text", "--info-text", "--border-strong", "--focus"]
+    },
+    "sharedTokens": {
+      "allOf": [{ "$ref": "#/$defs/cssValues" }],
+      "required": [
+        "--font-display", "--font-body", "--font-mono",
+        "--text-xs", "--text-sm", "--text-base", "--text-lg", "--text-xl", "--text-2xl", "--text-3xl", "--text-4xl",
+        "--leading-body", "--leading-tight", "--tracking-display",
+        "--space-1", "--space-2", "--space-3", "--space-4", "--space-5", "--space-6", "--space-8", "--space-12",
+        "--section-y-desktop", "--section-y-tablet", "--section-y-phone",
+        "--radius-sm", "--radius-md", "--radius-lg", "--radius-pill",
+        "--elev-flat", "--elev-ring", "--elev-raised", "--focus-ring",
+        "--motion-fast", "--motion-base", "--ease-standard",
+        "--container-max", "--container-gutter-desktop", "--container-gutter-tablet", "--container-gutter-phone"
+      ]
+    },
+    "originMap": {
+      "type": "object",
+      "additionalProperties": { "enum": ["brief", "proposed", "derived", "engine-default"] }
+    }
   }
 }

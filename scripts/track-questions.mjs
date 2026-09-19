@@ -35,7 +35,9 @@ try {
   }
   if (active !== null) {
     const count = Array.isArray(call.tool_input?.questions) ? call.tool_input.questions.length : 1;
-    appendFileSync(join(active.dir, QUESTION_LOG), `${JSON.stringify({ stage: active.stage, count, at: new Date().toISOString() })}\n`);
+    // `header` identifies the design approval question (DESIGN_APPROVAL_HEADER); only short labels are logged, never answers.
+    const headers = (Array.isArray(call.tool_input?.questions) ? call.tool_input.questions : []).map((q) => q?.header).filter((h) => typeof h === 'string').slice(0, 8);
+    appendFileSync(join(active.dir, QUESTION_LOG), `${JSON.stringify({ stage: active.stage, count, headers, at: new Date().toISOString() })}\n`);
   }
 } catch {
   /* fail open */

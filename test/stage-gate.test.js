@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import fc from 'fast-check';
 import { STAGE_ORDER } from '../scripts/pensador-engine.mjs';
+import { designEvidence } from './helpers/design-fixture.js';
+import { APPROVAL_FILE, DESIGN_APPROVAL_HEADER, approvalProof, approvalQuestionsIn, buildApprovalRecord, loadApprovalKey } from '../scripts/lib/design-approval.mjs';
 import { applyTransition, checkTransition, computeIntegrity, questionsAskedIn, recordRequired, sealCheckpoint } from '../scripts/lib/stage-gate.mjs';
 
 const body = (n = 600) => `# doc\n${'conteudo real '.repeat(Math.ceil(n / 13))}`;
@@ -149,25 +151,107 @@ describe('checkTransition — stage records (EXPAND, COMPLEXITY, BRAINSTORM_GERA
 });
 
 describe('checkTransition — DESIGN', () => {
-  const audit = (status) => envWith({ 'design-systems/prof/resolved/design-audit.json': JSON.stringify({ status }) });
+  const cp = { stage: 'DESIGN', hasFrontend: true };
+  const withEvidence = (over) => envWith(designEvidence({ over }).files);
+  const evidenceCodes = (over) => codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: withEvidence(over) }));
+  const auditPath = 'design-systems/professional/resolved/design-audit.json';
+  const auditWith = (patch) => ({ ...JSON.parse(designEvidence().files[auditPath]), ...patch });
 
-  it('with a front-end, requires a PASS design-audit.json', () => {
-    const cp = { stage: 'DESIGN', hasFrontend: true };
+  it('with a front-end, requires the audit, conformance, integrity, engine run and the approval', () => {
     expect(codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: envWith() }))).toContain('MISSING_ARTIFACT');
-    expect(codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: audit('BLOCKED') }))).toContain('DESIGN_AUDIT_NOT_PASS');
-    expect(checkTransition({ checkpoint: cp, to: 'FINAL', env: audit('PASS') }).ok).toBe(true);
+    expect(checkTransition({ checkpoint: cp, to: 'FINAL', env: withEvidence({}) }).ok).toBe(true);
+  });
+
+  it('a BLOCKED audit is refused', () => {
+    expect(evidenceCodes({ [auditPath]: auditWith({ status: 'BLOCKED' }) })).toContain('DESIGN_AUDIT_NOT_PASS');
+  });
+
+  it.each(['structure', 'contrast', 'conformance', 'integrity', 'engineRun'])('refuses when checks.%s is not PASS (SKIPPED does not count)', (check) => {
+    const checks = { structure: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS', [check]: 'SKIPPED' };
+    expect(evidenceCodes({ [auditPath]: auditWith({ checks }) })).toContain('DESIGN_CHECK_NOT_PASS');
+  });
+
+  it('a hand-written {status: PASS} with no checks is refused', () => {
+    expect(evidenceCodes({ [auditPath]: { status: 'PASS', findings: [] } })).toContain('DESIGN_CHECK_NOT_PASS');
+  });
+
+  it('refuses an audit made for another contract', () => {
+    expect(evidenceCodes({ [auditPath]: auditWith({ contractSha256: 'f'.repeat(64) }) })).toContain('DESIGN_AUDIT_STALE');
+  });
+
+  it('requires source/engine-run.json, with status ok and the same contract', () => {
+    const run = 'design-systems/professional/source/engine-run.json';
+    expect(evidenceCodes({ [run]: null })).toContain('ENGINE_RUN_MISSING');
+    expect(evidenceCodes({ [run]: { status: 'BLOCKED', reasonCode: 'OD_BRAND_ENGINE_UNAVAILABLE' } })).toContain('ENGINE_RUN_FAILED');
+    expect(evidenceCodes({ [run]: { status: 'ok', contractSha256: 'e'.repeat(64) } })).toContain('ENGINE_RUN_CONTRACT_MISMATCH');
+  });
+
+  it('requires the visual approval of THIS contract in design-brief.json', () => {
+    expect(evidenceCodes({ 'design-brief.json': null })).toContain('DESIGN_NOT_APPROVED');
+    const brief = JSON.parse(designEvidence().files['design-brief.json']);
+    expect(evidenceCodes({ 'design-brief.json': { ...brief, approvedAt: null, approvedSha256: null } })).toContain('DESIGN_NOT_APPROVED');
+    expect(evidenceCodes({ 'design-brief.json': { ...brief, approvedSha256: 'd'.repeat(64) } })).toContain('DESIGN_NOT_APPROVED');
+  });
+
+  it('refuses an approval typed by hand: no record, forged proof, stale or edited brief', () => {
+    const brief = JSON.parse(designEvidence().files['design-brief.json']);
+    const record = JSON.parse(designEvidence().files[APPROVAL_FILE]);
+    expect(evidenceCodes({ [APPROVAL_FILE]: null })).toContain('DESIGN_APPROVAL_UNSIGNED');
+    expect(evidenceCodes({ [APPROVAL_FILE]: { ...record, proof: 'f'.repeat(64) } })).toContain('DESIGN_APPROVAL_FORGED');
+    // the old nonce format (sha256 over a nonce that lived in the workspace) is not accepted any more
+    const { proof: _p, systemId: _s, ...legacy } = record;
+    expect(evidenceCodes({ [APPROVAL_FILE]: { ...legacy, schemaVersion: 1, nonce: 'b'.repeat(32), proof: 'a'.repeat(64) } })).toContain('DESIGN_APPROVAL_FORGED');
+    // a proof recomputed without the user's key (anyone who read the workspace) is forged
+    expect(evidenceCodes({ [APPROVAL_FILE]: { ...record, proof: approvalProof({ key: Buffer.alloc(32, 7), systemId: record.systemId, contractSha256: record.contractSha256, briefSha256: record.briefSha256, approvedAt: record.approvedAt }) } })).toContain('DESIGN_APPROVAL_FORGED');
+    // signed for another design system
+    expect(evidenceCodes({ [APPROVAL_FILE]: buildApprovalRecord({ key: loadApprovalKey({ create: true }), systemId: 'other', brief, contractSha256: record.contractSha256, approvedAt: record.approvedAt }) })).toContain('DESIGN_APPROVAL_STALE');
+    // a brief edited after the approval keeps the approval fields but not the content hash
+    const edited = { ...brief, fields: { ...brief.fields, borderRadius: { ...brief.fields.borderRadius, value: 2 } } };
+    expect(evidenceCodes({ 'design-brief.json': edited })).toContain('DESIGN_APPROVAL_STALE');
+    // approvedAt typed to another instant no longer matches the signed record
+    expect(evidenceCodes({ 'design-brief.json': { ...brief, approvedAt: '2030-01-01T00:00:00.000Z' } })).toContain('DESIGN_APPROVAL_FORGED');
+    // a record signed for another contract is stale even though its own proof is valid
+    const other = designEvidence({ over: {} }).files;
+    expect(codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: envWith(other) }))).not.toContain('DESIGN_APPROVAL_FORGED');
+  });
+
+  it('without the per-user key (another machine, CI) the gate fails with DESIGN_APPROVAL_KEY_MISSING instead of a weaker check', () => {
+    const env = { ...withEvidence({}), approvalKey: () => null };
+    const result = checkTransition({ checkpoint: cp, to: 'FINAL', env });
+    expect(codes(result)).toContain('DESIGN_APPROVAL_KEY_MISSING');
+    expect(result.errors.find((e) => e.code === 'DESIGN_APPROVAL_KEY_MISSING').message).toContain('design-brief.mjs approve');
+    // the key of another user cannot verify it either
+    expect(codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: { ...withEvidence({}), approvalKey: () => Buffer.alloc(32, 9) } }))).toContain('DESIGN_APPROVAL_FORGED');
+    expect(checkTransition({ checkpoint: cp, to: 'FINAL', env: { ...withEvidence({}), approvalKey: () => loadApprovalKey() } }).ok).toBe(true);
+  });
+
+  it('in strict mode, only a logged approval question (header) counts; --unverified is an explicit escape', () => {
+    const sealed = applyTransition({ stage: 'AGY', hasFrontend: true }, 'DESIGN');
+    const files = designEvidence().files;
+    const otherQuestion = envWith({ ...files, '.pensador-questions.jsonl': JSON.stringify({ stage: 'DESIGN', count: 1, headers: ['Paleta'] }) });
+    expect(codes(checkTransition({ checkpoint: sealed, to: 'FINAL', env: otherQuestion, strict: true }))).toContain('DESIGN_APPROVAL_NOT_OBSERVED');
+    const approval = envWith({ ...files, '.pensador-questions.jsonl': JSON.stringify({ stage: 'DESIGN', count: 1, headers: [DESIGN_APPROVAL_HEADER] }) });
+    expect(codes(checkTransition({ checkpoint: sealed, to: 'FINAL', env: approval, strict: true }))).not.toContain('DESIGN_APPROVAL_NOT_OBSERVED');
+    const unverified = envWith({ ...files, [APPROVAL_FILE]: { ...JSON.parse(files[APPROVAL_FILE]), unverified: true } });
+    // the record was re-signed by nobody: changing it breaks the proof instead of unlocking the gate
+    expect(codes(checkTransition({ checkpoint: sealed, to: 'FINAL', env: unverified, strict: true }))).toContain('DESIGN_APPROVAL_NOT_OBSERVED');
+    expect(approvalQuestionsIn(null, 'DESIGN')).toBe(0);
+  });
+
+  it('in strict mode, the AskUserQuestion hook must have logged the approval question in DESIGN', () => {
+    const sealed = applyTransition({ stage: 'AGY', hasFrontend: true }, 'DESIGN');
+    const files = designEvidence().files;
+    const noQuestion = checkTransition({ checkpoint: sealed, to: 'FINAL', env: envWith(files), strict: true });
+    expect(codes(noQuestion)).toContain('DESIGN_APPROVAL_NOT_OBSERVED');
+    const logged = envWith({ ...files, '.pensador-questions.jsonl': JSON.stringify({ stage: 'DESIGN', count: 1, headers: [DESIGN_APPROVAL_HEADER] }) });
+    expect(codes(checkTransition({ checkpoint: sealed, to: 'FINAL', env: logged, strict: true }))).not.toContain('DESIGN_APPROVAL_NOT_OBSERVED');
   });
 
   it('without a front-end, must be explicitly recorded as skipped', () => {
-    const cp = { stage: 'DESIGN', hasFrontend: false };
-    expect(codes(checkTransition({ checkpoint: cp, to: 'FINAL', env: envWith() }))).toContain('RECORD_REQUIRED');
-    expect(checkTransition({ checkpoint: cp, to: 'FINAL', record: { outcome: 'skipped', note: 'demanda sem front-end: nada a desenhar' }, env: envWith() }).ok).toBe(true);
+    const noFront = { stage: 'DESIGN', hasFrontend: false };
+    expect(codes(checkTransition({ checkpoint: noFront, to: 'FINAL', env: envWith() }))).toContain('RECORD_REQUIRED');
+    expect(checkTransition({ checkpoint: noFront, to: 'FINAL', record: { outcome: 'skipped', note: 'demanda sem front-end: nada a desenhar' }, env: envWith() }).ok).toBe(true);
     expect(recordRequired('DESIGN', { hasFrontend: true })).toBe(false);
-  });
-
-  it('with a front-end, the PASS audit is the evidence and no record is needed', () => {
-    expect(recordRequired('DESIGN', { hasFrontend: true })).toBe(false);
-    expect(checkTransition({ checkpoint: { stage: 'DESIGN', hasFrontend: true }, to: 'FINAL', env: audit('PASS') }).ok).toBe(true);
   });
 });
 

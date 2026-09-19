@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Preflight check for cc-pensador (Pensador PRD Workflow).
  *
@@ -48,6 +47,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { detectOpenDesign } from "./lib/open-design-preflight.mjs";
+import { detectDesignAgents } from "./lib/design-agents.mjs";
+import { DESIGN_AGENT_HEADER } from "./pensador-engine.mjs";
 import {
   CODEBASE_MEMORY_BINARY_NAMES,
   CODEBASE_MEMORY_CONFIG_CANDIDATES,
@@ -971,12 +972,12 @@ function checkOpenDesignLegacy() {
     available,
     // true only when a non-coreutils `od` binary is on PATH — the MCP stdio bridge
     // (`od mcp`) needs this. false means daemon REST is usable but `get_file` via
-    // MCP may not work; od-fetch-system.mjs falls back to the clone on disk.
+    // MCP may not work; the brand-engine build falls back to the clone on disk.
     mcpFunctional,
     cliCheck: cli,
     configured,
     configuredIn,
-    stage: "BRAINSTORM_GERAL (UI/UX design brief) + FINAL (verbatim design-systems/<id>/, or inline design-system.md when unused)",
+    stage: "BRAINSTORM_GERAL (UI/UX design brief) + DESIGN (generated design-systems/<id>/, or inline design-system.md when unused)",
     purpose:
       "Drive Open Design (od design-systems list/show/import-*, or the daemon REST API) to pull a brand-grade, curated DESIGN.md + tokens.css the Pensador persists verbatim under <featurePath>/design-systems/<id>/, so the front-end agent has a real visual target instead of a flat default theme.",
     installCommands,
@@ -985,6 +986,31 @@ function checkOpenDesignLegacy() {
       "(A) install Open Design now — Claude runs the bundled installer script (scripts/install-open-design.ps1|.sh), which checks git+docker, brings the daemon up via Docker, and wires the MCP, then resumes; " +
       "(B) skip and write an inline DESIGN.md (design-system.md) from the 9-section schema.",
   };
+}
+
+/**
+ * Agents that could drive the OPTIONAL Open Design prototype/Critique (host PATH + what the OD daemon
+ * sees). Read-only and never blocking: an empty/unavailable list only means "offer 'Nenhum'".
+ */
+async function checkDesignAgents(openDesign, options = {}) {
+  const siblings = {
+    agy: checkPlugin(AGY_MARKETPLACE, AGY_PLUGIN_NAME).ok,
+    kiro: checkPlugin(KIRO_MARKETPLACE, KIRO_PLUGIN_NAME).ok,
+  };
+  try {
+    const found = await detectDesignAgents({ openDesign, siblings, ...options });
+    return {
+      header: DESIGN_AGENT_HEADER,
+      askWhen: "hasFrontend, before DESIGN, when at least one agent is available",
+      daemonWhere: found.daemonWhere,
+      daemonStatus: found.daemonStatus,
+      // Only what can be offered; the undetected ones would drown the JSON (the daemon lists ~30 runtimes).
+      agents: found.agents.filter((a) => a.available),
+      undetectedCount: found.agents.filter((a) => !a.available).length,
+    };
+  } catch {
+    return { header: DESIGN_AGENT_HEADER, askWhen: "never (detection failed)", daemonWhere: null, daemonStatus: "error", agents: [] };
+  }
 }
 
 async function checkOpenDesign(options = {}) {
@@ -1041,7 +1067,7 @@ function checkExecutionMode(mode, modeValid, requestedMode) {
 
 // ── Report ─────────────────────────────────────────────────────────────────
 
-export async function runPreflight({ cwd = process.cwd(), env = process.env, timeoutMs = 5_000, argv = [] } = {}) {
+export async function runPreflight({ cwd = process.cwd(), env = process.env, timeoutMs = 5_000, argv = [], designAgentDeps = {} } = {}) {
 const { mode, requestedMode, modeValid } = parseModeArg(argv);
 
 const codex = checkCodex();
@@ -1052,6 +1078,7 @@ const context7 = checkContext7();
 const webResearch = checkWebResearch();
 const openspec = checkOpenSpec();
 const openDesign = await checkOpenDesign({ cwd, env, timeoutMs });
+const designAgents = await checkDesignAgents(openDesign, { env, timeoutMs, ...designAgentDeps });
 
 const subagentsAvailable = codex.available && agy.available;
 // Overall status considers the domain subagents, the selected execution engine,
@@ -1090,8 +1117,9 @@ const report = {
     webResearch,
     openspec,
     openDesign,
+    designAgents,
   },
-  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign),
+  guidance: buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign, designAgents),
 };
 return report;
 }
@@ -1110,7 +1138,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
  * opening context or relay to the user when a subagent / execution engine is
  * missing.
  */
-function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign) {
+function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webResearch, openspec, openDesign, designAgents = null) {
   const lines = [];
 
   // Execution mode summary first — it is the most impactful decision.
@@ -1261,6 +1289,22 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
       lines.push(
         `    (B) Seguir sem — write an inline design-system.md from the 9-section DESIGN.md schema.`,
       );
+    }
+  }
+
+  if (designAgents) {
+    const usable = designAgents.agents.filter((a) => a.available);
+    if (usable.length > 0) {
+      lines.push(
+        `Design agent: ${usable.map((a) => `${a.id}@${a.where}`).join(", ")} detected — when the demand has a front-end, ask ONCE before DESIGN ` +
+          `(AskUserQuestion, header "${designAgents.header}", options = these agents + "Nenhum (pular protótipo)"), persist state.designAgent ` +
+          `(design-brief.mjs agent) and use --agent <id> in \`od run start\`; never start the run without the user's consent (it costs tokens).`,
+      );
+      if (designAgents.daemonWhere) {
+        lines.push(`  → OD daemon runs in the ${designAgents.daemonWhere}: only agents detected there can be launched; otherwise offer to install/authenticate it there or to move the daemon.`);
+      }
+    } else {
+      lines.push("Design agent: none detected — the OD prototype/Critique stay off (no question needed).");
     }
   }
 

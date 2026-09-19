@@ -18,7 +18,7 @@ try {
   process.exit(0);
 }
 // Fast path: almost every tool call in every session has nothing to do with the checkpoint.
-if (!raw.includes('.pensador-progress.json') && !raw.includes('.pensador-questions.jsonl')) process.exit(0);
+if (!['.pensador-progress.json', '.pensador-questions.jsonl', '.pensador-approval.json', 'design-brief.json', 'approval.key'].some((name) => raw.includes(name))) process.exit(0);
 
 try {
   const call = JSON.parse(raw);
