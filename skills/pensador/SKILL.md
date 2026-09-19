@@ -27,6 +27,9 @@ O protocolo v2 substitui os estagios autonomos `CLARITY`, `BACKEND`, `UIUX` e `F
 | `skills/pensador/references/tech-research.md` | RESEARCH, track tecnico: deteccao de stack, lacunas, versao atual, padroes de arquitetura/design, convencoes e anti-padroes vigentes |
 | `skills/pensador/references/open-design.md` | Open Design (MCP/CLI) opcional: brief de design e persistencia verbatim dos arquivos do system (`design-system.md` so no fallback, quando ha front-end e o Open Design nao e usado) |
 | `skills/pensador/references/imagery.md` | Contrato de imagery/iconografia: o Pensador e o unico proprietario das decisoes e artefatos visuais (`resolved/assets/manifest.json`); o Orquestrador so materializa, nunca pergunta nem gera |
+| `scripts/advance-stage.mjs` | Unica forma permitida de mudar o `stage` de `.pensador-progress.json`: valida ordem sequencial, artefatos de saida do estagio, perguntas pendentes e, para `DONE`, o historico completo e o `validate-handoff.mjs` (`scripts/lib/stage-gate.mjs`) |
+| `scripts/guard-checkpoint.mjs` | Hook `PreToolUse` (`hooks/hooks.json`): bloqueia edicao manual dos campos do checkpoint que pertencem ao gate e do log de perguntas (`scripts/lib/checkpoint-guard.mjs`) |
+| `scripts/track-questions.mjs` | Hook `PostToolUse` de `AskUserQuestion`: grava `.pensador-questions.jsonl`, a prova de que o usuario foi consultado em cada estagio |
 | `scripts/od-fetch-system.mjs` | Script I/O que executa `openDesignFetchPlan()` no FINAL: copia os artefatos verbatim do system (manifest-driven quando o system traz `manifest.json`; `tokens.css`, `components.html`, `preview/`, … caso contrario) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`) — `packages/ui/design-systems/<id>/` e so o alvo de materializacao que o Orquestrador/Executor usa depois |
 | `skills/pensador/references/openspec.md` | OpenSpec opcional: escolha PRD vs Spec no INIT e montagem de specs |
 | `skills/pensador/references/handoff-contract.md` | Contrato de handoff Pensador→Orchestrador→Executor: `handoff.json`, raizes ocultas e correlacao por slug |
@@ -122,6 +125,16 @@ O idioma padrao e PT-BR. Cada pergunta deve oferecer uma opcao recomendada quand
 
 ---
 
+## Execucao no fio principal (sem fork, sem segundo plano)
+
+O Pensador e conduzido **inteiramente pela sessao principal**, um estagio de cada vez. Nunca delegue a *conducao* do fluxo (ou "os estagios restantes") a um fork, subagente em segundo plano, `Agent` com `run_in_background`, `ScheduleWakeup`, `/loop` ou tarefa agendada — mesmo que o fluxo seja longo e a janela de contexto esteja pesada.
+
+Motivo (run real, OficinaAI, 2026-09-18): um fork recebeu "execute RESEARCH ate FINAL", respondeu que ja estava rodando em segundo plano, nao usou nenhuma ferramenta util e ficou 74 minutos bloqueado num `AskUserQuestion` sem sentido que so o usuario poderia responder. `AskUserQuestion` em agente de segundo plano nao e um canal confiavel para o usuario.
+
+Subagentes so entram onde o fluxo os especifica — como **lentes** sincronas e de leitura (`codex:codex-rescue`, `cc-antigravity-plugin:antigravity-agent`, ver Delegacao v2) — e devolvem rascunhos que o Pensador relê; eles nunca conversam com o usuario nem avancam estagio. Se o contexto ficar pesado, grave o checkpoint via `advance-stage.mjs` e diga ao usuario para continuar com `/pensador resume <slug>`; nao empurre o trabalho para um processo paralelo.
+
+---
+
 ## Modos de execucao (`--mode`)
 
 O modo de execucao define **qual motor executa o trabalho pesado** do fluxo (redigir o PRD base, expandir requisitos, sintetizar analises e gerar artefatos). E ortogonal a delegacao por estagio (Codex/AGY/skills como lentes de dominio).
@@ -156,6 +169,29 @@ O Pensador nunca avanca para o proximo estagio enquanto existir pergunta sem des
 - Pergunta respondida ou explicitamente diferida pelo usuario satisfaz o gate.
 - Um dominio nao aplicavel em `BRAINSTORM_GERAL` registra fallback por dominio ou zero perguntas justificadas, mas o estagio ainda e visitado.
 - Ao fechar o gate de cada estagio, grave checkpoint v2 em `<featurePath>/.pensador-progress.json`.
+- **O `stage` do checkpoint so muda por `advance-stage.mjs`.** Nunca edite o campo com `Edit`/`Write`/`sed`. O script e o gate executavel: os estagios avancam de um em um (`INIT` → `EXPLORE` → … → `DONE`, sem saltos), o artefato de saida do estagio precisa existir em disco, nao pode haver pergunta pendente e cada visita fica em `stageHistory`. Um estagio sem nada a perguntar ainda e visitado e avancado — nunca pulado.
+
+  ```bash
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/advance-stage.mjs" --feature "<featurePath>" --to <PROXIMO_ESTAGIO>
+  ```
+
+  Exit `0` = gravado; exit `1` = recusado (JSON com `errors[].code`: `STAGE_SKIP`, `MISSING_ARTIFACT`, `PENDING_QUESTIONS`, `STAGES_NOT_VISITED`, `MISSING_HANDOFF`, `HANDOFF_INVALID`). Recusa significa: volte e cumpra o gate do estagio — nao contorne editando o arquivo. O checkpoint inicial (INIT) e criado com `Write` (sem `stageHistory` nem os outros campos do gate) e **selado logo em seguida**: `node "${CLAUDE_PLUGIN_ROOT}/scripts/advance-stage.mjs" --feature "<featurePath>" --seal`. O selo (`integrity`) e conferido a cada avanco; qualquer alteracao dos campos do gate por fora do script — inclusive por um caminho que o hook nao reconheceu — vira `CHECKPOINT_TAMPERED`. Um checkpoint gerado por versao anterior a 2.29 so pode ser retomado depois de o usuario pedir isso via `AskUserQuestion`, com `--adopt` no lugar de `--seal` (os estagios ja cumpridos ficam marcados como `backfilled`); nunca use `--adopt` para "consertar" um checkpoint adulterado. Um hook `PreToolUse` (`hooks/hooks.json` → `scripts/guard-checkpoint.mjs`) bloqueia `Edit`/`Write`/`MultiEdit` e escritas via shell que mudem `stage`, `stageHistory`, `stageRecords`, `complexityMode`, `hasFrontend` ou `hasBackend` (os demais campos continuam editaveis).
+
+  **Conteudo, nao so existencia.** Os artefatos de saida precisam ter conteudo real (piso de caracteres nao-brancos por arquivo; JSON valido e nao vazio) — um stub de uma linha e recusado (`ARTIFACT_TOO_SHORT`).
+
+  **Registro por estagio (`--record`).** Estagios sem artefato natural sao gateados por um registro que voce passa **ao sair** do estagio, com o desfecho real:
+
+  | Sai de | `--record` |
+  |---|---|
+  | `EXPAND` | `{"outcome":"asked","questionsAsked":N,"questionsClosed":N}` — ou `{"outcome":"none","note":"<por que nada a perguntar, >=20 chars>"}` |
+  | `COMPLEXITY` | `{"outcome":"asked","questionsAsked":1,"questionsClosed":1,"complexityMode":"lite" ou "completo"}` (o que o usuario confirmou) |
+  | `BRAINSTORM_GERAL` | `{"outcome":"asked|none|fallback",...,"hasFrontend":bool,"hasBackend":bool}` — os dois booleanos sao obrigatorios e passam a decidir CODEX, DESIGN e os artefatos do FINAL |
+  | `CODEX` / `AGY` | `asked`/`none`: exige `shared-agents/codex.stage.response.md` / `agy.stage.response.md` com a resposta do subagente; `fallback`: `note` com o motivo; `skipped` (so CODEX, so front-end-only): `note` |
+  | `DESIGN` | sem front-end: `{"outcome":"skipped","note":"..."}`; com front-end: nenhum registro, o gate exige `design-systems/<id>/resolved/design-audit.json` com `status: "PASS"` |
+
+  `questionsClosed` menor que `questionsAsked` = pergunta aberta (`PENDING_QUESTIONS`). `asked` com zero perguntas e recusado: o usuario precisa ter sido de fato consultado via `AskUserQuestion` — e o gate confere: um hook `PostToolUse` (`scripts/track-questions.mjs`) registra cada chamada de `AskUserQuestion` em `<featurePath>/.pensador-questions.jsonl` com o estagio corrente, e um registro `asked` que declare mais perguntas do que as registradas naquele estagio e recusado (`QUESTIONS_NOT_OBSERVED`). O log so e escrito pelo hook (o guard bloqueia qualquer escrita manual). Se os hooks estiverem desativados no ambiente, adicione `"unverified": true` ao registro: fica gravado no checkpoint e o recap final precisa declarar que as perguntas nao foram verificadas. Exemplo: `advance-stage.mjs --feature <featurePath> --to COMPLEXITY --record '{"outcome":"asked","questionsAsked":2,"questionsClosed":2}'` (em PowerShell prefira `--record-file <arquivo.json>`).
+
+  Para `DONE` o gate ainda confere: `project-baseline.json`, `requirements.json` (modo PRD), `ui-data-map.json` (`hasFrontend`) e `seed-plan.json` (`hasBackend`) existentes e validos, e cada artefato `required` declarado no `handoff.json` presente e nao vazio.
 
 ---
 
@@ -236,7 +272,7 @@ DONE
 5. Se iniciar novo fluxo, derive um nome curto da atualizacao a partir da demanda, gere o slug base (`slugify()`) e execute `allocateFeatureDir()` com esse nome; grave `featurePath = ".pensador/<slug-da-demanda>-vN"` no estado. Use o fallback `atualizacao-v1` quando o nome ficar vazio e incremente `N` se ja houver pasta para o mesmo slug.
 6. Se a demanda estiver ausente ou vazia, solicite-a via `AskUserQuestion`.
 7. **OpenSpec (opcional).** Se o preflight reportar `integrations.openspec.available = true`, pergunte via `AskUserQuestion` se o usuario quer gerar um **PRD** (padrao) ou uma **Spec** estruturada (OpenSpec). Registre a escolha em `artifactMode` (`prd` ou `spec`) com `withArtifactMode(state, escolha)`. Se o OpenSpec nao for detectado, mantenha `artifactMode = 'prd'` sem perguntar. Detalhes em `references/openspec.md`.
-8. Com demanda presente, modo de execucao resolvido, `artifactMode` definido e `featurePath` definido, avance para `EXPLORE`.
+8. Com demanda presente, modo de execucao resolvido, `artifactMode` definido e `featurePath` definido, grave o checkpoint inicial (`stage: "INIT"`), **sele-o** com `advance-stage.mjs --feature "<featurePath>" --seal` e avance para `EXPLORE` com `advance-stage.mjs --to EXPLORE` (secao "Gate de avanco").
 
 **Gate:** demanda presente e nao vazia, modo de execucao resolvido (e motor confirmado disponivel ou fallback para `claude` registrado), `artifactMode` definido (`prd` por padrao; `spec` so quando OpenSpec foi escolhido), `featurePath` definido, checkpoint v2 retomado ou decisao de novo fluxo registrada.
 
@@ -490,6 +526,8 @@ Requisitos consolidados: <EXPAND + BRAINSTORM_GERAL>
 
 O baseline tecnico entra no prompt de proposito: a varredura deve raciocinar sobre as convencoes e versoes **pesquisadas**, nao sobre as que o modelo lembra. Divergencia entre o que o Codex propoe e o baseline pesquisado e um ponto a levantar, nao a resolver em silencio.
 
+Grave a resposta do subagente em `<featurePath>/shared-agents/codex.stage.response.md` (evidencia de que o Codex rodou; o gate `advance-stage.mjs` a exige quando o desfecho e `asked`/`none`).
+
 Para cada ponto relevante, crie pergunta com `origin = 'codex'`, `stage = 'CODEX'` e apresente via `AskUserQuestion`.
 
 **Gate:** atividade especifica de front-end registra zero perguntas e avanca; caso contrario, todas as perguntas de CODEX, incluindo fallback, respondidas ou diferidas.
@@ -515,6 +553,8 @@ PRD Base: <PRD_Base>
 Arquitetura: <architecture.md>
 Requisitos consolidados: <EXPAND + BRAINSTORM_GERAL + CODEX>
 ```
+
+Grave a resposta do subagente em `<featurePath>/shared-agents/agy.stage.response.md` (evidencia de que o AGY rodou; exigida pelo gate quando o desfecho e `asked`/`none`).
 
 Para cada pergunta relevante, use `origin = 'agy'`, `stage = 'AGY'` e `AskUserQuestion`.
 
@@ -589,8 +629,8 @@ Execute somente quando `hasFrontend=true`. AGY e Codex sao dependencias obrigato
    - **Modo Spec:** dobre o design no change set usando o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)`. Ele entrega os caminhos concretos que os arquivos do OpenSpec DEVEM referenciar: (a) na secao *Decisions* do `design.md`, registre o(s) `<id>`, a origem verbatim (`verbatimDir`) e o alvo de materializacao (`materializeInto`) + overrides justificados; (b) na capability delta-spec `specs/ui-design-system/spec.md`, escreva requisitos `SHALL` + cenarios `#### Scenario:` que citam `materializedTokens` (ex.: `packages/ui/design-systems/<id>/tokens.css`) como fonte de estilo. Os arquivos verbatim continuam indo para `<featurePath>/design-systems/<id>/`. Finalize o change set e rode `openspec validate <nome> --strict --json` (e `/opsx:sync` se introduziu/ajustou specs). Contrato completo em `references/openspec.md` › **Contrato Spec ↔ Open Design**.
    - Detalhes e regra inviolavel ("never invent new tokens") em `references/open-design.md`.
    - **Handoff:** registre no `handoff.json` o(s) `<id>` concreto(s) escolhido(s) e o diretorio verbatim como role `design-system-files` (`design-systems/<id>/`, relativo ao `artifactRoot` `.pensador/<slug>-vN/`, uma entrada por id com `components.html` garantido). Quando `hasFrontend`, declare tambem o role visual `brand-assets` (apontando para `assets/` e o `manifest.json` com os assets de midia do setor). Cada entrada de design system carrega `materializeInto` (o alvo em `state.uiPackageDir`, ex.: `packages/ui/design-systems/<id>/`) para o Executor materializar depois. O role `design-system` (o `design-system.md`) so aparece no **fallback inline** (quando nenhum system foi usado). Isso e o que `buildArtifactList` emite quando `state.designSystems` esta preenchido; sem isso o consumidor (orquestrador) teria de parsear a prosa para achar os arquivos. Ver `references/handoff-contract.md`.
-6. **Valide o handoff antes de reportar.** Rode `node "${CLAUDE_PLUGIN_ROOT}/scripts/validate-handoff.mjs" --file "<featurePath>/handoff.json"`. Alem da estrutura do envelope, para `stage: pensador` com `status: DONE` este script tambem roda `validateVisualCompleteness()`: se houver `design-system-files`/`design-system` no handoff (ou seja, `hasFrontend`), exige `design-system-files[].variant === "resolved"` e a presenca do role `brand-assets`. Duas checagens de imagem distintas (nao confunda uma com a outra — uma run real confundiu e o gate contou errado): `project-baseline.json.visualImageryPlan.policy === "required"` conta QUALQUER asset vinculado (marca, conteudo ou seed) contra `minimumAssets` e **bloqueia** `status: DONE` se faltar; `seedImageryRequired=true` conta so assets `purpose: "seed-demo"`/`seedBindings` e emite `SEED_IMAGERY_LIKELY_MISSING` como warning **nao bloqueante** — resolva-o antes do handoff sempre que o seed fizer parte de um CA, mesmo sem bloquear. Quando o handoff tiver os roles `ui-data-map` e `api-contract`, o CLI tambem roda `validateContractCoverage()`: toda `operation` de `reads[]`/`writes[]` do `ui-data-map.json` precisa casar com uma operacao real do contrato; uma lacuna vira `CONTRACT_COVERAGE_GAP` **bloqueante** em `status: DONE` (formatos fora de REST/OpenAPI degradam para warning, nunca passam em silencio). `ok: false` aqui significa que o handoff nao pode ficar `status: DONE` como esta — ou complete o estagio DESIGN e o preenchimento do `ui-data-map`/`seed-plan`, ou grave `status: PARTIAL`/`BLOCKED` com `summary` nomeando a lacuna (nunca reescreva o `status` sozinho para contornar o gate). Isso fecha os dois modos de falha reais observados em runs: um handoff escrito a mao com `status: DONE` e `variant: legacy-verbatim` validava `ok: true` porque so a estrutura do envelope era checada; e um `openapi.yaml` com 21 operacoes para 41 RFs nunca foi cruzado contra as telas que o front-end precisava alimentar.
-7. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
+6. **Valide o handoff antes de reportar — passo bloqueante.** O `handoff.json` NAO e escrito a mao de memoria: siga o envelope de `references/handoff-contract.md` (`handoffVersion`, `stage`, `producer`, `artifactRoot`, `summary`, `upstream`, `artifacts[]` com `required`, `nextStage`, `createdAt`/`updatedAt` reais) e as entradas de `buildArtifactList()`. Sem `validate-handoff.mjs` com `ok: true` o FINAL nao fecha, e `advance-stage.mjs --to DONE` recusa o avanco (`HANDOFF_INVALID`). Rode `node "${CLAUDE_PLUGIN_ROOT}/scripts/validate-handoff.mjs" --file "<featurePath>/handoff.json"`. Alem da estrutura do envelope, para `stage: pensador` com `status: DONE` este script tambem roda `validateVisualCompleteness()`: se houver `design-system-files`/`design-system` no handoff (ou seja, `hasFrontend`), exige `design-system-files[].variant === "resolved"` e a presenca do role `brand-assets`. Duas checagens de imagem distintas (nao confunda uma com a outra — uma run real confundiu e o gate contou errado): `project-baseline.json.visualImageryPlan.policy === "required"` conta QUALQUER asset vinculado (marca, conteudo ou seed) contra `minimumAssets` e **bloqueia** `status: DONE` se faltar; `seedImageryRequired=true` conta so assets `purpose: "seed-demo"`/`seedBindings` e emite `SEED_IMAGERY_LIKELY_MISSING` como warning **nao bloqueante** — resolva-o antes do handoff sempre que o seed fizer parte de um CA, mesmo sem bloquear. Quando o handoff tiver os roles `ui-data-map` e `api-contract`, o CLI tambem roda `validateContractCoverage()`: toda `operation` de `reads[]`/`writes[]` do `ui-data-map.json` precisa casar com uma operacao real do contrato; uma lacuna vira `CONTRACT_COVERAGE_GAP` **bloqueante** em `status: DONE` (formatos fora de REST/OpenAPI degradam para warning, nunca passam em silencio). `ok: false` aqui significa que o handoff nao pode ficar `status: DONE` como esta — ou complete o estagio DESIGN e o preenchimento do `ui-data-map`/`seed-plan`, ou grave `status: PARTIAL`/`BLOCKED` com `summary` nomeando a lacuna (nunca reescreva o `status` sozinho para contornar o gate). Isso fecha os dois modos de falha reais observados em runs: um handoff escrito a mao com `status: DONE` e `variant: legacy-verbatim` validava `ok: true` porque so a estrutura do envelope era checada; e um `openapi.yaml` com 21 operacoes para 41 RFs nunca foi cruzado contra as telas que o front-end precisava alimentar.
+7. Apresente recap final: decisoes principais, perguntas diferidas, dominios cobertos, caminhos gerados e proximos passos de handoff. **O recap e honesto sobre a cobertura:** liste explicitamente qualquer estagio executado de forma reduzida ou com fallback (ex.: Codex/AGY indisponiveis, pesquisa `DEFERRED`/`PARTIAL`, lente ausente) e nunca chame de "PRD completo" um resultado que nao passou por todos os estagios. Um estagio pulado nao e uma opcao — se algum nao rodou, o `handoff.json` sai `status: PARTIAL` com o `summary` nomeando a lacuna. No modo Spec, oriente o handoff com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este ultimo altera specs principais: so apos confirmacao do usuario).
 
 **Gate:** artefatos aplicaveis gerados, `handoff.json` gravado e validado com `ok: true` pelo passo 6, caminhos reportados e recap/handoff apresentados. Quando `hasFrontend`, `ui-data-map.json` existe e nenhuma tela real ficou com `"TBD"`/operacao sem correspondencia no contrato. Quando `hasBackend`, `seed-plan.json` existe cobrindo toda entidade que o `ui-data-map` referencia. Quando `hasFrontend` e ha system(s) em `state.designSystems`, o gate inclui a verificacao de 4 pontos do passo 5: `od-fetch-system.mjs` rodou com exit `0`, o conteudo de `<featurePath>/design-systems/<id>/` em disco bate com o `copied[]` do JSON, e cada `design-consistency.json` esta em `PASS` ou em `DIVERGENT_ACCEPTED` por decisao explicita do usuario. `DIVERGENT_BLOCKED` impede fechar o FINAL.
 
@@ -598,7 +638,7 @@ Execute somente quando `hasFrontend=true`. AGY e Codex sao dependencias obrigato
 
 ## DONE
 
-Estado terminal. O fluxo esta encerrado.
+Estado terminal. O fluxo esta encerrado. So se chega aqui por `advance-stage.mjs --to DONE`, que exige `stageHistory` com todos os estagios anteriores e `handoff.json` aprovado por `validate-handoff.mjs`.
 
 ---
 
@@ -618,7 +658,7 @@ Estado terminal. O fluxo esta encerrado.
 | `AGY` | Todas as perguntas respondidas ou diferidas |
 | `DESIGN` | `design-audit.json` em `PASS` e assets `required` gerados e validados |
 | `FINAL` | Artefatos gerados, caminhos reportados e recap/handoff entregues; com `hasFrontend` + system selecionado, `od-fetch-system.mjs` rodou (exit `0`) e o diretorio verbatim em disco foi conferido contra o `copied[]` |
-| `DONE` | Terminal |
+| `DONE` | Terminal; alcancado somente via `advance-stage.mjs` (historico completo + handoff valido) |
 
 ## Delegacao v2
 

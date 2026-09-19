@@ -235,8 +235,9 @@ Opção B: Seguir sem o Open Design
 O Claude executa o **script instalador** que acompanha o cc-pensador. Ele automatiza o caminho Docker do [QUICKSTART oficial](https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md): verifica `git`/`docker`/`docker compose`, clona `nexu-io/open-design`, prepara `deploy/.env` com um `OD_API_TOKEN` gerado, sobe `docker compose up -d`, aguarda o daemon em `http://localhost:7456` e tenta `od mcp install <agent>`.
 
 ```powershell
-# Windows (PowerShell)
-pwsh -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"
+# Windows (PowerShell) — use "powershell" (Windows PowerShell 5.1, presente em todo Windows);
+# "pwsh" (PowerShell 7) nao vem instalado por padrao e falhou em uma run real
+powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"
 ```
 
 ```bash

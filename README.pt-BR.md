@@ -298,7 +298,7 @@ O Pensador não avança para o próximo estágio enquanto houver perguntas sem r
 
 O `scripts/pensador-engine.mjs` é a **especificação determinística de referência** do fluxo: máquina de estados, gates, mapeamentos de effort/modelo, modos de execução (`EXECUTION_MODES`, `parseExecutionMode`, `resolveExecutionMode`, `buildDelegationInvocation`), `detectComplexity`, `allocateFeatureDir`, `buildFeaturePath`, `classifyProject`, `consolidate`/`withConsolidated`, planejamento de artefatos e serialização de checkpoint v2. É um módulo puro — sem I/O, mesmas entradas → mesmas saídas — exercido pela suíte de testes.
 
-> **Importante:** o engine **não é importado em runtime**. A skill é Markdown interpretado pelo LLM. O único script executado por shell é o `preflight.mjs`.
+> **Importante:** a skill é Markdown interpretado pelo LLM; o engine é a especificação testada. Em runtime ele só é importado por `scripts/advance-stage.mjs` (via `scripts/lib/stage-gate.mjs`), o **gate executável** que é o único caminho para mudar o `stage` do checkpoint: recusa saltos de estágio, artefato ausente ou só um esboço, pergunta pendente, estágio sem desfecho registrado (`--record`) e `DONE` sem histórico completo ou sem `handoff.json` válido cujos artefatos obrigatórios existam. Um hook `PreToolUse` (`hooks/hooks.json`) bloqueia a edição manual dos campos do checkpoint que pertencem ao gate, um selo de integridade pega qualquer edição que escape dele, e um hook `PostToolUse` registra cada chamada de `AskUserQuestion` — assim um registro de estágio não pode declarar perguntas que nunca foram feitas. O Pensador roda no fio principal — nunca em fork/segundo plano.
 
 ```bash
 npm install
@@ -337,6 +337,9 @@ cc-pensador/
 │  └─ frontend-design/SKILL.md
 ├─ scripts/
 │  ├─ preflight.mjs          # verifica disponibilidade de Codex, AGY, Kiro e do motor de execução
+│  ├─ advance-stage.mjs      # gate de avanço de estágio (único caminho para mudar o checkpoint)
+│  ├─ guard-checkpoint.mjs   # hook PreToolUse: bloqueia edição manual de campos do checkpoint do gate
+│  ├─ track-questions.mjs    # hook PostToolUse: registra as chamadas de AskUserQuestion por estágio
 │  └─ pensador-engine.mjs    # especificação determinística de referência (validada por testes)
 ├─ test/
 │  ├─ smoke.test.js                # API pública do engine, STAGE_ORDER, checkpoint v2

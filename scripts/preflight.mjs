@@ -954,7 +954,7 @@ function checkOpenDesignLegacy() {
   // the root CHANGELOG.md upstream is stale.
   const installCommands = {
     repo: "https://github.com/nexu-io/open-design",
-    scriptWindows: 'pwsh -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
+    scriptWindows: 'powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
     scriptUnix: 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"',
     docker:
       "git clone --depth 1 https://github.com/nexu-io/open-design && cd open-design/deploy && cp .env.example .env && docker compose up -d   # app em http://localhost:7456",

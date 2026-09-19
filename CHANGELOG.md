@@ -1,5 +1,44 @@
 # Changelog
 
+## [2.29.0] — 2026-09-18 — Gate executavel de avanco de estagio; fluxo no fio principal
+
+Corrige as falhas observadas numa run real (OficinaAI, sessao `oficinaai-dd`): o modelo delegou os
+estagios RESEARCH→FINAL a um fork em segundo plano (74 min bloqueado sem progresso), depois moveu o
+checkpoint de `INIT` direto para `DONE` com um unico `Edit` — pulando EXPAND, COMPLEXITY,
+BRAINSTORM_GERAL, CODEX, AGY e DESIGN — e entregou um `handoff.json` escrito a mao que reprovava em
+`validate-handoff.mjs` (sem `handoffVersion`, `stage`, `producer`, `artifactRoot`, ...), apresentado como "PRD completo".
+
+- **Novo** `scripts/advance-stage.mjs` + `scripts/lib/stage-gate.mjs`: unico caminho para mudar o `stage` do checkpoint.
+  Recusa saltos (`STAGE_SKIP`), artefato de saida ausente (`MISSING_ARTIFACT`: `codebase-memory.md`, `market-research.md` +
+  `tech-research.md`, `prd.md`, `architecture.md`, `shared-agents/*.response.md`), perguntas pendentes e `DONE` sem
+  `stageHistory` completo ou sem `validate-handoff.mjs` `ok: true`. Registra cada visita em `stageHistory`.
+- SKILL.md / command: nova secao "Execucao no fio principal" proibindo fork/segundo plano/`ScheduleWakeup` para conduzir o
+  fluxo; regra "nunca edite o `stage` a mao"; FINAL passo 6 explicitamente bloqueante; recap final obrigado a listar estagios
+  reduzidos e proibido de dizer "PRD completo" sem todos os estagios.
+- Instalador do Open Design no Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File` em vez de `pwsh` (PowerShell 7 nao vem instalado por padrao).
+- **Gate de conteudo e de registro** (fecha a limitacao "so confere existencia; EXPAND..AGY sem checagem"):
+  - artefatos precisam de conteudo real (piso de caracteres nao-brancos; JSON valido e nao vazio) — `ARTIFACT_TOO_SHORT`;
+  - novo `--record`/`--record-file` ao sair de EXPAND, COMPLEXITY, BRAINSTORM_GERAL, CODEX, AGY (e DESIGN sem front-end):
+    desfecho (`asked`/`none`/`fallback`/`skipped`), perguntas feitas x fechadas, justificativa quando nada foi perguntado,
+    `complexityMode`, `hasFrontend`/`hasBackend`. Gravado em `stageRecords`; `DONE` exige o registro de cada estagio;
+  - CODEX/AGY passam a gravar `shared-agents/<codex|agy>.stage.response.md` (prova de que o subagente rodou);
+  - DESIGN com front-end exige `design-systems/<id>/resolved/design-audit.json` com `status: PASS`;
+  - `DONE` confere `project-baseline.json`, `requirements.json`, `ui-data-map.json` (front-end), `seed-plan.json` (back-end) e
+    que todo artefato `required` declarado no `handoff.json` existe e nao esta vazio.
+- **Novo hook `PreToolUse`** (`hooks/hooks.json` → `scripts/guard-checkpoint.mjs`, decisao em `scripts/lib/checkpoint-guard.mjs`):
+  bloqueia `Edit`/`Write`/`MultiEdit` e escritas via Bash/PowerShell que alterem `stage`, `stageHistory`, `stageRecords`,
+  `complexityMode`, `hasFrontend` ou `hasBackend` de `.pensador-progress.json` (demais campos, leitura e a criacao inicial em INIT seguem livres; falha aberta).
+- **Selo de integridade** (`integrity`, SHA-256 dos campos do gate): gravado a cada transicao e conferido antes da proxima.
+  Qualquer edicao dos campos do gate por fora do script — mesmo por um caminho que o hook nao reconhece — vira
+  `CHECKPOINT_TAMPERED`. Novos `advance-stage.mjs --seal` (checkpoint recem-criado em INIT) e `--adopt` (checkpoint de versao
+  anterior, a pedido do usuario; estagios cumpridos ficam `backfilled`). Sem selo o avanco e recusado (`CHECKPOINT_NOT_SEALED`).
+- **Perguntas verificadas**: novo hook `PostToolUse` de `AskUserQuestion` (`scripts/track-questions.mjs`) grava
+  `<featurePath>/.pensador-questions.jsonl` com o estagio corrente; um registro `asked` que declare mais perguntas do que as
+  registradas e recusado (`QUESTIONS_NOT_OBSERVED`). `"unverified": true` e a saida explicita quando hooks estao desativados.
+  O guard bloqueia escrita manual no log.
+- Testes: `test/stage-gate.test.js` (ordem, conteudo, registros, DESIGN, DONE, selo, perguntas), `test/checkpoint-guard.test.js` (hook) e
+  `test/stage-gate-cli.test.js` (CLI, tracker e uma caminhada completa pelos 13 estagios com o validador real).
+
 ## [2.28.0] — 2026-09-17 — Remove a sub-etapa de prototipacao do estagio DESIGN
 
 Simplificacao confirmada com o usuario: o estagio `DESIGN` deixa de gerar 1-3 protótipos HTML

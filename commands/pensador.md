@@ -168,6 +168,14 @@ A skill define gates, checkpoint v2, isolamento por atualizacao, delegacao e fal
 
 Siga a ordem definida em `skills/pensador/SKILL.md` e `skills/pensador/references/stages.md`.
 
+**Regras inegociaveis de conducao** (detalhes em `SKILL.md`, secoes "Execucao no fio principal" e "Gate de avanco"):
+
+- Conduza os treze estagios **voce mesmo, nesta sessao**, um por vez. Nao delegue "os estagios restantes" a fork/subagente em segundo plano, `ScheduleWakeup` ou `/loop` — subagentes so como lentes sincronas (Codex/AGY) previstas no fluxo, e nunca fazem perguntas ao usuario.
+- Depois de gravar o checkpoint inicial (INIT), rode `node "${CLAUDE_PLUGIN_ROOT}/scripts/advance-stage.mjs" --feature <featurePath> --seal` (selo de integridade; checkpoint de versao anterior a 2.29 so com `--adopt`, a pedido do usuario). `AskUserQuestion` e registrado por um hook `PostToolUse` e o gate confere as perguntas declaradas no `--record` contra esse registro.
+- **Nunca edite o `stage` de `.pensador-progress.json` a mao.** Avance somente com `node "${CLAUDE_PLUGIN_ROOT}/scripts/advance-stage.mjs" --feature <featurePath> --to <PROXIMO_ESTAGIO>`; o script recusa saltos, artefato de saida ausente, pergunta pendente e `DONE` sem historico completo e sem `validate-handoff.mjs` `ok: true`.
+- Ao sair de EXPAND, COMPLEXITY, BRAINSTORM_GERAL, CODEX, AGY (e DESIGN sem front-end) passe `--record '<json>'` com o desfecho real (perguntas feitas/fechadas, `complexityMode`, `hasFrontend`/`hasBackend`, justificativa quando nada foi perguntado); o gate valida o conteudo dos artefatos, nao so a existencia, e um hook `PreToolUse` bloqueia a edicao manual do checkpoint. Formato completo na secao "Gate de avanco" do `SKILL.md`.
+- O recap final lista os estagios reduzidos/com fallback; nunca chame de "PRD completo" um fluxo que nao visitou todos os estagios.
+
 Quando o modo de execucao for `agy`, `kiro` ou `codex`, **delegue o trabalho pesado de cada estagio** ao motor via `SlashCommand`, usando a invocacao construida por `buildDelegationInvocation()`:
 
 ```text
@@ -262,7 +270,10 @@ Read-only. Mostre o motor resolvido por `resolveExecutionMode()` (modo, slash co
 | `scripts/preflight.mjs` | Verifica disponibilidade de Codex, AGY, Kiro, motor de execucao, Code Base Memory, OpenSpec e Open Design |
 | `scripts/install-open-design.ps1` / `scripts/install-open-design.sh` | Instalador opcional do Open Design via Docker (verifica git+docker, sobe o daemon, conecta o MCP), oferecido via `AskUserQuestion` quando ha front-end |
 | `scripts/od-mcp-config.mjs` | Helper que busca `/api/mcp/install-info` do daemon e faz merge da entrada `mcpServers.<nome>` no `.mcp.json` (usado pelo instalador no modo Docker, sem `od` no host) |
-| `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia, nao importada em runtime pela skill |
+| `scripts/advance-stage.mjs` | Gate executavel de avanco de estagio: unico caminho para mudar o `stage` do checkpoint (`--feature`, `--seal`/`--adopt`, `--to`, `--record`/`--record-file`, `--check-only`) |
+| `scripts/guard-checkpoint.mjs` | Hook `PreToolUse` que bloqueia a edicao manual dos campos do checkpoint pertencentes ao gate e do log de perguntas |
+| `scripts/track-questions.mjs` | Hook `PostToolUse` de `AskUserQuestion`: registra as perguntas feitas por estagio em `.pensador-questions.jsonl` |
+| `scripts/pensador-engine.mjs` | Especificacao deterministica de referencia; em runtime so e importada por `advance-stage.mjs` (para `STAGE_ORDER`) |
 
 ---
 
