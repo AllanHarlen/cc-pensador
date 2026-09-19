@@ -21,7 +21,8 @@
  * injected through `env`, so the rules are unit-testable without a filesystem.
  */
 import { createHash } from 'node:crypto';
-import { STAGE_ORDER, pendingQuestions } from '../pensador-engine.mjs';
+import { STAGE_ORDER, isDesignApproved, pendingQuestions } from '../pensador-engine.mjs';
+import { APPROVAL_FILE, DESIGN_APPROVAL_HEADER, approvalQuestionsIn, loadApprovalKey, verifyApprovalRecord } from './design-approval.mjs';
 
 /** Sidecar written only by the PostToolUse hook (scripts/track-questions.mjs): one line per AskUserQuestion call. */
 export const QUESTION_LOG = '.pensador-questions.jsonl';
@@ -177,20 +178,65 @@ function checkRecord({ stage, checkpoint, record, env, fail, strict }) {
   return null;
 }
 
-function checkDesignAudit(env, fail) {
+/** Every gate of the resolved package the audit reports separately; each one must be PASS (SKIPPED is not). */
+const DESIGN_AUDIT_CHECKS = ['structure', 'contrast', 'conformance', 'integrity', 'engineRun'];
+
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Leaving DESIGN with a front-end needs, per design system: a PASS design-audit.json whose five
+ * checks (structure, contrast, conformance, integrity, engineRun) all PASS, bound to the contract
+ * on disk (`contractSha256`), a successful source/engine-run.json for the same contract, and a
+ * design-brief.json approved for that very contract. A hand-written "PASS" without any of that fails.
+ */
+function checkDesignAudit(env, fail, { strict = false, stage = 'DESIGN' } = {}) {
   const systems = env.list('design-systems');
   const audits = systems.map((id) => ({ id, text: env.readText(`design-systems/${id}/resolved/design-audit.json`) })).filter((a) => a.text !== null);
   if (audits.length === 0) {
-    return fail('MISSING_ARTIFACT', 'leaving DESIGN with a front-end requires design-systems/<id>/resolved/design-audit.json (run design-package.mjs audit)');
+    return fail('MISSING_ARTIFACT', 'leaving DESIGN with a front-end requires design-systems/<id>/resolved/design-audit.json (run design-package.mjs render, then audit)');
   }
+  const brief = parseJson(env.readText('design-brief.json') ?? '');
+  let approvalRecord = null;
   for (const { id, text } of audits) {
-    let status = null;
-    try {
-      status = JSON.parse(text).status;
-    } catch {
-      /* falls through as not PASS */
+    const base = `design-systems/${id}`;
+    const audit = parseJson(text) ?? {};
+    if (audit.status !== 'PASS') fail('DESIGN_AUDIT_NOT_PASS', `${base}/resolved/design-audit.json status is ${JSON.stringify(audit.status ?? null)}, not "PASS"`);
+    for (const check of DESIGN_AUDIT_CHECKS) {
+      const result = audit.checks?.[check];
+      if (result !== 'PASS') fail('DESIGN_CHECK_NOT_PASS', `${base}/resolved/design-audit.json checks.${check} is ${JSON.stringify(result ?? null)}, not "PASS" (audit, brief conformance, render integrity and engine run are all mandatory)`);
     }
-    if (status !== 'PASS') fail('DESIGN_AUDIT_NOT_PASS', `design-systems/${id}/resolved/design-audit.json status is ${JSON.stringify(status)}, not "PASS"`);
+
+    const contract = parseJson(env.readText(`${base}/resolved/design-contract.json`) ?? '');
+    const sha = typeof contract?.sha256 === 'string' ? contract.sha256 : null;
+    if (sha === null) {
+      fail('DESIGN_CONTRACT_MISSING', `${base}/resolved/design-contract.json is missing or unsigned`);
+      continue;
+    }
+    if (audit.contractSha256 !== sha) fail('DESIGN_AUDIT_STALE', `${base}/resolved/design-audit.json was produced for another contract (${audit.contractSha256 ?? 'no hash'}); re-run design-package.mjs audit`);
+
+    const run = parseJson(env.readText(`${base}/source/engine-run.json`) ?? '');
+    if (run === null) fail('ENGINE_RUN_MISSING', `${base}/source/engine-run.json is required: the tokens must come from the Open Design brand engine`);
+    else if (run.status !== 'ok') fail('ENGINE_RUN_FAILED', `${base}/source/engine-run.json status is ${JSON.stringify(run.status ?? null)}${run.reasonCode ? ` (${run.reasonCode})` : ''}, not "ok"`);
+    else if (run.contractSha256 !== sha) fail('ENGINE_RUN_CONTRACT_MISMATCH', `${base}/source/engine-run.json belongs to another contract than resolved/design-contract.json`);
+
+    if (!isDesignApproved(brief, sha)) {
+      fail('DESIGN_NOT_APPROVED', 'design-brief.json must record the visual approval (approvedAt + approvedSha256) of THIS design-contract.json; ask the user to approve the preview/ (AskUserQuestion), then run design-brief.mjs approve');
+    } else {
+      // The approval fields alone are not proof: the record written by `design-brief.mjs approve` must chain them.
+      approvalRecord = parseJson(env.readText(APPROVAL_FILE) ?? '');
+      const key = typeof env.approvalKey === 'function' ? env.approvalKey() : loadApprovalKey();
+      const verdict = verifyApprovalRecord(approvalRecord, { brief, contractSha256: sha, systemId: id, key });
+      if (!verdict.ok) fail(verdict.code, verdict.message);
+    }
+  }
+  if (strict && approvalQuestionsIn(env.readText(QUESTION_LOG), stage) < 1 && approvalRecord?.unverified !== true) {
+    fail('DESIGN_APPROVAL_NOT_OBSERVED', `the AskUserQuestion hook logged no approval question (header "${DESIGN_APPROVAL_HEADER}") while the checkpoint was in DESIGN; the user must actually approve the rendered preview/. Only if hooks are disabled, run design-brief.mjs approve --unverified and disclose it in the recap`);
   }
   return null;
 }
@@ -312,7 +358,7 @@ export function checkTransition({ checkpoint, to, record, env, strict = false })
     if (usable.length === 0) fail('MISSING_ARTIFACT', `leaving BRAINSTORM_GERAL requires at least one shared-agents/*.response.md with real content (>= ${RESPONSE_MIN_CHARS} chars; agent.response.md consolidates them)`);
   }
 
-  if (from === 'DESIGN' && checkpoint.hasFrontend === true) checkDesignAudit(env, fail);
+  if (from === 'DESIGN' && checkpoint.hasFrontend === true) checkDesignAudit(env, fail, { strict });
 
   if (recordRequired(from, checkpoint)) checkRecord({ stage: from, checkpoint, record, env, fail, strict });
 

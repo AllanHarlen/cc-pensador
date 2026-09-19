@@ -16,6 +16,7 @@
  * directory, not the checkpoint file.
  */
 import { PROTECTED_FIELDS, QUESTION_LOG } from './stage-gate.mjs';
+import { APPROVAL_FILE, APPROVAL_KEY_FILE, DESIGN_BRIEF_FILE } from './design-approval.mjs';
 
 const CHECKPOINT = '.pensador-progress.json';
 
@@ -24,7 +25,7 @@ const HOW_TO = 'Use: node "${CLAUDE_PLUGIN_ROOT}/scripts/advance-stage.mjs" --fe
 
 const SHELL_WRITE = [
   /\bsed\b[^|;&]*\s-[a-zA-Z]*i/,
-  />>?\s*["']?[^\s|;&"']*\.pensador-(progress\.json|questions\.jsonl)/,
+  />>?\s*["']?[^\s|;&"']*(\.pensador-(progress\.json|questions\.jsonl|approval\.json)|design-brief\.json)/,
   /\btee\b/,
   /\b(Set-Content|Add-Content|Out-File|Remove-Item|Move-Item|Copy-Item|Rename-Item|New-Item)\b/i,
   /\bwrite(File|FileSync)?\b|\bopen\([^)]*['"]w/i,
@@ -60,12 +61,23 @@ function applyEdit(text, { old_string: oldString, new_string: newString, replace
 export function evaluateToolCall(call, io) {
   const { tool_name: tool, tool_input: input = {} } = call ?? {};
 
+  const approvalBlocked = (file) => ({ allow: false, reason: `Blocked: ${file} carries the visual approval of the design system and is written only by design-brief.mjs (build | seed | adjust | approve). Use: node "\${CLAUDE_PLUGIN_ROOT}/scripts/design-brief.mjs" <command> --feature <featurePath> ...` });
+  // design-brief.json is only ours inside a .pensador feature directory; the approval sidecar is ours anywhere.
+  const approvalFileOf = (text) => [APPROVAL_FILE, DESIGN_BRIEF_FILE].find((name) => text.includes(name) && (name === APPROVAL_FILE || text.includes('.pensador')));
+
+  const keyBlocked = { allow: false, reason: `Blocked: ${APPROVAL_KEY_FILE} is the per-user signing key of the design approval. It is read only by design-brief.mjs approve and the stage gate; never read, print, copy or edit it.` };
+  const namesKey = (value) => typeof value === 'string' && value.includes(APPROVAL_KEY_FILE);
+
   const logBlocked = { allow: false, reason: `Blocked: ${QUESTION_LOG} is the AskUserQuestion audit log, written only by the PostToolUse hook. Do not create, edit or delete it; ask the user for real instead.` };
+
+  if (['Read', 'Grep', 'Glob', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool) && [input.file_path, input.path, input.pattern, input.glob, input.notebook_path].some(namesKey)) return keyBlocked;
 
   if (tool === 'Bash' || tool === 'PowerShell') {
     const command = String(input.command ?? '');
+    if (namesKey(command)) return keyBlocked;
     const writes = SHELL_WRITE.some((re) => re.test(command));
     if (command.includes(QUESTION_LOG) && writes) return logBlocked;
+    if (writes && approvalFileOf(command)) return approvalBlocked(approvalFileOf(command));
     if (!command.includes(CHECKPOINT)) return { allow: true };
     if (writes) return { allow: false, reason: `Blocked: this command writes to ${CHECKPOINT} by hand. ${HOW_TO}` };
     return { allow: true };
@@ -73,6 +85,11 @@ export function evaluateToolCall(call, io) {
 
   if (['Edit', 'Write', 'MultiEdit'].includes(tool) && typeof input.file_path === 'string' && input.file_path.endsWith(QUESTION_LOG)) {
     return logBlocked;
+  }
+
+  if (['Edit', 'Write', 'MultiEdit'].includes(tool) && typeof input.file_path === 'string') {
+    const base = input.file_path.split(/[\\/]/).pop();
+    if (base === APPROVAL_FILE || (base === DESIGN_BRIEF_FILE && input.file_path.includes('.pensador'))) return approvalBlocked(base);
   }
 
   if (!['Edit', 'Write', 'MultiEdit'].includes(tool) || !isCheckpointPath(input.file_path)) return { allow: true };

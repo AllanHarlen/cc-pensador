@@ -239,7 +239,7 @@ O arquivo deve conter o **Prompt System** do RESEARCH — grupo `business` (cont
 | Codex `effort high` | refino | `hasBackend` | Aprofunda riscos tecnicos sobre a lente primaria |
 | `ui-ux-pro-max` + `frontend-design` | lentes primarias | `hasFrontend` | UX, estados de tela, componentizacao, design system (alimentam o Open Design) |
 | AGY `gemini-3.1-pro-high` | refino | `hasFrontend` | Experiencia, produto, jornadas, cenarios |
-| Open Design (`od`) | motor de design | `hasFrontend` | Brief de design (tom, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) -> arquivos verbatim no FINAL. `sectorContext` vem do RESEARCH (`state.sectorContext`) e nao e perguntado de novo; concorrentes do `market-research.md` alimentam `brandReferences`. Veja `references/open-design.md`. |
+| Open Design (`od`) | motor de design | `hasFrontend` | Brief de design (tom, marca, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) -> pacote de design system gerado no DESIGN (sem catalogo; brand engine do Open Design). `sectorContext` vem do RESEARCH (`state.sectorContext`) e nao e perguntado de novo; concorrentes do `market-research.md` alimentam `brandReferences`. Veja `references/open-design.md`. |
 
 Em modo Lite, limite a quantidade de perguntas por dominio e favoreca `"TBD"` para lacunas menores. Em modo Completo, aprofunde dominios de maior risco.
 
@@ -315,7 +315,7 @@ Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/r
 1. Aplicar `withConsolidated(state)`.
 2. Confirmar back-end via `AskUserQuestion`, apresentando a heuristica como sugestao (so no modo PRD; no modo Spec nao se aplica).
 3. Gerar artefatos conforme `artifactMode`:
-   - Modo PRD: `prd.md` + `userhistory.md` (+ contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml` **e** `communication.md` quando ha back-end) (+ `design-system.md` quando ha front-end **e** o Open Design NAO foi usado — fallback inline) em `<featurePath>/`. O contrato maquina-legivel e a **fonte da verdade**; o `communication.md` e a visao legivel derivada. Quando um system do Open Design foi selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` e o documento de design — nao gere `design-system.md` redundante.
+   - Modo PRD: `prd.md` + `userhistory.md` (+ contrato maquina-legivel `openapi.yaml`/`schema.graphql`/`service.proto`/`asyncapi.yaml` **e** `communication.md` quando ha back-end) (+ `design-system.md` quando ha front-end **e** o Open Design NAO foi usado — fallback inline) em `<featurePath>/`. O contrato maquina-legivel e a **fonte da verdade**; o `communication.md` e a visao legivel derivada. Quando um design system foi gerado, o `DESIGN.md` de `design-systems/<id>/resolved/` e o documento de design — nao gere `design-system.md` redundante.
    - Modo Spec: finalizar o change set em `openspec/changes/<nome>/` e rodar `openspec validate <nome> --strict --json`. **Nao** rode `/opsx:sync` aqui: sincronizar publica como spec vigente um comportamento ainda nao implementado e drena os deltas que o Orchestrador ingere — isso e do estagio seguinte. O contrato de API e dobrado no change (design.md + specs), sem artefato standalone.
 4. Confirmar sobrescrita via `AskUserQuestion` quando arquivo ja existir.
 5. Apresentar recap final e handoff. No modo Spec, orientar com `/opsx:apply`, `/opsx:sync` e `openspec archive <nome> --json --yes` (este altera specs principais: so apos confirmacao do usuario).
@@ -326,8 +326,8 @@ Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/r
 | `userhistory.md` | Modo PRD |
 | `openapi.yaml` / `schema.graphql` / `service.proto` / `asyncapi.yaml` (contrato maquina-legivel, fonte da verdade) | Modo PRD, quando ha back-end confirmado (formato por `state.apiStyle`) |
 | `communication.md` (visao legivel derivada do contrato) | Modo PRD, quando ha back-end confirmado |
-| `design-system.md` | Modo PRD, quando ha front-end **e** o Open Design NAO foi usado (fallback inline). Com um system selecionado, o `DESIGN.md` verbatim em `design-systems/<id>/` substitui este doc. |
-| `design-systems/<id>/` (arquivos verbatim: `tokens.css`, `DESIGN.md`, `components.html`, …) | Modo PRD e Spec, quando ha front-end **e** um system do Open Design foi selecionado |
+| `design-system.md` | Modo PRD, quando ha front-end **e** o Open Design NAO foi usado (fallback inline). Com um design system gerado, o `DESIGN.md` de `design-systems/<id>/resolved/` substitui este doc. |
+| `design-systems/<id>/{source,resolved}/` (pacote gerado: `tokens.css`, `DESIGN.md`, `components.html`, …) | Modo PRD e Spec, quando ha front-end **e** um design system foi gerado no DESIGN |
 | `ui-data-map.json` (tela -> operacao de contrato) | Modo PRD e Spec, quando ha front-end |
 | `seed-plan.json` (dados de demonstracao por entidade, sempre `database-seed`) | Modo PRD e Spec, quando ha back-end |
 | `surface-benchmark.json` (benchmark de referencias reais por superficie publica) | Modo PRD e Spec, quando ha superficie `conversion`/`catalog` |

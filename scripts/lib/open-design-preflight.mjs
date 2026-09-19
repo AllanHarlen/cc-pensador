@@ -57,6 +57,11 @@ function mcpEvidence(files, cwd) {
   return { configuredIn: [...new Set(configuredIn)], urls: [...new Set(urls)] };
 }
 
+/** Daemon bearer token (env first, then the OD deploy .env). Never printed: callers only forward it as a header. */
+export function odApiToken({ env = process.env, home = homedir() } = {}) {
+  return env.OD_API_TOKEN || dotenv(join(home, ".open-design", "deploy", ".env")).OD_API_TOKEN || null;
+}
+
 async function probe(baseUrl, token, timeoutMs) {
   try {
     const response = await fetch(`${baseUrl}/api/design-systems`, {
@@ -72,6 +77,11 @@ async function probe(baseUrl, token, timeoutMs) {
   } catch (error) {
     return { url: baseUrl, reachable: false, authenticated: false, httpStatus: null, error: error.name };
   }
+}
+
+/** Read-only `docker ps` evidence of an Open Design container (also used to tell WHERE the daemon runs). */
+export function detectOdContainer(env, timeoutMs) {
+  return docker(env, timeoutMs);
 }
 
 function docker(env, timeoutMs) {

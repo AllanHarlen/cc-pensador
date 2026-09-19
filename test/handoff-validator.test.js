@@ -814,3 +814,49 @@ describe('validate-handoff.mjs CLI — contract coverage (ui-data-map x api-cont
     }
   });
 });
+
+// Resolved Open Design package fields (handoff-contract.md section 6): every
+// plugin's validator must enforce the same semantics.
+const resolvedDesignEntry = (overrides = {}) => ({
+  role: "design-system-files",
+  path: "design-systems/gestuor/resolved/",
+  required: true,
+  variant: "resolved",
+  authoritative: true,
+  sourcePath: "design-systems/gestuor/source/",
+  materializeInto: "packages/ui/design-systems/gestuor/",
+  contractSha256: "a".repeat(64),
+  themes: ["light", "dark"],
+  designBriefPath: "design-brief.json",
+  validation: { status: "PASS", audit: "design-audit.json" },
+  ...overrides,
+});
+
+it("accepts a resolved design-system-files entry with contractSha256, themes and designBriefPath", () => {
+  const result = validateHandoff(validPensadorHandoff({ artifacts: [resolvedDesignEntry()] }));
+  expect(result.ok).toBe(true);
+});
+
+it("accepts contractSha256 null and designBriefPath null on a resolved entry", () => {
+  const result = validateHandoff(validPensadorHandoff({ artifacts: [resolvedDesignEntry({ contractSha256: null, designBriefPath: null })] }));
+  expect(result.ok).toBe(true);
+});
+
+it("rejects a malformed contractSha256 on a resolved entry", () => {
+  const result = validateHandoff(validPensadorHandoff({ artifacts: [resolvedDesignEntry({ contractSha256: "xyz" })] }));
+  expect(result.errors.map((e) => e.code)).toContain("INVALID_CONTRACT_SHA256");
+});
+
+it("rejects resolved themes missing dark", () => {
+  const result = validateHandoff(validPensadorHandoff({ artifacts: [resolvedDesignEntry({ themes: ["light"] })] }));
+  expect(result.errors.map((e) => e.code)).toContain("INVALID_DESIGN_THEMES");
+});
+
+it("rejects an empty designBriefPath on a resolved entry", () => {
+  const result = validateHandoff(validPensadorHandoff({ artifacts: [resolvedDesignEntry({ designBriefPath: "" })] }));
+  expect(result.errors.map((e) => e.code)).toContain("INVALID_DESIGN_BRIEF_PATH");
+});
+
+it("the removed ui-prototype role is not a valid Pensador role", () => {
+  expect(HANDOFF_ROLES_BY_STAGE.pensador.includes("ui-prototype")).toBe(false);
+});

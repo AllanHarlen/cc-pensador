@@ -10,9 +10,9 @@ O Pensador v2 integra o **Open Design** ([nexu-io/open-design](https://github.co
 
 O diagnóstico recorrente de saídas do Pensador é: o PRD descreve a UI só em termos funcionais (quais telas e fluxos existem) e **zero em termos de design** — sem design system, tokens, paleta, tipografia, estados de componente (vazio/carregando/erro/sucesso), responsividade, acessibilidade, hierarquia visual ou microcopy. Sem essa camada, o agente de front-end não tem alvo visual e entrega um template chapado.
 
-O Open Design fornece o **alvo de design** que faltava. O Pensador faz todo o **parse das informações** (tom visual, marca, referências, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) e alimenta o Open Design para garantir o melhor resultado de acordo com o solicitado. O entregável é o **`DESIGN.md` verbatim** do system selecionado (baixado para `design-systems/<id>/`); o Pensador só escreve um `design-system.md` próprio no **fallback** (Open Design indisponível).
+O Open Design fornece o **alvo de design** que faltava. O Pensador faz todo o **parse das informações** (tom visual, marca, referências, paleta, tipografia, estados, responsividade, acessibilidade, microcopy) e o converte em seed do brand engine do Open Design para garantir o melhor resultado de acordo com o solicitado. O entregável é o **`DESIGN.md` verbatim** do system selecionado (baixado para `design-systems/<id>/`); o Pensador só escreve um `design-system.md` próprio no **fallback** (Open Design indisponível).
 
-Mapeamento determinístico em `pensador-engine.mjs`: `OPEN_DESIGN`, `designSystemArtifactPath()`, `openDesignBriefPlan()`.
+Mapeamento determinístico em `pensador-engine.mjs`: `OPEN_DESIGN`, `designSystemArtifactPath()`, `openDesignBriefPlan()`, `buildDesignBrief()`, `briefToSeed()`, `designBriefPath()`.
 
 ### Fontes canônicas (upstream)
 
@@ -27,7 +27,7 @@ Para revalidar este documento contra o upstream, checar:
 - `docs/agent-adapters.md` (ids de agente suportados, ex.: `claude`, `codex`, `kiro`, `antigravity`).
 - `docs/install-guide.md` (instalador oficial `deploy/scripts/install.sh`).
 
-Última verificação registrada: **upstream v0.20.2 (2026-08-21)**, checada em 2026-08-22 via GitHub API/raw content (sem instalação local do Open Design — ver "Suposições não verificadas" no plano de implementação). Os comandos `od design-systems …` e `od get-file` citados abaixo **não puderam ser confirmados ao vivo**: o release 0.20.0 reverteu o runtime estruturado de design systems introduzido em 0.19.2 ("Design systems return to the previous manifest and prompt behavior while that workflow is reworked", #7110), afetando explicitamente superfícies de CLI/API. `od-fetch-system.mjs` foi desenhado para não depender disso: o **clone em disco é a fonte primária** (não depende de nenhuma superfície de CLI), `od get-file` só é tentado se `od get-file --help` responder, e a REST API é o último recurso — se o rollback removeu os subcomandos, a aquisição de arquivos continua funcionando e reporta a fonte real usada (`fileSource` por arquivo no JSON de saída).
+Última verificação registrada: **upstream v0.20.2 (2026-08-21)**, checada em 2026-08-22 via GitHub API/raw content (sem instalação local do Open Design — ver "Suposições não verificadas" no plano de implementação). Nenhuma superfície do catálogo (`od design-systems`, `od get-file`, `GET /api/design-systems`) faz parte do fluxo: o Pensador usa apenas o brand engine (`POST /api/brand/build` / `pnpm brand:build`), cuja disponibilidade é verificada na Fase 0 do plano.
 
 > **Decisão registrada: sem probe de versão do daemon em `preflight.mjs`.** O plano cogitava sondar `GET /api/version` para reportar a versão do Open Design observada. Não implementado: `preflight.mjs` inteiro é síncrono (`execSync` para CLI, leitura de arquivo para MCP config) e adicionar uma chamada de rede assíncrona exigiria converter o script inteiro para `async`/`await` só por causa desta sonda opcional — custo desproporcional ao ganho para um endpoint cujo contrato (`/api/version`, sem token) tampouco foi confirmado ao vivo. Revisitar quando o Open Design estiver instalado localmente para validar o endpoint e medir o custo real de latência de um preflight assíncrono.
 
@@ -49,13 +49,14 @@ Para revalidar este documento contra o upstream, checar:
   | `accessibility` | Contraste, foco visível, leitura de tela, alvo WCAG |
   | `microcopy` | Voz/tom dos textos e mensagens de estado |
 
-- **FINAL (modo PRD, quando `hasFrontend`):** o Pensador aciona o Open Design com o brief consolidado e **baixa os artefatos verbatim do system** para o repo-alvo:
+- **DESIGN (quando `hasFrontend`):** o Pensador gera o design system a partir do brief consolidado (sem catálogo):
 
   ```text
-  <featurePath>/design-systems/<id>/{USAGE,DESIGN}.md · tokens.css · components.html · …  (verbatim, dentro de .pensador/<slug>-vN/)
+  <featurePath>/design-systems/<id>/source/    brand.json · seed.json · engine-run.json (proveniência)
+  <featurePath>/design-systems/<id>/resolved/  design-contract.json · tokens.css · DESIGN.md · components.html · preview/ · …  (dentro de .pensador/<slug>-vN/)
   ```
 
-  O `DESIGN.md` verbatim (9 seções `color`/`typography`/`spacing`/`layout`/`components`/`motion`/`voice`/`brand`/`anti-patterns`) **é** o documento de design — o Pensador **não gera um `design-system.md` standalone redundante** quando um system é usado. A seleção do system e o `<id>` viajam no `handoff.json` (role `design-system-files`). O `design-system.md` inline só existe no **fallback** (Open Design indisponível/recusado), preenchendo as 9 seções a partir do brief.
+  O `DESIGN.md` de `resolved/` (9 seções `color`/`typography`/`spacing`/`layout`/`components`/`motion`/`voice`/`brand`/`anti-patterns`) **é** o documento de design — o Pensador **não gera um `design-system.md` standalone redundante** quando o pacote foi gerado. O `<id>` viaja no `handoff.json` (role `design-system-files`). O `design-system.md` inline só existe no **fallback** (Open Design indisponível/recusado), preenchendo as 9 seções a partir do brief.
 
 No modo Spec (OpenSpec), **o Open Design continua rodando** (diferente de `userhistory.md`/`communication.md`, que não se aplicam): só muda *onde* o design é escrito — ver a seção **Modo Spec** abaixo.
 
@@ -77,65 +78,39 @@ Por ser opcional e condicional, a ausência do Open Design **nunca bloqueia** o 
 
 ---
 
-## Parse e acionamento do Open Design
+## Como o Pensador usa o Open Design
 
-> ⚠️ **O Open Design não gera um `DESIGN.md` a partir de um brief em prosa.** Não é isso que o produto faz. Ele **cura uma biblioteca grande de design systems** prontos (dezenas a centenas de pacotes, contagem exata varia por release — não fixar um número aqui), **importa** systems de fontes reais (GitHub, shadcn, projeto local) e usa esse DESIGN.md como camada de system-prompt para gerar protótipos HTML. Portanto o Pensador não pede ao Open Design para "inventar" um design system; ele **seleciona/importa** o DESIGN.md mais próximo do brief e o **usa verbatim** (baixado para `design-systems/<id>/DESIGN.md`), sem re-escrevê-lo em um `design-system.md` separado.
+> **O Open Design gera design system a partir de um brief.** O brand engine determinístico (`apps/daemon/src/brands/engine/`) transforma um *seed* de ~20 campos em tokens claro/escuro/compacto, com escadas de 10 passos, sem LLM; a skill `design-brief` define as 8 dimensões ortogonais do brief. (Uma versão anterior deste documento afirmava o contrário e tratava o Open Design como um catálogo a ser consultado.)
 
-Com o brief coletado, o Pensador dirige o Open Design pelos **verbos reais** do CLI `od` (caminho pnpm/local, que fornece o binário `od`) ou, no caminho Docker, pela **API REST do daemon** (os endpoints que o `od` encapsula):
+**Sem catálogo.** O Pensador **não lista, não baixa, não escolhe e não verifica** systems do catálogo do Open Design. Uma medição sobre os 152 systems empacotados mostrou que 150 têm prosa (`DESIGN.md`) divergente do `tokens.css`, então o catálogo não é uma base confiável para um pacote sem divergência.
 
-| Passo | CLI `od` (pnpm/local) | Equivalente Docker (API do daemon) |
-|---|---|---|
-| 1. Listar os systems curados | `od design-systems list --json` | `GET http://localhost:7456/api/design-systems` |
-| 2. **Apresentar top-3 candidates ao usuário** via `AskUserQuestion` (com o tom visual de cada system) | — | — |
-| 3. (Opcional) Importar de uma marca/repo real citado no brief | `od design-systems import-github <url>` · `od design-systems import-shadcn <ref>` | `POST /api/design-systems/import/github` |
-| 3a. ⚠️ **Import é async** | Após rodar o import, aguarde o daemon confirmar o slug antes de gravar em `state.designSystems`. Slug alucinado → exit 5 no FINAL. | idem |
-| 4. Casar o brief com o system confirmado pelo usuário | escolha validada | escolha validada |
-| 5. **Baixar TODOS os artefatos verbatim** — clone em disco primeiro (fonte primária), depois `od get-file`, depois REST | cópia do clone; se ausente, `od get-file design-systems/<id>/<file>` por arquivo | cópia do clone; se ausente, API REST (best-effort) |
-| 5a. ⚠️ **`GET /api/design-systems/<id>` retorna só metadados** | O endpoint REST não serve `tokens.css` / `components.html` como bodies — use `od get-file` ou o clone | idem |
-| 6. Persistir os arquivos na pasta da feature | grava em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`) | idem |
-| 7. Derivar o `tokens.css` do projeto (composição rastreável, **nunca** objeto JS à mão) | base real do tema; `theme.ts` lê `var(--*)` | idem |
-| 8. O `DESIGN.md` verbatim **é** o documento de design | nenhum `design-system.md` standalone (evita duplicação); seleção/overrides vão no `handoff.json` | idem |
+Fluxo (o Pensador dirige o Open Design; o diálogo continua sendo `AskUserQuestion`):
 
-> ⚠️ **O bug que isto corrige.** Versões anteriores puxavam **só o `DESIGN.md`** (prosa) e o re-escreviam em `design-system.md`, descartando `tokens.css`, `components.html` e `preview/`. O agente de front-end nunca via os tokens reais → tema chapado, magic numbers, anti-padrões. O Open Design **não é fonte de inspiração textual; é um pipeline de artefatos de código.**
+| Etapa | O que acontece |
+|---|---|
+| BRAINSTORM_GERAL | o brief de design é coletado via `AskUserQuestion` (`openDesignBriefPlan()`); campos decididos pelo usuário ficam travados |
+| DESIGN — seed | `design-brief.mjs build` persiste o `design-brief.json` e `design-brief.mjs seed` (`briefToSeed()`) grava `brand.json`, `seed.json` e `seed-origin.json` em `source/`; o AGY só propõe os campos **não travados**, e o usuário confirma |
+| DESIGN — derivação | `od-brand-build.mjs` roda o brand engine do Open Design (cadeia **container → clone → `BLOCKED`**) e mapeia a saída para o TOKEN_SCHEMA; nunca um LLM |
+| DESIGN — contrato e render | `design-contract.json` (v2) → `tokens.css`, `design-tokens.json` (DTCG), `tailwind-v4.css`, `DESIGN.md`, `components.html`, `preview/`, `USAGE.md`, `manifest.json` (`design-package.mjs render`, obrigatório) |
+| DESIGN — gates | `design-package.mjs audit` → `design-audit.json` com `checks` por gate: `structure` (arquivos, escalas monótonas, estados com `focus-visible`), `contrast` (matriz WCAG 2.2 AA nos temas claro **e** escuro, só variantes seguras), `conformance` (campo **travado** do brief que diverge bloqueia; primária comparada só ao tema claro, ΔE ≤ 2), `integrity` (re-render em memória byte a byte + `provenance.json`) e `engineRun` (`source/engine-run.json` com `status: "ok"` para o mesmo contrato) |
+| DESIGN — aprovação visual | o usuário vê `preview/` nos dois temas via `AskUserQuestion`; ajustes rápidos (primária, densidade, raio, tipografia, tema padrão) passam por `design-brief.mjs adjust` e refazem só seed → derivação → render → audit; `design-brief.mjs approve` grava `approvedAt` + `approvedSha256` no brief e o registro assinado `.pensador-approval.json` (só para um contrato auditado e com a pergunta `AprovDesign` registrada pelo hook; `brief` e registro são protegidos contra escrita direta). Protótipo do Open Design e Critique Theater são **opcionais e consultivos**, nunca bloqueiam |
+| FINAL | `state.designPackages[<id>]` recebe o `auditStatus` real e o `contractSha256` (o `statePatch` do `audit`); o handoff publica só `resolved/` como autoridade |
 
-> ⚠️ **O mesmo bug reincide quando o FINAL é escrito à mão** (observado 2026-09-05, cc-pensador 2.18.1). O agente instalou o Open Design no meio do run, foi direto no `GET /api/design-systems/<id>` — que serve **só metadados + `DESIGN.md`** (passo 5a) — e gravou esse `DESIGN.md` com `Write`, sem nunca chamar o `od-fetch-system.mjs`. Resultado: `design-systems/<id>/` com **1 arquivo em vez de 24**, e o `handoff.json` sem `verbatim`/`materializeInto`, porque também não passou por `buildArtifactList()`.
->
-> **Assinaturas para reconhecer:** (a) a pasta do system tem só `DESIGN.md`; (b) esse `DESIGN.md` tem o conteúdo verbatim mas quebras de linha diferentes do clone — `copyFileSync` copia byte a byte, `Write` não; (c) a entrada `design-system-files` do handoff não tem `materializeInto`. O gate do FINAL na `SKILL.md` agora exige listar o diretório em disco e conferir contra o `copied[]` do JSON — o JSON sozinho não pega esse caso, porque quando o script não roda não há JSON nenhum.
+### Derivação pelo brand engine (Fase 0 medida, Fase 3 implementada)
 
-### Artefatos verbatim (read order do `USAGE.md` oficial)
+O README do engine cita `POST /api/brand/build` e `pnpm brand:build`, mas **nenhum dos dois existe** na versão 0.22.1 (a rota devolve 404; não há script no `package.json`). O engine roda, porém, só com built-ins do Node, importando `seed`, `derive` e `export` dele. `scripts/od-brand-build.mjs` (adaptador em `scripts/lib/brand-engine.mjs`) executa:
 
-O `USAGE.md` de cada system define a ordem de leitura — e o Pensador deve **baixar e persistir** todos, não resumir (`OPEN_DESIGN.systemArtifacts` / `openDesignFetchPlan()`):
+1. **container:** `docker exec -i <container open-design> node --input-type=module -e <runner>` sobre o engine compilado do daemon (`/app/apps/daemon/dist/brands/engine/*.js`). Sem estado, sem token, sem `node_modules`. O container é o de nome `open-design` (ou `OD_CONTAINER`).
+2. **clone:** `node --import scripts/lib/ts-register.mjs -e <runner>` sobre `~/.open-design/apps/daemon/src/brands/engine/*.ts` (ou `OD_CLONE_DIR`; Node >= 22.6 com remoção de tipos).
+3. **`BLOCKED`** (`reasonCode: OD_BRAND_ENGINE_UNAVAILABLE`, exit 1) com `attempts[]`, remediação e comando de retomada, gravados em `source/engine-run.json`.
 
-| Arquivo/Dir | Papel | Obrigatório |
-|---|---|---|
-| `manifest.json` | entrada machine-readable do system | — |
-| `USAGE.md` | router: como consumir o pacote (ler primeiro) | — |
-| `DESIGN.md` | intenção: 9 seções de prosa + anti-padrões | ✅ |
-| `tokens.css` | **fonte de verdade**: CSS custom props compiladas — colar antes de qualquer CSS de componente | ✅ |
-| `components.html` | **fixtures de componente**: HTML/CSS real dos componentes + todos os estados (Shift-Left: transpilar, não reinventar) | ✅ (hasFrontend) |
-| `components.manifest.json` | inventário de componentes | — |
-| `preview/` | diretório de sanity check visual para o gate de review | — |
-| `system/` | kit renderizado (`kit.html`, `kit.dark.html`, `index.html`, `tokens.default.json`) + `system/artifacts/` com páginas de exemplo (landing, form, email, deck, newsletter, poster) | — |
-| `source/` | evidência de proveniência/auditoria (`evidence.md`, `tokens.source.json`, `token-contract.report.json`) | — |
-| `assets/` | brand assets (logos, ícones) | — |
-| `fonts/` | webfonts — **necessário para fidelidade tipográfica** | — |
+O runner replica o merge de `brands/system.ts:139-143`: `seedFromBrand()` ignora `brand.seed`, então as sobreposições sanitizadas (20 campos) são aplicadas por cima. O mesmo seed produz o mesmo `design-contract.json` byte a byte no container e no clone (mesma versão do engine); qual caminho rodou fica só em `source/engine-run.json` e no `provenance.json`, nunca no contrato.
 
-> ⚠️ **Os diretórios não são declarados pelo `manifest.json`.** O schema `od-design-system-project/v1` tem campos para *arquivos* (`files.*`, `usage`, `componentsManifest`, `preview.pages[]`, `sourceFiles.*`), nenhum para diretórios. Por isso as entradas com `/` de `OPEN_DESIGN.systemArtifacts` (`PACKAGE_DIRS` no `od-fetch-system.mjs`) são copiadas best-effort do clone nos **dois** caminhos — e essa lista é a única coisa que decide se `system/` chega na saída. Errar a lista derruba arquivos em silêncio num run que reporta `ok: true`; foi exatamente o que aconteceu com `system/` até a 2.19.0.
->
-> **Medição contra os 152 systems curados do clone upstream (2026-09-05):** `preview/` em 152, `source/` em 151, `system/` em 150, `assets/` em **0**, `fonts/` em **0**. `assets/` e `fonts/` continuam na lista porque um system **importado** (`import-github` / `import-shadcn`) pode trazê-los — eles só não existem no pacote bundled.
->
-> ⚠️ **`preview/` varia por system.** A maioria traz `preview/colors.html`, `preview/spacing.html` e `preview/typography.html`; alguns trazem outras páginas (`preview.pages[]` no `manifest.json` lista as reais). O `od-fetch-system.mjs` copia cada diretório inteiro via `copyTree`; o gate de review deve abrir `preview/` como diretório, não apontar para um arquivo fixo.
->
-> **`design-tokens.json` e `tailwind-v4.css` também fazem parte do pacote** (export machine-readable dos mesmos tokens e o mapeamento `@theme` para Tailwind v4, respectivamente) — incluídos em `OPEN_DESIGN.systemArtifacts`, ambos opcionais.
->
-> **Quando o system ships `manifest.json` com `schemaVersion: "od-design-system-project/v1"`**, esse manifest — não a lista fixa acima — é a autoridade sobre quais arquivos este system específico promete (campos `files.*`, `usage`, `componentsManifest`, `preview.pages[]`, `sourceFiles.*`). `od-fetch-system.mjs` deriva a lista esperada do manifest quando ele existe, e cai para a lista fixa (`OPEN_DESIGN.systemArtifacts`) só para systems legados sem manifest. Qualquer arquivo que o manifest prometeu e que não foi copiado por nenhuma das 3 fontes aparece em `unexpectedMissing[]` no JSON de saída — nunca falha em silêncio.
->
-> ⚠️ **`od-fetch-system.mjs` valida presença e conteúdo.** Depois de copiar cada bundle completo, ele executa `od-verify-system.mjs`, grava `design-consistency.json` e retorna **exit 7** com `DIVERGENT_BLOCKED` se `DESIGN.md` e `tokens.css` divergirem. Os dois são gerados por upstream no mesmo bundle, mas nada garante que descrevem o mesmo produto: uma run real (2026-09-05) teve `DESIGN.md` prometendo primária amarela (`#FECE14`) e tipografia Poppins/IBM Plex Mono, enquanto `tokens.css` — a fonte de verdade — definia `--accent: #2563eb` (azul) e Inter/SF Mono. O bloqueio só pode ser aceito depois de decisão explícita do usuário, com `--accept-design-divergence --design-authority tokens.css`; o JSON registra `DIVERGENT_ACCEPTED` e a autoridade. Nunca regenere `DESIGN.md` a partir de `tokens.css`: a cópia é verbatim e reescrever quebraria sua proveniência.
-> **Locale:** systems curados podem trazer `DESIGN-<bcp47>.md` (até ~17 variantes, incluindo `DESIGN-pt-br.md`). Não baixado por padrão; passar `--locale pt-br` para incluir.
+O mapeador (`scripts/lib/token-mapper.mjs`) troca o namespace `--brand-*` pelo TOKEN_SCHEMA do Open Design e aplica regras determinísticas para o que o engine não emite (`--accent-on` = branco ou preto de maior contraste; `--section-y-*` = 24/16/12 × `sizeUnit`; `--container-*`; `--elev-*`; `--tracking-display`). Extensões (camada C, declaradas pelo Pensador): `--info`, `--success-text`, `--warn-text`, `--danger-text`, `--info-text`, `--border-strong`, `--focus`, `--border-width`, `--control-h*`. Valores crus do engine que reprovam WCAG AA (semânticas como texto, `--border` a 1.41:1, foco no escuro) são trocados por variantes seguras (`*-text`, `--border-strong` ≥ 3:1, `--focus` ≥ 3:1) escolhidas na própria escada do engine e, se nenhuma servir, misturadas em direção ao `--fg`. O tema escuro é derivado pelo engine e **não** mantém a cor de marca travada (só o tema claro a mantém); `themes.compact` guarda apenas a densidade.
 
-Destino no repo: `<featurePath>/design-systems/<id>/` — dentro da pasta da feature (`.pensador/<slug>-vN/`), mantendo a saída do Pensador autocontida e coerente com o contrato de handoff (nenhum artefato na árvore de código real). O `state.uiPackageDir` (derivado em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`) **não** é o destino da cópia: é o **alvo de materialização** que o Orquestrador/Executor usa depois para mover os arquivos para `packages/ui`/`src/styles`. Ver `designSystemFilesRoot()` no engine.
+O `DESIGN.md` de `resolved/` **é** o documento de design — o Pensador não gera um `design-system.md` standalone redundante quando o pacote foi gerado. O `design-system.md` inline só existe no **fallback** (Open Design indisponível/recusado).
 
-> ⚠️ **Acesso aos arquivos — ordem de preferência sondada, não pressuposta** (é o que `od-fetch-system.mjs` implementa; ver `deriveExpectedFiles()`/cadeia de fontes no cabeçalho do script): **(1) clone em disco** `<clone-dir>/<id>/` — mais rápido, sem rede, e a **única fonte que não depende de nenhuma superfície de CLI do `od`**, por isso é a fonte primária diante do rollback de 0.20.0; **(2) `od get-file design-systems/<id>/<file>`** — só tentado se `od get-file --help` responder (não apenas `od --version`), via daemon, compila `tokens.css` sob demanda; **(3) REST** `GET /api/design-systems/<id>` — best-effort, **não serve raw file bodies** (`tokens.css`, `components.html`), só o que o payload expõe explicitamente. Nenhuma fonte é fabricada. O JSON de saída do script registra qual fonte serviu cada arquivo em `fileSource`. MCP `get_file` é documentado como mecanismo equivalente pelo engine (`OPEN_DESIGN.commands.mcpGetFile`), mas `od-fetch-system.mjs` **não implementa um cliente MCP** — segue as convenções deste repo (Node built-ins only); um agente com acesso MCP nativo pode usar `get_file` diretamente como alternativa às 3 fontes acima.
+Destino: `<featurePath>/design-systems/<id>/` — dentro da pasta da feature (`.pensador/<slug>-vN/`), com `<id>` derivado do produto (ex.: `gestuor`), mantendo a saída do Pensador autocontida e coerente com o contrato de handoff (nenhum artefato na árvore de código real). O `state.uiPackageDir` (derivado em ARCH via `resolveUiPackageDir()`; fallback `packages/ui`) **não** é o destino da geração: é o **alvo de materialização** (`<uiPackageDir>/design-systems/<id>/`, o `materializeInto` do handoff) que o Orquestrador/Executor usa depois. Ver `designSystemFilesRoot()` no engine.
 
 O MCP do Open Design (`od mcp install <agent>`, depois `od mcp`) é o que conecta o servidor ao agente; ele expõe ferramentas como `list_projects`, `get_file`, `search_files` e `create_artifact` — releases mais recentes (não verificado ao vivo) ampliaram o conjunto de tools para incluir escrita/exclusão de arquivos, exclusão de projetos e resolução do diretório ativo do projeto; a partir da 0.19.0 o daemon também encaminha múltiplos skill IDs por run quando o cliente MCP fornece mais de um. O instalador deste repo (ver abaixo) tenta conectá-lo automaticamente.
 
@@ -143,27 +118,29 @@ O MCP do Open Design (`od mcp install <agent>`, depois `od mcp`) é o que conect
 
 > **Vocabulário de plugins** (upstream 0.8.0+): distribuição de scenarios/skills como plugins via `od plugin install|apply|upgrade|trust|doctor` e `od marketplace add|trust`, com manifesto opcional `open-design.json` (`specVersion: "1.0.0"`). Um plugin com `SKILL.md` continua funcionando como skill de agente comum (Claude Code, Cursor, Codex, …) mesmo sem esse manifesto — não é um sistema substituto do protocolo de skills, é uma camada de empacotamento/marketplace sobre ele. Fora do escopo de uso ativo deste plugin; documentado aqui para referência futura.
 
-O Pensador nunca delega o diálogo: toda decisão de direção visual que precisa do usuário vira pergunta `AskUserQuestion`. O Open Design fornece o material de design (os arquivos `tokens.css`/`components.html`/`DESIGN.md`) que o Pensador **persiste verbatim** e referencia — sem reinventar tokens.
+O Pensador nunca delega o diálogo: toda decisão de direção visual que precisa do usuário vira pergunta `AskUserQuestion`. O Open Design fornece o **brand engine** que deriva os tokens do seed do brief; o Pensador renderiza e audita o pacote (`tokens.css`/`components.html`/`DESIGN.md`) a partir do `design-contract.json` — sem reinventar tokens.
 
 ---
 
 ## Do brief (`AskUserQuestion`) para o Open Design
 
-As 9 dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa do `design-system.md` (foi isso que gerou o tema chapado). Cada resposta tem um **destino estruturado** no Open Design — `openDesignBriefRouting()` define qual. O Open Design expõe dois mecanismos tipados no bloco `od:` de uma skill: **`inputs`** (conteúdo/componentes: `product_name`, `tagline`, `theme` enum) e **`parameters`** (estilização ao vivo: `accent_hue`, `hero_density`, `section_spacing`, `accent_strength`).
+As dimensões de `openDesignBriefPlan()` **não** podem se dissolver na prosa do `design-system.md` (foi isso que gerou o tema chapado). Cada resposta vira um campo `{ value, locked, questionRef }` do **`design-brief.json`** (`buildDesignBrief()`, `assets/design-brief.schema.json`, gravado em `designBriefPath(featurePath)`); `locked: true` é decisão explícita do usuário e prevalece sobre qualquer proposta. `briefToSeed(brief, proposals)` é a função pura que gera o seed do brand engine: **travado ▸ proposta do AGY (só campos não travados, confirmada pelo usuário) ▸ valor não travado ▸ default do engine**. Só os 20 campos do `SeedToken` saem (`OPEN_DESIGN_SEED_FIELDS`), `colorInfo` é sempre enviado explicitamente (o engine o iguala à primária se faltar) e a fonte display não é campo do seed. Mapeamento: paleta → `colorPrimary/Success/Warning/Error/Info`; tipografia → `fontFamily/fontFamilyCode/fontSize`; `density` (`compact|comfortable|spacious`) → `sizeUnit/sizeStep/controlHeight`; `borderRadius`; `motion` (`none|subtle|standard`) → `motion/motionUnit`. Tema padrão (`themeDefault`) e exposição do tema (`themeExposure`) não são campos do seed: seguem no brief para o contrato e para o Testador.
+
+A tabela abaixo descreve o papel de cada dimensão no Open Design (o antigo destino `selection|input|parameter|constraint` deixou de ser código). O Open Design expõe dois mecanismos tipados no bloco `od:` de uma skill: **`inputs`** (conteúdo/componentes: `product_name`, `tagline`, `theme` enum) e **`parameters`** (estilização ao vivo: `accent_hue`, `hero_density`, `section_spacing`, `accent_strength`).
 
 | Dimensão do brief | Destino | Onde age no Open Design |
 |---|---|---|
 | `sectorContext` | `input` | vocabulário de domínio para `tagline`/copy das seções e **seleção de imagery/iconografia** (ver `references/imagery.md`) — não escolhe o system, mas orienta o que popular nele |
-| `visualTone` | `selection` | escolha do system curado + `theme` enum (`dark-glass`/`minimal`/…) |
-| `brandReferences` | `selection` | marca real citada → `od design-systems import-github <url>` |
+| `visualTone` | `selection` | tom/mood: alimenta a **proposta do AGY para os campos não travados** do seed, que o usuário confirma (não há mais escolha de system de catálogo) |
+| `brandReferences` | `selection` | marca de referência (texto ou URL da marca): entra como referência do seed. A URL vai no campo opcional `brandUrl`; `design-brief.mjs brand-url` a deriva pelo `buildFromUrl` do próprio engine (sem LLM; só no container) e propõe `colorPrimary`/`fontFamily` para os campos não travados, com o resultado confirmado pelo usuário |
 | `colorPalette` | `parameter` | `accent_hue` (matiz da cor de marca) / `accent_strength` (opacity) |
 | `typography` | `parameter` | escala/família via `sections:[typography]` (override doc se conflita) |
 | `componentStates` | `input` | inventário de estados exigidos, **validado vs `components.html`** |
 | `responsiveness` | `parameter` | `section_spacing` / densidade |
-| `accessibility` | `constraint` | gate de contraste WCAG AA — **enforced como requisito normativo no modo Spec** (review gate); no modo PRD, verificado no review contra o `DESIGN.md` verbatim |
+| `accessibility` | `constraint` | gate de contraste WCAG AA — **enforced como requisito normativo no modo Spec** (review gate); no modo PRD, verificado no review contra o `DESIGN.md` gerado |
 | `microcopy` | `input` | `tagline` + copy das seções + CTAs |
 
-**Regra inviolável (do `skills-protocol.md` do Open Design):** *"never invent new tokens."* Resposta que **bate** com o system vira `input`/`parameter`. Resposta que **conflita** vira **override documentado** — na seção *Decisions* do `design.md` (modo Spec) ou como nota de override no resumo do `handoff.json` (modo PRD) — nunca um hex/raio/spacing solto no `theme.ts`. As regras de uso do system viajam junto para o agente de front-end e o review: *accent usado ≤ 2× por página (hero + CTA + links), sem inventar hex, sem sombra se Depth & Elevation = minimal.*
+**Regra inviolável:** *"never invent new tokens."* O valor de cada token vem do brand engine do Open Design a partir do seed do brief — nunca de um hex/raio/spacing escrito à mão. Campos do brief marcados como travados prevalecem sobre qualquer proposta; uma decisão do usuário que precisa de token fora do que o engine deriva vira **override documentado** — na seção *Decisions* do `design.md` (modo Spec) ou como nota de override no resumo do `handoff.json` (modo PRD) — nunca um valor solto no `theme.ts`. As regras de uso do design system viajam junto para o agente de front-end e o review: *accent usado ≤ 2× por página (hero + CTA + links), sem inventar hex, sem sombra se Depth & Elevation = minimal.*
 
 ---
 
@@ -173,9 +150,9 @@ O Open Design é **ortogonal ao `artifactMode`**: roda sempre que `hasFrontend`,
 
 | Saída do Open Design | Modo PRD | Modo Spec (OpenSpec) |
 |---|---|---|
-| Arquivos verbatim do system (`tokens.css`, `components.html`, …) | `<featurePath>/design-systems/<id>/` | **idem** (dentro de `.pensador/<slug>-vN/` nos dois modos — não são geridos pelo OpenSpec; o Executor materializa em `packages/ui` depois) |
-| **Decisões** de design (seleção, merge, overrides justificados) | `DESIGN.md` verbatim + `handoff.json` (role `design-system-files`) — **sem `design-system.md` standalone** | seção **Decisions** do `openspec/changes/<nome>/design.md` |
-| **Requisitos** de UI do design system (estados, contraste AA, uso do accent) | `DESIGN.md` verbatim (schema de 9 seções) | capability delta-spec `openspec/changes/<nome>/specs/ui-design-system/spec.md` |
+| Pacote de design gerado (`resolved/`) (`tokens.css`, `components.html`, …) | `<featurePath>/design-systems/<id>/` | **idem** (dentro de `.pensador/<slug>-vN/` nos dois modos — não são geridos pelo OpenSpec; o Executor materializa em `packages/ui` depois) |
+| **Decisões** de design (seleção, merge, overrides justificados) | `DESIGN.md` gerado + `handoff.json` (role `design-system-files`) — **sem `design-system.md` standalone** | seção **Decisions** do `openspec/changes/<nome>/design.md` |
+| **Requisitos** de UI do design system (estados, contraste AA, uso do accent) | `DESIGN.md` gerado (schema de 9 seções) | capability delta-spec `openspec/changes/<nome>/specs/ui-design-system/spec.md` |
 
 ### A capability `ui-design-system` (delta spec)
 
@@ -206,7 +183,7 @@ O accent MUST aparecer no máximo 2× por página (hero + CTA), além de links.
 
 Use o contrato `openDesignSpecContract(featurePath, state.designSystems, state.uiPackageDir)` como fonte dos caminhos concretos (ver `references/openspec.md` › **Contrato Spec ↔ Open Design**):
 
-1. Baixa e persiste os arquivos verbatim do system em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD) — esta é a `origem` (`verbatimDir`) do contrato.
+1. Confirma o pacote gerado no DESIGN em `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, igual ao PRD) — esta é a `origem` (`verbatimDir`) do contrato.
 2. Alimenta o `proposal.md` com a capability `ui-design-system` na seção **Capabilities**.
 3. Conduz `/opsx:propose <nome ou descrição>` para gerar: `design.md` (Decisions citando `verbatimDir` + `materializeInto` + `<id>` + overrides) e `specs/ui-design-system/spec.md` (requisitos `SHALL` que citam `materializedTokens` + cenários).
 4. `openspec validate <nome> --strict --json` valida — cenários com exatamente 4 `#` e todo requisito com ≥ 1 cenário.
@@ -247,7 +224,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"
 
 Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Port`/`--port` (padrão 7456), `-McpConfig`/`--mcp-config` (alvo do `.mcp.json`, padrão `<cwd>/.mcp.json`), `-McpName`/`--mcp-name` (padrão `open-design`), `-SkipMcp`/`--skip-mcp`. Pré-requisitos que o usuário precisa ter: **git** e **Docker Desktop** (com Compose v2). O script é idempotente — preserva um `OD_API_TOKEN` existente e apenas atualiza o repo em execuções seguintes.
 
-> 🔑 **Localização do `OD_API_TOKEN`:** o script instalador gera e grava o token em `~/.open-design/deploy/.env` (dentro do clone Docker). O `od-fetch-system.mjs` lê `OD_API_TOKEN` do ambiente — quando o clone em disco está disponível, o token não é necessário (caminho primário). Ele só é exigido pelo fallback REST (`GET /api/design-systems/<id>` retorna 401 sem ele). Se precisar exportar manualmente: `export OD_API_TOKEN=$(grep OD_API_TOKEN ~/.open-design/deploy/.env | cut -d= -f2-)`.
+> 🔑 **Localização do `OD_API_TOKEN`:** o script instalador gera e grava o token em `~/.open-design/deploy/.env` (dentro do clone Docker). A derivação dos tokens (`POST /api/brand/build`, Fase 3 do plano) lê `OD_API_TOKEN` do ambiente ou desse `.env` e nunca o imprime. Se precisar exportar manualmente: `export OD_API_TOKEN=$(grep OD_API_TOKEN ~/.open-design/deploy/.env | cut -d= -f2-)`.
 
 **Conexão do MCP (automática):** o script conecta o MCP nos dois cenários:
 
@@ -255,6 +232,38 @@ Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Por
 - No modo Docker (sem `od` no host), chama o helper `scripts/od-mcp-config.mjs`, que busca a spec de lançamento canônica do daemon em `GET /api/mcp/install-info` (o mesmo payload do Settings → MCP) e faz **merge** da entrada `mcpServers.<nome>` no `.mcp.json`, preservando o resto do arquivo. Usa Node (já requerido pelo cc-pensador), sem depender de `jq`/`python`.
 
 > Ressalva honesta: o bridge **stdio** do MCP (`od mcp`) precisa de um binário `od` no host para realmente subir. No modo Docker puro a entrada é gravada no `.mcp.json`, mas se o agente reportar falha ao iniciar o MCP `open-design`, o caminho que dá um `od` real é o pnpm. Independentemente disso, o Pensador lê os design systems pela API do daemon (`/api/design-systems`) — então a integração funciona mesmo sem o MCP stdio. Depois que o daemon sobe, o Pensador aguarda a confirmação do usuário e retoma.
+
+### Vínculo do agente do design (`AgenteDesign`)
+
+O protótipo e o Critique Theater do Open Design só rodam com um **agente de código** vinculado. O `preflight.mjs` reporta `integrations.designAgents` (somente leitura, sem segredos, sem executar nada que grave estado):
+
+- `agents[]`: `{ id, where: "host"|"container", available, authenticated: true|false|"unknown", source }`. `where: "host"` vem do PATH da máquina (`claude`, `codex`, `gemini`, `opencode`, `cursor-agent`, `qwen`, e `agy`/`kiro-cli` só quando os plugins irmãos `cc-antigravity-plugin`/`cc-kiro-plugin` estão instalados); a entrada do **daemon** vem de `GET /api/agents` (a detecção do próprio Open Design) ou, sem token, de um `command -v` dentro do container. Só entram no JSON os agentes `available`; `undetectedCount` conta o resto. Os ids seguem os do Open Design (`agy → antigravity`, `kiro-cli → kiro`).
+- `daemonWhere`: onde o daemon roda (`container` quando um container do OD publica a porta do daemon; `host`; `null` se inalcançável) e `daemonStatus` (`ok`, `auth-required`, `unreachable`, …).
+
+Regra: **o daemon só lança um agente que existe no ambiente dele.** Por isso um agente detectado só no host, com o daemon no container (ou o inverso), não é aceito em silêncio: `resolveDesignAgent()` devolve `agent-not-visible-to-daemon` com as duas remediações — instalar/autenticar o agente no ambiente do daemon, ou mover o daemon (para o host, ver o onboarding abaixo) — e o Pensador pergunta como proceder via `AskUserQuestion`.
+
+Pergunta (uma vez, antes do DESIGN, com front-end e ao menos um agente `available`; `multiSelect: false`, `header: "AgenteDesign"`):
+
+> **Qual agente deve gerar o protótipo do design e a crítica (Open Design)?** — uma opção por agente detectado (descrição `id@where`) + **Nenhum (pular protótipo)**.
+
+A escolha é gravada por `design-brief.mjs agent --agents <preflight.json> --choose <id|none>` em `state.designAgent` (`null` = ainda não perguntado; `{ id: "none" }` = pulado; `{ id, where, chosenAt }` = vinculado; `validateDesignAgent`). O hook `track-questions.mjs` registra só o cabeçalho da pergunta, nunca a resposta. O `od run start --agent <id>` **nunca** dispara sem o aceite explícito do usuário (consome tokens); sem vínculo, protótipo e Critique ficam desligados e o DESIGN não é afetado.
+
+### Registro do design system no daemon (protótipo opcional)
+
+O protótipo (`od project create --design-system user:<id>`) só respeita os tokens se o daemon servir o `tokens.css` do `resolved/` **verbatim**. Não use `od design-systems import-local`: ele reescaneia a fonte e **regenera** o `tokens.css` (`buildDesignTokenContract`), o `resolved/` não é copiado, o daemon entrega uma paleta genérica e o agente reconstrói os valores por inferência (medido no daemon 0.22.1: tema claro 31 de 56 tokens idênticos, escuro 0 de 16). O `resolved/` do Pensador já é o layout nativo do daemon (`manifest.json` com `schemaVersion: "od-design-system-project/v1"` e `id` igual ao nome do diretório). O procedimento é **um comando**, com o aceite do usuário (grava estado no daemon; `header: "RegistroOD"`):
+
+```bash
+node scripts/od-register-system.mjs --dir <featurePath>/design-systems/<id> \
+  --daemon-url http://127.0.0.1:<porta> (--data-dir <dados do daemon> | --container open-design) --accepted
+```
+
+1. `POST /api/design-systems` com `{ title: <id>, category: "Generated", status: "published", body: <DESIGN.md> }` — o `<id>` sai do slug do título e precisa ser o `--system-id` e o `id` do `manifest.json`, ou o daemon ignora o sistema. O daemon cria `<dados>/design-systems/<id>/` com um wrapper genérico.
+2. Sobrepõe `tokens.css`, `design-tokens.json`, `tailwind-v4.css`, `components.html`, `components.manifest.json`, `USAGE.md`, `manifest.json`, `DESIGN.md` e `preview/` nesse diretório, e `tokens.css` também sobre `colors_and_type.css` (o wrapper não entrega uma paleta genérica por outro canal). Daemon no host: `--data-dir`; daemon em Docker: `--container` (`docker exec … test -d` + `docker cp`).
+3. **Confere pelo daemon, não pelo disco:** `GET /api/design-systems/user%3A<id>/file?path=tokens.css` (e `colors_and_type.css`) precisa ser byte a byte o `resolved/tokens.css`. Divergência → exit 1, `OD_REGISTER_TOKENS_DIVERGED`, o sistema volta a rascunho (`PATCH … {"status":"draft"}`) e o protótipo **não** deve rodar. O hash de contrato que o daemon lê do `manifest.json` também é conferido (`OD_REGISTER_MANIFEST_DIVERGED`).
+
+Códigos estáveis: `OD_REGISTER_CONSENT_REQUIRED`, `OD_REGISTER_INPUT_INVALID`, `OD_REGISTER_NO_TARGET`, `OD_REGISTER_INSECURE_TARGET` (o token só vai a hosts loopback, salvo `--allow-remote`), `OD_REGISTER_DAEMON_UNREACHABLE`, `OD_REGISTER_AUTH_REQUIRED`, `OD_REGISTER_ID_MISMATCH`, `OD_REGISTER_MANIFEST_ID_MISMATCH`, `OD_REGISTER_DAEMON_REJECTED`, `OD_REGISTER_LAYOUT_MISSING`, `OD_REGISTER_COPY_FAILED`, `OD_REGISTER_TOKENS_UNREADABLE`, `OD_REGISTER_TOKENS_DIVERGED` e `OD_REGISTER_MANIFEST_DIVERGED`, cada um com `remediation`.
+
+**Limite honesto:** o passo 2 escreve em um diretório que o daemon possui. Isso **não é API pública** e foi validado só no daemon **0.22.1**; a versão (`/api/health`) fica em `statePatch.designRegistrations[<id>].daemonVersion` e a ausência do diretório esperado é a recusa `OD_REGISTER_LAYOUT_MISSING` com remediação (apontar o `--data-dir`/`--container` certo ou usar uma versão validada), nunca um registro parcial silencioso. O daemon do host leva de 10 a 30 s para responder no primeiro start. O script **nunca** dispara `od run start`: o run consome tokens, exige o aceite explícito e usa o agente escolhido em `AgenteDesign` (`od run start --daemon-url <url> --project <id> --agent <designAgent.id>`). Mesmo com o registro verbatim o protótipo é **uma execução de um agente não determinístico**: continua opcional e consultivo, e a fidelidade é garantida pelos gates do Orquestrador/Executor e pelo probe do Testador (evidência: subseção 10.10.2 do plano, 23 de 23 tokens em cada tema).
 
 ### Onboarding de agentes (claude / codex / antigravity)
 
@@ -288,17 +297,16 @@ Quando a demanda **não** tem front-end (`hasFrontend = false`), o Open Design n
 - `references/imagery.md`: contrato de imagery/iconografia — o Pensador e o unico proprietario das decisoes e artefatos visuais; o Orquestrador so materializa `resolved/assets/manifest.json`, nunca pergunta nem gera imagem.
 - `references/skill-stack.md`: skills como lentes de domínio; Open Design como motor de design.
 - `references/codebase-memory.md`: padrão de oferta de instalação via `AskUserQuestion`.
-- `references/feature-isolation.md` e `references/handoff-contract.md`: role `design-system-files` (arquivos verbatim, inclui `DESIGN.md`) e o `design-system.md` de fallback.
+- `references/feature-isolation.md` e `references/handoff-contract.md`: role `design-system-files` (pacote gerado, inclui `DESIGN.md`) e o `design-system.md` de fallback.
 - `skills/prd/SKILL.md`: seção **Design System & UI/UX** do `Strict_PRD_Schema`.
-- `scripts/od-fetch-system.mjs`: script I/O que executa o `openDesignFetchPlan()` no FINAL — copia os arquivos verbatim do clone Docker (ou fallback REST) para `<featurePath>/design-systems/<id>/` (dentro de `.pensador/<slug>-vN/`, via `--out-dir <featurePath>`).
 - `scripts/od-onboard-agents.mjs` + `scripts/onboard-open-design-agents.ps1|.sh`: onboarding dos agentes do host (claude/codex/antigravity) num daemon local — ver a seção **Onboarding de agentes** acima.
 # Contrato resolved (v2.22)
 
-O Pensador preserva o pacote upstream em `design-systems/<id>/original/` e sempre produz `design-systems/<id>/resolved/` como autoridade. O resolved contem `design-contract.json`, `DESIGN.md`, `tokens.css`, `design-tokens.json`, `components.html`, `preview/`, `assets/manifest.json`, `design-audit.json` e `provenance.json`. Na ausencia ou incompletude do Open Design, AGY produz o mesmo pacote completo. O fallback de apenas `design-system.md` foi removido.
+O Pensador produz `design-systems/<id>/source/` (proveniência do engine: `brand.json`, `seed.json`, saída bruta e `engine-run.json`) e `design-systems/<id>/resolved/` como a única autoridade. Não existe `original/` nem cópia verbatim de catálogo. O resolved contem `design-contract.json` (v2, com `sha256`), `tokens.css` (`:root` claro, `[data-theme="dark"]`, `prefers-color-scheme`), `design-tokens.json` (W3C DTCG), `tailwind-v4.css` (`@theme`), `DESIGN.md` (front matter normativo + 9 seções), `components.html`, `components.manifest.json`, `preview/` (index, colors, typography, spacing, components, app; nos dois temas), `USAGE.md`, `manifest.json` (`od-design-system-project/v1`), `assets/manifest.json`, `design-audit.json` e `provenance.json` (hash do contrato e de cada arquivo). Tudo é renderizado do contrato por `design-package.mjs render`; nada é copiado de fora. Quando o brand engine não está disponível o DESIGN fecha como `BLOCKED`; o fallback de apenas `design-system.md` foi removido.
 
 ## Pipeline Generativo e Discovery Visual (v2.23)
 
-O Open Design no Pensador evoluiu de um mero catálogo estático de tokens para um motor ativo de design generativo integrado ao estágio `DESIGN`:
+O Open Design no Pensador evoluiu de uma tabela de tokens para um motor ativo de design generativo integrado ao estágio `DESIGN`:
 
 ### 1. Geração de Brand Assets com Contexto Semântico do Setor
 - Baseado no `sectorContext` definido no `RESEARCH` (ex.: oficina automotiva, SaaS financeiro, e-commerce pet), são gerados assets de mídia reais (SVGs vetoriais para logos e ícones de serviços, imagens rasterizadas para banners e cards).
@@ -307,8 +315,8 @@ O Open Design no Pensador evoluiu de um mero catálogo estático de tokens para 
 
 ### 2. Fixtures de Componentes em `components.html`
 - O arquivo `components.html` serve como a especificação visual viva de todos os componentes do sistema (Botões, Cards, Inputs, Badges, Modais) renderizados nos 4 estados obrigatórios: `default`, `hover`, `focus` e `disabled`.
-- Quando o daemon REST não fornecer fixtures prontas, o Pensador sintetiza deterministicamente as fixtures a partir do `design-contract.json`, garantindo que o agente de front-end do Orquestrador nunca receba um pacote sem marcação HTML real de referência.
+- O Pensador sempre gera as fixtures deterministicamente a partir do `design-contract.json` (`design-package.mjs render`); elas usam só `var(--token)`, sem hex nem valor de fallback, e aparecem nos dois temas.
 
 O preflight detecta CLI `od` real (ignorando GNU coreutils), MCP estruturado, REST por `OD_DAEMON_URL`/MCP/`.open-design/deploy/.env`/porta 7456, Docker e novo probe na porta publicada. `401/403` significa `AUTH_REQUIRED`; container sem endpoint significa `DETECTED_UNREACHABLE`; nesses casos nao se oferece reinstalacao. O token vem de `OD_API_TOKEN` ou do `.env` e nunca aparece em stdout, logs ou snapshots.
 
-A precedencia de sintese e: escolhas explicitas do usuario, PRD/criterios, tokens/componentes Open Design e prosa original. AGY sintetiza o JSON Schema; renderizadores deterministas derivam CSS/JSON/Markdown; Codex audita read-only. Sao permitidas duas correcoes automaticas. Finding alto/critico bloqueia o handoff.
+A precedencia de sintese e: escolhas explicitas do usuario, PRD/criterios e prosa. Os valores de token vem do brand engine (nunca do AGY); o AGY escreve apenas o inventario de componentes, layouts, iconografia, imagery, microcopy, anti-patterns e a justificativa textual (`rationale`); renderizadores deterministas derivam CSS/JSON/Markdown; Codex audita read-only. Sao permitidas duas correcoes automaticas. Finding alto/critico bloqueia o handoff.

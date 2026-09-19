@@ -136,3 +136,61 @@ describe('hook process — audit log', () => {
     expect(r.stderr).toContain('audit log');
   });
 });
+
+describe('design approval files (design-brief.json, .pensador-approval.json)', () => {
+  const BRIEF = 'C:/proj/.pensador/x-v1/design-brief.json';
+  const APPROVAL = 'C:/proj/.pensador/x-v1/.pensador-approval.json';
+
+  it('blocks Edit/Write/MultiEdit of the brief inside .pensador and of the approval record anywhere', () => {
+    for (const tool of ['Edit', 'Write', 'MultiEdit']) {
+      expect(evaluateToolCall({ tool_name: tool, tool_input: { file_path: BRIEF, content: '{}', old_string: 'a', new_string: 'b', edits: [] } }, io()).allow).toBe(false);
+      expect(evaluateToolCall({ tool_name: tool, tool_input: { file_path: APPROVAL, content: '{}', old_string: 'a', new_string: 'b', edits: [] } }, io()).allow).toBe(false);
+    }
+    const v = evaluateToolCall({ tool_name: 'Write', tool_input: { file_path: BRIEF, content: '{}' } }, io());
+    expect(v.reason).toContain('design-brief.mjs');
+  });
+
+  it('does not touch a design-brief.json that belongs to the user project', () => {
+    expect(evaluateToolCall({ tool_name: 'Write', tool_input: { file_path: 'C:/proj/docs/design-brief.json', content: '{}' } }, io()).allow).toBe(true);
+  });
+
+  it('blocks shell writes (redirect, sed -i, Set-Content) but allows reads and the CLI', () => {
+    for (const command of [
+      'echo {} > .pensador/x-v1/design-brief.json',
+      'sed -i s/null/"2026-01-01"/ .pensador/x-v1/design-brief.json',
+      'Set-Content .pensador/x-v1/.pensador-approval.json "{}"',
+      'cp fake.json .pensador/x-v1/.pensador-approval.json',
+    ]) {
+      expect(evaluateToolCall({ tool_name: 'Bash', tool_input: { command } }, io()).allow, command).toBe(false);
+    }
+    for (const command of [
+      'cat .pensador/x-v1/design-brief.json',
+      'node scripts/design-brief.mjs approve --feature .pensador/x-v1 --dir .pensador/x-v1/design-systems/a',
+    ]) {
+      expect(evaluateToolCall({ tool_name: 'Bash', tool_input: { command } }, io()).allow, command).toBe(true);
+    }
+  });
+});
+
+describe('approval signing key (approval.key)', () => {
+  const KEY = 'C:/Users/u/AppData/Local/pensador/approval.key';
+
+  it('blocks Read/Grep/Glob/Edit/Write of the key wherever it is', () => {
+    for (const [tool, tool_input] of [['Read', { file_path: KEY }], ['Grep', { pattern: 'a', path: KEY }], ['Glob', { pattern: '**/approval.key' }], ['Edit', { file_path: KEY, old_string: 'a', new_string: 'b' }], ['Write', { file_path: KEY, content: 'x' }]]) {
+      const v = evaluateToolCall({ tool_name: tool, tool_input }, io());
+      expect(v.allow, tool).toBe(false);
+      expect(v.reason).toContain('approval.key');
+    }
+  });
+
+  it('blocks shell commands that name the key, reads included; the CLI does not need to name it', () => {
+    for (const command of ['cat ~/.pensador/approval.key', 'Get-Content $env:LOCALAPPDATA\pensador\approval.key', 'cp ~/.pensador/approval.key /tmp/k']) {
+      expect(evaluateToolCall({ tool_name: 'Bash', tool_input: { command } }, io()).allow, command).toBe(false);
+    }
+    expect(evaluateToolCall({ tool_name: 'Bash', tool_input: { command: 'node scripts/design-brief.mjs approve --feature f --dir d' } }, io()).allow).toBe(true);
+  });
+
+  it('leaves ordinary reads alone', () => {
+    expect(evaluateToolCall({ tool_name: 'Read', tool_input: { file_path: 'C:/proj/src/a.ts' } }, io()).allow).toBe(true);
+  });
+});

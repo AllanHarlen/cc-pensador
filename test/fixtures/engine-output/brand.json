@@ -1,0 +1,6 @@
+{
+  "name": "Gestuor",
+  "slug": "gestuor",
+  "colors": [{"role":"accent","hex":"#0F766E","name":"Teal"}],
+  "seed": {"colorPrimary":"#0F766E","colorSuccess":"#16A34A","colorWarning":"#D97706","colorError":"#DC2626","colorInfo":"#0284C7","fontFamily":"Inter, sans-serif","fontFamilyCode":"JetBrains Mono, monospace","fontSize":14,"borderRadius":8,"sizeUnit":4,"sizeStep":4,"controlHeight":36,"motion":true}
+}

@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { STAGE_ORDER } from '../scripts/pensador-engine.mjs';
 import { evaluateToolCall } from '../scripts/lib/checkpoint-guard.mjs';
+import { DESIGN_APPROVAL_HEADER } from '../scripts/lib/design-approval.mjs';
+import { designEvidence } from './helpers/design-fixture.js';
 
 const script = (name) => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const body = (n = 600) => `# doc\n${'conteudo real '.repeat(Math.ceil(n / 13))}`;
@@ -32,9 +34,9 @@ describe('advance-stage CLI + question tracker', () => {
     writeFileSync(join(dir, rel), typeof text === 'string' ? text : JSON.stringify(text));
   };
   /** Simulates the PostToolUse hook firing after an AskUserQuestion call with `n` questions. */
-  const askUser = (n, toolName = 'AskUserQuestion') =>
+  const askUser = (n, toolName = 'AskUserQuestion', header = undefined) =>
     spawnSync(process.execPath, [script('track-questions.mjs')], {
-      input: JSON.stringify({ tool_name: toolName, cwd: project, tool_input: { questions: Array.from({ length: n }, (_, i) => ({ question: `q${i}` })) } }),
+      input: JSON.stringify({ tool_name: toolName, cwd: project, tool_input: { questions: Array.from({ length: n }, (_, i) => ({ question: `q${i}`, ...(header ? { header } : {}) })) } }),
       encoding: 'utf8',
     });
   const logText = () => (existsSync(join(dir, '.pensador-questions.jsonl')) ? readFileSync(join(dir, '.pensador-questions.jsonl'), 'utf8') : '');
@@ -207,8 +209,9 @@ describe('advance-stage CLI + question tracker', () => {
     go('AGY', ok({ questionsAsked: 1, questionsClosed: 1 }));
     put('shared-agents/agy.stage.response.md', body());
     askUser(1);
-    put('design-systems/professional/resolved/design-audit.json', { status: 'PASS', findings: [] });
+    for (const [rel, text] of Object.entries(designEvidence().files)) put(rel, text);
     go('DESIGN', ok({ questionsAsked: 1, questionsClosed: 1 }));
+    askUser(1, 'AskUserQuestion', DESIGN_APPROVAL_HEADER); // the visual approval of the preview, asked while the checkpoint is in DESIGN
     go('FINAL');
 
     put('project-baseline.json', { isGreenfield: true, techStack: ['nextjs', 'dotnet'] });

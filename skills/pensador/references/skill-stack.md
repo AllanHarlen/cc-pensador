@@ -17,12 +17,12 @@ No v2.6 cada dominio do BRAINSTORM_GERAL tem uma lente **primaria** (skill deter
 | Backend (refino) | `codex:codex-rescue` | `codex` | refine | `hasBackend` | Aprofunda riscos tecnicos sobre o checklist da lente primaria |
 | UX | `ui-ux-pro-max` | `ui-ux-pro-max` | **primaria** | `hasFrontend` | Fluxos, estados de tela, acessibilidade, microcopy (alimenta o Open Design) |
 | Frontend | `frontend-design` | `frontend-design` | **primaria** | `hasFrontend` | Componentizacao, design system, responsividade, layout (alimenta o Open Design) |
-| Design (motor) | Open Design (`od`) | `open-design` | design-engine | `hasFrontend` | Materializa o design system verbatim a partir do brief |
+| Design (motor) | Open Design (`od`) | `open-design` | design-engine | `hasFrontend` | Gera o design system (brand engine) a partir do brief, sem catalogo |
 | UX/Front (refino) | `cc-antigravity-plugin:antigravity-agent` | `agy` | refine | `hasFrontend` | Aprofunda produto/experiencia sobre as lentes primarias |
 
 `requirements-clarity`, `backend-development`, `ui-ux-pro-max` e `frontend-design` sao as **lentes primarias** (skills deterministas) do BRAINSTORM_GERAL. Codex e AGY entram como **lentes de refinamento** por cima delas; o Open Design entra como **motor de design**. Nenhuma cria estagio independente. Mapeamento em `STAGE_DELEGATION.BRAINSTORM_GERAL.domains.*.lenses`.
 
-> **Motor de design (Open Design).** Quando `hasFrontend = true`, as lentes primarias `ui-ux-pro-max` e `frontend-design` definem *o que* perguntar; o Pensador parseia um **brief de design** e usa o **Open Design** (`od`, MCP/CLI) como motor para materializar o system verbatim (`DESIGN.md`/`tokens.css`/…). Se indisponivel, ofereca instalacao via `AskUserQuestion` ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
+> **Motor de design (Open Design).** Quando `hasFrontend = true`, as lentes primarias `ui-ux-pro-max` e `frontend-design` definem *o que* perguntar; o Pensador parseia um **brief de design** e usa o **Open Design** (`od`, MCP/CLI) como motor para gerar o design system (`DESIGN.md`/`tokens.css`/…) a partir do brief, sem catalogo. Se indisponivel, ofereca instalacao via `AskUserQuestion` ou caia para um `design-system.md` inline. Veja `references/open-design.md`.
 
 ---
 
