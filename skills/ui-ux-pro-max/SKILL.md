@@ -18,7 +18,7 @@ Rode quando houver front-end (tela, interface, web, mobile, app, página). Caso 
 
 ## Checklist de UX
 
-1. **Fluxos ponta-a-ponta e Prototipação no Discovery** — caminho feliz e desvios; selecionar explicitamente de 1 a 3 fluxos críticos que devem virar protótipos interativos HTML standalone de validação (`prototypes/<fluxo>/index.html`).
+1. **Fluxos ponta-a-ponta** — caminho feliz e desvios; selecionar explicitamente de 1 a 3 fluxos críticos para priorizar na especificação de UX e na auditoria visual do estágio `DESIGN`.
 2. **Estados de tela e Componentes** — vazio, carregando, erro, sucesso, parcial/offline. Definir quais componentes e estados (`default`, `hover`, `focus`, `disabled`) devem constar em `components.html`.
 3. **Feedback** — confirmações, validação inline, mensagens de erro acionáveis, estados de progresso.
 4. **Navegação** — estrutura de informação, entrada/saída de cada tela, breadcrumb, voltar.
@@ -31,8 +31,8 @@ Rode quando houver front-end (tela, interface, web, mobile, app, página). Caso 
 
 ## Saída esperada
 
-Perguntas por lacuna de experiência. Quando definir um fluxo, registre os passos para alimentar o `userhistory.md` (interações sequenciais) e especifique os candidatos a protótipos do estágio `DESIGN`.
+Perguntas por lacuna de experiência. Quando definir um fluxo, registre os passos para alimentar o `userhistory.md` (interações sequenciais) e priorize os fluxos críticos para a auditoria visual do estágio `DESIGN`.
 
 ## Integração com o Open Design
 
-Quando `hasFrontend = true`, as lacunas de experiência (especialmente fluxos de validação visual, estados de tela, acessibilidade, hierarquia visual, microcopy e assets de mídia) compõem o **brief de design** que o Pensador parseia e entrega ao **Open Design** (`od`, MCP/CLI). No estágio `DESIGN`, esta lente instrui a geração dos protótipos HTML standalone dos fluxos críticos para aprovação visual pelo usuário (`AskUserQuestion`) e a especificação das fixtures em `components.html` e brand assets em `assets/manifest.json`. Veja `skills/pensador/references/open-design.md`.
+Quando `hasFrontend = true`, as lacunas de experiência (especialmente fluxos de validação visual, estados de tela, acessibilidade, hierarquia visual, microcopy e assets de mídia) compõem o **brief de design** que o Pensador parseia e entrega ao **Open Design** (`od`, MCP/CLI). No estágio `DESIGN`, esta lente instrui a priorização dos fluxos críticos na auditoria visual e a especificação das fixtures em `components.html` e brand assets em `assets/manifest.json`. Veja `skills/pensador/references/open-design.md`.

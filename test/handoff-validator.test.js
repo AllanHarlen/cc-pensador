@@ -343,7 +343,6 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     artifacts: [
       { role: 'prd', path: 'prd.md', required: true },
       { role: 'design-system-files', path: 'design-systems/bmw/resolved', required: true, variant: 'resolved', authoritative: true },
-      { role: 'ui-prototype', path: 'prototypes/', required: true },
       { role: 'brand-assets', path: 'assets/', required: true },
     ],
   });
@@ -372,14 +371,6 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     const result = validateVisualCompleteness(legacyVerbatimHandoff());
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.code === 'DESIGN_PACKAGE_NOT_RESOLVED')).toBe(true);
-  });
-
-  it('rejects status DONE with a front-end demand missing ui-prototype', () => {
-    const handoff = resolvedHandoff();
-    handoff.artifacts = handoff.artifacts.filter((a) => a.role !== 'ui-prototype');
-    const result = validateVisualCompleteness(handoff);
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.code === 'MISSING_UI_PROTOTYPE_FOR_DONE_STATUS')).toBe(true);
   });
 
   it('rejects status DONE with a front-end demand missing brand-assets', () => {
@@ -464,7 +455,6 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     });
     const result = validateVisualCompleteness(handoff);
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.code === 'MISSING_UI_PROTOTYPE_FOR_DONE_STATUS')).toBe(true);
     expect(result.errors.some((e) => e.code === 'MISSING_BRAND_ASSETS_FOR_DONE_STATUS')).toBe(true);
   });
 
@@ -557,7 +547,6 @@ describe('validate-handoff.mjs CLI', () => {
         artifacts: [
           { role: 'project-baseline', path: 'project-baseline.json', required: true },
           { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
-          { role: 'ui-prototype', path: 'prototypes/', required: true },
           { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
         ],
       })));
@@ -589,7 +578,6 @@ describe('validate-handoff.mjs CLI', () => {
         artifacts: [
           { role: 'project-baseline', path: 'project-baseline.json', required: true },
           { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
-          { role: 'ui-prototype', path: 'prototypes/', required: true },
           { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
         ],
       })));

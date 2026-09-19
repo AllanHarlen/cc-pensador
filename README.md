@@ -2,7 +2,9 @@
 
 > Claude Code plugin that conducts a natural language request through **thirteen stages of work** to a high-quality PRD — with Code Base Memory exploration, web/market research, architecture analysis, complexity heuristics, and domain lenses. Optionally delegates the heavy work to an external CLI (Antigravity, Kiro, or Codex) via `--mode`, saving Claude tokens.
 
-`version 2.23.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
+`version 2.29.0` · `category: planning` · all dialogue passes **exclusively** through `AskUserQuestion`.
+
+> **Enforced, not just documented:** the flow runs in the main session (never delegated to a fork/background agent), and the checkpoint `stage` only moves through `scripts/advance-stage.mjs`, which refuses stage skips, missing or stub artifacts, pending questions, stages with no recorded outcome (`--record`), and `DONE` without a full `stageHistory` and a `validate-handoff.mjs`-valid `handoff.json` whose required artifacts exist. A `PreToolUse` hook (`hooks/hooks.json`) blocks hand-editing the gate-owned checkpoint fields, an integrity seal catches any edit that slips past it, and a `PostToolUse` hook logs every `AskUserQuestion` call so a stage record cannot claim questions that were never asked.
 
 **📖 [Leia em Português](./README.pt-BR.md) | Read in Portuguese**
 
@@ -271,6 +273,9 @@ cc-pensador/
 │  └─ frontend-design/SKILL.md
 ├─ scripts/
 │  ├─ preflight.mjs          # verifies Codex, AGY, Kiro and the execution engine
+│  ├─ advance-stage.mjs      # stage-advance gate (the only way to change the checkpoint stage)
+│  ├─ guard-checkpoint.mjs   # PreToolUse hook: blocks hand-edits of gate-owned checkpoint fields
+│  ├─ track-questions.mjs    # PostToolUse hook: logs AskUserQuestion calls per stage (.pensador-questions.jsonl)
 │  └─ pensador-engine.mjs    # deterministic reference engine (validated by tests)
 ├─ test/
 │  ├─ smoke.test.js

@@ -308,8 +308,6 @@ Se um participante falhar:
 
 Para demandas com front-end, transforma o sistema-base em `design-systems/<id>/resolved/`: contrato JSON, tokens JSON/CSS, DESIGN.md normativo, componentes, previews, assets/manifest, auditoria e provenance. AGY sintetiza e gera imagens antecipadamente; Codex audita read-only. Sao permitidas no maximo duas rodadas automaticas de correcao. Finding alto/critico, dependencia visual ausente ou asset obrigatorio ausente produz `BLOCKED`. Backend-only visita o estagio e auto-avanca sem trabalho visual.
 
-Para toda superficie `conversion`/`catalog` (`state.surfaces`), o protótipo precisa cobrir as secoes de `surface-benchmark.json` (`baselineSections` + `benchmarkedSections`) nao recusadas pelo usuario — um wireframe minimo (hero + formulario, sem prova social/diferenciais/contato) nao e spec autoritativa para essa superficie. Ver `SKILL.md` › `## DESIGN`, passo 2.
-
 ## FINAL
 
 **Proposito:** consolidar respostas e gerar artefatos finais.
