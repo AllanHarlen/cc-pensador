@@ -7,7 +7,7 @@
  *
  *   node od-brand-build.mjs --brand brand.json --dir <featurePath>/design-systems/<id>
  *        [--extras extras.json] [--system-id id] [--brief-ref design-brief.json]
- *        [--seed-origin origins.json] [--engine auto|container|clone] [--container name] [--clone dir]
+ *        [--seed-origin origins.json] [--engine auto|clone] [--clone dir]
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -29,10 +29,10 @@ export function defaultSeedOrigin(brand, seedOrigin = {}) {
   return { ...Object.fromEntries(Object.keys(brand.seed ?? {}).map((key) => [key, 'brief'])), ...seedOrigin };
 }
 
-export function buildBrandSystem({ brand, dir, extras = {}, systemId, briefRef = null, seedOrigin, engine, container, clone, run, env, home, nodeVersion, now = () => new Date().toISOString() }) {
+export function buildBrandSystem({ brand, dir, extras = {}, systemId, briefRef = null, seedOrigin, engine, clone, run, env, home, nodeVersion, now = () => new Date().toISOString() }) {
   const systemDir = resolve(dir);
   const id = systemId || brand.slug || basename(systemDir);
-  const result = deriveWithEngine({ brand, engine, container, clone, run, env, home, nodeVersion });
+  const result = deriveWithEngine({ brand, engine, clone, run, env, home, nodeVersion });
   const generatedAt = now();
   const resume = `node od-brand-build.mjs --brand <brand.json> --dir ${systemDir}`;
 
@@ -86,7 +86,7 @@ function parseArgs(argv) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2));
   if (!args.brand || !args.dir || args.brand === true || args.dir === true) {
-    console.error('usage: od-brand-build.mjs --brand <brand.json> --dir <design-systems/<id>> [--extras f] [--system-id id] [--brief-ref f] [--seed-origin f] [--engine auto|container|clone] [--container n] [--clone dir]');
+    console.error('usage: od-brand-build.mjs --brand <brand.json> --dir <design-systems/<id>> [--extras f] [--system-id id] [--brief-ref f] [--seed-origin f] [--engine auto|clone] [--clone dir]');
     process.exit(2);
   }
   const result = buildBrandSystem({
@@ -97,7 +97,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     briefRef: typeof args['brief-ref'] === 'string' ? args['brief-ref'] : null,
     seedOrigin: args['seed-origin'] ? readJson(resolve(args['seed-origin'])) : undefined,
     engine: typeof args.engine === 'string' ? args.engine : 'auto',
-    container: typeof args.container === 'string' ? args.container : undefined,
     clone: typeof args.clone === 'string' ? args.clone : undefined,
   });
   console.log(JSON.stringify(result, null, 2));

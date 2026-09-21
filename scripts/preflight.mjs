@@ -892,8 +892,8 @@ function checkOpenSpec() {
  * in one of the common host configs. Relevant only when the demand has a
  * front-end: in that case, if unavailable, the Pensador offers to install it via
  * AskUserQuestion. Install is automated by the bundled script
- * (scripts/install-open-design.ps1|.sh): it brings Open Design up via Docker and
- * wires the MCP. If declined, the fallback is an inline DESIGN.md written from
+ * (scripts/install-open-design.ps1|.sh): it clones and builds Open Design and starts
+ * the daemon ON THE HOST (a Docker daemon cannot see the host's agents), then wires the MCP. If declined, the fallback is an inline DESIGN.md written from
  * the same 9-section schema.
  *
  * Like OpenSpec, this is purely optional and never affects the overall status.
@@ -946,10 +946,11 @@ function checkOpenDesignLegacy() {
   // Upstream documents a one-line hosted installer (open-design.ai/install.sh
   // | sh -s <agent>), but this repo deliberately does not use it (opaque,
   // nothing to review before running) — it clones the source instead, which
-  // is auditable. Open Design is a local-first daemon + web app, brought up
-  // via Docker or a pnpm dev environment (Node 24 + pnpm 10.33). This repo
-  // ships an installer script (scripts/install-open-design.*) that automates
-  // the Docker path; `od mcp install <agent>` is the real post-setup step
+  // is auditable. Open Design is a local-first daemon + web app, run on the
+  // host from a pnpm build (Node 24 + pnpm 10.33): a Docker daemon cannot launch
+  // the host's claude/codex/agy, so Docker is not supported. This repo ships an
+  // installer script (scripts/install-open-design.*) that automates the host
+  // path; `od mcp install <agent>` is the real post-setup step
   // that wires the daemon's MCP server into the agent. See the
   // canonical-sources note in skills/pensador/references/open-design.md —
   // the root CHANGELOG.md upstream is stale.
@@ -957,8 +958,11 @@ function checkOpenDesignLegacy() {
     repo: "https://github.com/nexu-io/open-design",
     scriptWindows: 'powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.ps1"',
     scriptUnix: 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"',
-    docker:
-      "git clone --depth 1 https://github.com/nexu-io/open-design && cd open-design/deploy && cp .env.example .env && docker compose up -d   # app em http://localhost:7456",
+    host:
+      "git clone --depth 1 https://github.com/nexu-io/open-design ~/.open-design && cd ~/.open-design && corepack enable && pnpm install && pnpm --filter @open-design/daemon build && node apps/daemon/dist/cli.js   # daemon em http://localhost:7456",
+    launchWindows: "scripts/onboard-open-design-agents.ps1 -Launch -SkipBuild",
+    launchUnix: "scripts/onboard-open-design-agents.sh --launch --skip-build",
+    autostartWindows: "scripts/register-open-design-daemon-task.ps1",
     local:
       "git clone https://github.com/nexu-io/open-design && cd open-design && corepack enable && pnpm install && pnpm tools-dev run web   # requer Node 24 + pnpm 10.33",
     mcp: "od mcp install claude",
@@ -983,7 +987,7 @@ function checkOpenDesignLegacy() {
     installCommands,
     fallbackBehavior:
       "When the demand has a front-end and Open Design is unavailable, offer installation via AskUserQuestion: " +
-      "(A) install Open Design now — Claude runs the bundled installer script (scripts/install-open-design.ps1|.sh), which checks git+docker, brings the daemon up via Docker, and wires the MCP, then resumes; " +
+      "(A) install Open Design now — Claude runs the bundled installer script (scripts/install-open-design.ps1|.sh), which checks git/node/pnpm, builds the clone, starts the daemon on the host with the agents on PATH, and wires the MCP, then resumes; " +
       "(B) skip and write an inline DESIGN.md (design-system.md) from the 9-section schema.",
   };
 }
@@ -1279,17 +1283,23 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
         `  → Only relevant when the demand has a front-end. In that case, use AskUserQuestion with two options:`,
       );
       lines.push(
-        `    (A) Instalar agora — Open Design é um app local (daemon + web). O cc-pensador traz um script instalador que usa Docker:`,
+        `    (A) Instalar agora — Open Design é um app local (daemon + web). O cc-pensador traz um script instalador que roda o daemon no host (não em Docker):`,
       );
       lines.push(`        Windows:  ${openDesign.installCommands?.scriptWindows}`);
       lines.push(`        macOS/Linux: ${openDesign.installCommands?.scriptUnix}`);
       lines.push(
-        `        (o script verifica git+docker, sobe o daemon e conecta o MCP via \`${openDesign.installCommands?.mcp}\`)`,
+        `        (o script verifica git/node/pnpm, compila o clone, sobe o daemon no host com os agentes no PATH e conecta o MCP via \`${openDesign.installCommands?.mcp}\`)`,
       );
       lines.push(
         `    (B) Seguir sem — write an inline design-system.md from the 9-section DESIGN.md schema.`,
       );
     }
+  }
+
+  if (openDesign?.portConflict) {
+    lines.push(
+      `Open Design: a LEFTOVER Docker container (${openDesign.portConflict.container ?? "open-design"}) holds port ${openDesign.portConflict.port} and answers instead of the host daemon; it cannot launch the host's agents, so the prototype stays off until it is migrated. Run: ${openDesign.portConflict.remediation.join(" ; ")}.`,
+    );
   }
 
   if (designAgents) {
@@ -1300,8 +1310,8 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
           `(AskUserQuestion, header "${designAgents.header}", options = these agents + "Nenhum (pular protótipo)"), persist state.designAgent ` +
           `(design-brief.mjs agent) and use --agent <id> in \`od run start\`; never start the run without the user's consent (it costs tokens).`,
       );
-      if (designAgents.daemonWhere) {
-        lines.push(`  → OD daemon runs in the ${designAgents.daemonWhere}: only agents detected there can be launched; otherwise offer to install/authenticate it there or to move the daemon.`);
+      if (designAgents.daemonWhere === "host") {
+        lines.push("  → OD daemon runs on the host: only agents the daemon itself lists (GET /api/agents) can be launched; otherwise install/authenticate the agent on the host.");
       }
     } else {
       lines.push("Design agent: none detected — the OD prototype/Critique stay off (no question needed).");

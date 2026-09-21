@@ -17,12 +17,11 @@
  *
  * Side effects: state in the daemon (needs the user's acceptance, enforced by the CLI). This module never
  * starts a run. The bearer token is only forwarded as a header (never returned, logged or put in an error).
- * Every dependency (fetch, file system, docker) is injectable, so the tests need no daemon.
+ * Every dependency (fetch, file system) is injectable, so the tests need no daemon.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, posix, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, posix, resolve } from 'node:path';
 
 export const REGISTER_REASON = {
   INPUT_INVALID: 'OD_REGISTER_INPUT_INVALID',
@@ -99,46 +98,17 @@ export function fsTarget(dataDir, { fs = { existsSync, statSync, mkdirSync, writ
   };
 }
 
-/** Target = the daemon's data directory INSIDE a container (daemon in Docker): `docker exec` + `docker cp`. */
-export function dockerTarget({ container, dataDir = '/app/.od', exec = defaultExec, stageRoot = tmpdir() } = {}) {
-  const base = (id) => `${dataDir.replace(/\/+$/, '')}/design-systems/${id}`;
-  return {
-    where: 'container',
-    describe: (id) => `${container}:${base(id)}`,
-    exists: (id) => {
-      try { return exec('docker', ['exec', container, 'test', '-d', base(id)]).status === 0; } catch { return false; }
-    },
-    commit: (id, files) => {
-      const stage = mkdtempSync(join(stageRoot, 'pensador-od-register-'));
-      try {
-        for (const [rel, buffer] of files) {
-          if (!safeRel(rel)) throw new Error(`unsafe path ${rel}`);
-          const dest = join(stage, ...rel.split('/'));
-          mkdirSync(dirname(dest), { recursive: true });
-          writeFileSync(dest, buffer);
-        }
-        const result = exec('docker', ['cp', `${stage}${sep}.`, `${container}:${base(id)}`]);
-        if (result.status !== 0) throw new Error('docker cp failed');
-      } finally {
-        rmSync(stage, { recursive: true, force: true });
-      }
-    },
-  };
-}
-
-function defaultExec(command, args) {
-  try {
-    const stdout = execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000, windowsHide: true, env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
-    return { status: 0, stdout };
-  } catch (error) {
-    return { status: typeof error.status === 'number' ? error.status : 1, stdout: '' };
-  }
+/** Data directory of the host daemon started from the ~/.open-design clone (`OD_DATA_DIR` overrides it). */
+export function defaultDataDir({ env = process.env, home = homedir() } = {}) {
+  return resolve(env.OD_DATA_DIR || join(home, '.open-design', '.od'));
 }
 
 function baseUrlOf(daemonUrl) {
   try {
     const parsed = new URL(daemonUrl);
     if (!/^https?:$/.test(parsed.protocol)) return null;
+    // `localhost` is the daemon's "powered preview" origin (403 for fetch): use the loopback IP instead.
+    if (parsed.hostname === 'localhost') parsed.hostname = '127.0.0.1';
     return { origin: parsed.origin, hostname: parsed.hostname };
   } catch {
     return null;
@@ -172,7 +142,7 @@ async function readFileBody(response) {
 export async function registerDesignSystem({ resolvedDir, daemonUrl, systemId, token = null, target, allowRemote = false, fetchFn = fetch, now = () => new Date().toISOString(), timeoutMs = 30_000, fsOps } = {}) {
   const url = typeof daemonUrl === 'string' ? baseUrlOf(daemonUrl) : null;
   if (!url) return refuse(REGISTER_REASON.INPUT_INVALID, 'daemonUrl must be an explicit http(s) URL', 'pass --daemon-url http://127.0.0.1:<port> (never rely on a default: the default port may be the real daemon)');
-  if (!target) return refuse(REGISTER_REASON.NO_TARGET, 'no data directory or container to write the design system into', 'pass --data-dir <daemon data dir> (daemon on the host) or --container <name> (daemon in Docker)');
+  if (!target) return refuse(REGISTER_REASON.NO_TARGET, 'no daemon data directory to write the design system into', 'pass --data-dir <daemon data dir> (default for the host daemon: ~/.open-design/.od)');
   if (!LOOPBACK.has(url.hostname) && !allowRemote) {
     return refuse(REGISTER_REASON.INSECURE_TARGET, 'refusing to send the daemon token to a non-loopback host', 'use a loopback daemon URL, or pass --allow-remote if the daemon really is remote');
   }
@@ -244,14 +214,14 @@ export async function registerDesignSystem({ resolvedDir, daemonUrl, systemId, t
     return refuse(
       REGISTER_REASON.LAYOUT_MISSING,
       `expected ${target.describe(id)} after the POST, but it does not exist (daemon ${daemonVersion ?? 'unknown version'}; layout validated only on ${VALIDATED_DAEMON_VERSIONS.join(', ')})`,
-      'point --data-dir/--container at the daemon\'s real data directory (where user design systems live), or upgrade/downgrade the daemon to a validated version; the system exists in the daemon as a generic wrapper and must not be used for a prototype',
+      'point --data-dir at the daemon\'s real data directory (where user design systems live), or upgrade/downgrade the daemon to a validated version; the system exists in the daemon as a generic wrapper and must not be used for a prototype',
       { daemonVersion, created },
     );
   }
   try {
     target.commit(id, files);
   } catch (error) {
-    return refuse(REGISTER_REASON.COPY_FAILED, `could not write the resolved/ files (${error?.message ?? 'error'})`, 'check permissions of the daemon data directory (or docker access) and run register again', { daemonVersion, created });
+    return refuse(REGISTER_REASON.COPY_FAILED, `could not write the resolved/ files (${error?.message ?? 'error'})`, 'check permissions of the daemon data directory and run register again', { daemonVersion, created });
   }
 
   // 3. verify what the DAEMON serves, not the disk
@@ -270,7 +240,7 @@ export async function registerDesignSystem({ resolvedDir, daemonUrl, systemId, t
       if (response.status === 401 || response.status === 403) return authRequired();
       if (!response.ok) {
         const rolledBackToDraft = await rollback();
-        return refuse(REGISTER_REASON.TOKENS_UNREADABLE, `the daemon does not serve ${name} (HTTP ${response.status})`, 'the daemon does not see the copied files: check that --data-dir/--container is the daemon\'s data directory; the system was set back to draft', { daemonVersion, created, rolledBackToDraft });
+        return refuse(REGISTER_REASON.TOKENS_UNREADABLE, `the daemon does not serve ${name} (HTTP ${response.status})`, 'the daemon does not see the copied files: check that --data-dir is the daemon\'s data directory; the system was set back to draft', { daemonVersion, created, rolledBackToDraft });
       }
       served[name] = await readFileBody(response);
     }

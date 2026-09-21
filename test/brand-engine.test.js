@@ -1,5 +1,4 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,9 +31,16 @@ function fakeRun(handlers) {
   return run;
 }
 
-const isDockerPs = (command, args) => command === 'docker' && args[0] === 'ps';
-const isDockerExec = (command, args) => command === 'docker' && args[0] === 'exec';
-const isNode = (command) => command !== 'docker' && command !== 'git';
+const isNode = (command) => command !== 'git';
+
+/** A fake clone dir with the engine entry point, so attemptClone's existence check passes. */
+function fakeClone() {
+  const clone = tmp();
+  const engineDir = join(clone, 'apps', 'daemon', 'src', 'brands', 'engine');
+  mkdirSync(engineDir, { recursive: true });
+  writeFileSync(join(engineDir, 'derive.ts'), '');
+  return clone;
+}
 
 describe('runner source', () => {
   it('merges brand.seed on top of seedFromBrand (Phase 0 finding F7) and reads the brand from stdin', () => {
@@ -46,106 +52,100 @@ describe('runner source', () => {
   });
 });
 
-describe('engine chain: container -> clone -> BLOCKED', () => {
+describe('engine chain: clone -> BLOCKED (the Docker container runtime was removed)', () => {
   const brand = readFixture('brand.json');
+  const gitAndNode = () => fakeRun([[(command) => command === 'git', { stdout: 'abc1234\n' }], [isNode, { stdout: engineStdout() }]]);
 
-  it('uses the container first and never touches the clone when it works', () => {
-    const run = fakeRun([[isDockerPs, { stdout: 'other\nopen-design\n' }], [isDockerExec, { stdout: engineStdout() }]]);
-    const result = deriveWithEngine({ brand, run, env: {} });
-    expect(result.status).toBe('ok');
-    expect(result.engine).toBe('container');
-    expect(result.engineInfo.version).toBe('0.22.1');
-    expect(Object.keys(JSON.parse(engineStdout()).files)).toEqual(expect.arrayContaining(ENGINE_FILES));
-    expect(run.calls.some((call) => isNode(call.command))).toBe(false);
-    const exec = run.calls.find((call) => isDockerExec(call.command, call.args));
-    expect(exec.args.slice(0, 3)).toEqual(['exec', '-i', 'open-design']);
-    expect(JSON.parse(exec.input).slug).toBe('gestuor');
-  });
-
-  it('falls back to the clone when the container is missing, recording both attempts', () => {
-    const clone = tmp();
-    const run = fakeRun([
-      [isDockerPs, { stdout: '' }],
-      [(command) => isNode(command), { stdout: engineStdout('0.22.1') }],
-      [(command) => command === 'git', { stdout: 'abc1234\n' }],
-    ]);
-    // a fake clone dir with the engine entry point so the existence check passes
-    const engineDir = join(clone, 'apps', 'daemon', 'src', 'brands', 'engine');
-    spawnSync(process.execPath, ['-e', `require('fs').mkdirSync(${JSON.stringify(engineDir)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(join(engineDir, 'derive.ts'))},'')`]);
-    const result = deriveWithEngine({ brand, run, env: {}, clone });
+  it('runs the engine from the host clone and records the clone commit', () => {
+    const run = gitAndNode();
+    const result = deriveWithEngine({ brand, run, env: {}, clone: fakeClone() });
     expect(result.status).toBe('ok');
     expect(result.engine).toBe('clone');
+    expect(result.engineInfo.version).toBe('0.22.1');
     expect(result.engineInfo.commit).toBe('abc1234');
-    expect(result.attempts.map((attempt) => [attempt.engine, attempt.ok, attempt.reasonCode])).toEqual([
-      ['container', false, 'CONTAINER_NOT_FOUND'],
-      ['clone', true, null],
-    ]);
+    expect(Object.keys(JSON.parse(engineStdout()).files)).toEqual(expect.arrayContaining(ENGINE_FILES));
+    expect(result.attempts.map((attempt) => [attempt.engine, attempt.ok, attempt.reasonCode])).toEqual([['clone', true, null]]);
+    expect(run.calls.some((call) => call.command === 'docker')).toBe(false);
+    const engineCall = run.calls.find((call) => isNode(call.command));
+    expect(JSON.parse(engineCall.input).slug).toBe('gestuor');
   });
 
-  it('returns BLOCKED OD_BRAND_ENGINE_UNAVAILABLE with attempts and remediation when both fail', () => {
-    const run = fakeRun([[isDockerPs, { error: Object.assign(new Error('nope'), { code: 'ENOENT' }), status: null }]]);
+  it('returns BLOCKED OD_BRAND_ENGINE_UNAVAILABLE with the attempt and a clone remediation when there is no clone', () => {
+    const run = fakeRun([]);
     const result = deriveWithEngine({ brand, run, env: {}, clone: join(tmp(), 'absent') });
     expect(result.status).toBe('BLOCKED');
     expect(result.reasonCode).toBe(REASON_ENGINE_UNAVAILABLE);
-    expect(result.attempts.map((attempt) => attempt.reasonCode)).toEqual(['DOCKER_MISSING', 'CLONE_NOT_FOUND']);
-    expect(result.remediation.join(' ')).toMatch(/open-design/);
+    expect(result.attempts.map((attempt) => attempt.reasonCode)).toEqual(['CLONE_NOT_FOUND']);
+    expect(result.remediation.join(' ')).toMatch(/\.open-design/);
+    expect(result.remediation.join(' ')).not.toMatch(/docker/i);
+    expect(run.calls).toHaveLength(0);
   });
 
-  it('classifies a failing docker exec and invalid engine output', () => {
-    const run = fakeRun([[isDockerPs, { stdout: 'open-design' }], [isDockerExec, { status: 1, stderr: 'Error: Cannot find module' }]]);
-    const failed = deriveWithEngine({ brand, engine: 'container', run, env: {} });
-    expect(failed.attempts[0]).toMatchObject({ ok: false, reasonCode: 'CONTAINER_ENGINE_FAILED' });
+  it('rejects a Node too old to strip TypeScript types, without running anything', () => {
+    const run = fakeRun([]);
+    const result = deriveWithEngine({ brand, run, env: {}, clone: fakeClone(), nodeVersion: '20.11.0' });
+    expect(result.attempts[0]).toMatchObject({ ok: false, reasonCode: 'NODE_TOO_OLD' });
+    expect(run.calls).toHaveLength(0);
+  });
+
+  it('classifies a failing engine run and invalid engine output', () => {
+    const failed = deriveWithEngine({ brand, run: fakeRun([[isNode, { status: 1, stderr: 'Error: Cannot find module' }]]), env: {}, clone: fakeClone() });
+    expect(failed.attempts[0]).toMatchObject({ ok: false, reasonCode: 'CLONE_ENGINE_FAILED' });
     expect(failed.attempts[0].message).toContain('Cannot find module');
 
-    const bad = deriveWithEngine({ brand, engine: 'container', run: fakeRun([[isDockerPs, { stdout: 'open-design' }], [isDockerExec, { stdout: '{"files":{}}' }]]), env: {} });
+    const bad = deriveWithEngine({ brand, run: fakeRun([[isNode, { stdout: '{"files":{}}' }]]), env: {}, clone: fakeClone() });
     expect(bad.attempts[0].reasonCode).toBe('INVALID_OUTPUT');
   });
 
-  it('honours OD_CONTAINER and --engine clone|container', () => {
-    const run = fakeRun([[isDockerExec, { stdout: engineStdout() }]]);
-    const result = deriveWithEngine({ brand, engine: 'container', run, env: { OD_CONTAINER: 'my-od' } });
+  it('accepts auto and clone (the same path) and refuses the removed container engine', () => {
+    const clone = fakeClone();
+    expect(deriveWithEngine({ brand, engine: 'auto', run: gitAndNode(), env: {}, clone }).engine).toBe('clone');
+    expect(deriveWithEngine({ brand, engine: 'clone', run: gitAndNode(), env: {}, clone }).engine).toBe('clone');
+    expect(() => deriveWithEngine({ brand, engine: 'container', run: fakeRun([]), env: {}, clone })).toThrow(/container runtime was removed/);
+  });
+
+  it('honours OD_CLONE_DIR', () => {
+    const clone = fakeClone();
+    const result = deriveWithEngine({ brand, run: gitAndNode(), env: { OD_CLONE_DIR: clone } });
     expect(result.status).toBe('ok');
-    expect(run.calls[0].args.slice(0, 3)).toEqual(['exec', '-i', 'my-od']);
-    expect(deriveWithEngine({ brand, engine: 'clone', run: fakeRun([]), env: {}, clone: join(tmp(), 'x') }).attempts).toHaveLength(1);
+    expect(result.attempts[0].target).toBe(clone);
   });
 });
 
 describe('od-brand-build', () => {
   const brand = readFixture('brand.json');
-  const okRun = () => fakeRun([[isDockerPs, { stdout: 'open-design' }], [isDockerExec, { stdout: engineStdout() }]]);
+  const okRun = () => fakeRun([[(command) => command === 'git', { stdout: 'abc1234\n' }], [isNode, { stdout: engineStdout() }]]);
 
   it('writes source/ and the v2 contract; render then passes the audit', () => {
     const dir = join(tmp(), 'design-systems', 'gestuor');
-    const result = buildBrandSystem({ brand, dir, extras: EXTRAS, briefRef: 'design-brief.json', run: okRun(), env: {}, now: () => '2026-09-19T00:00:00.000Z' });
+    const result = buildBrandSystem({ brand, dir, extras: EXTRAS, briefRef: 'design-brief.json', clone: fakeClone(), run: okRun(), env: {}, now: () => '2026-09-19T00:00:00.000Z' });
     expect(result.status).toBe('ok');
     for (const file of ['source/brand.json', 'source/engine-run.json', 'source/engine/seed.json', 'source/engine/tokens.dark.json', 'source/engine/variables.compact.css', 'resolved/design-contract.json']) {
       expect(existsSync(join(dir, file)), file).toBe(true);
     }
     const run = JSON.parse(readFileSync(join(dir, 'source', 'engine-run.json'), 'utf8'));
-    expect(run).toMatchObject({ status: 'ok', engine: 'container', version: '0.22.1', deriveSha256: 'abc', contractSha256: result.contractSha256 });
+    expect(run).toMatchObject({ status: 'ok', engine: 'clone', version: '0.22.1', deriveSha256: 'abc', contractSha256: result.contractSha256 });
     const contract = JSON.parse(readFileSync(join(dir, 'resolved', 'design-contract.json'), 'utf8'));
     expect(contract.systemId).toBe('gestuor');
     expect(contract.provenance.seed.colorPrimary).toBe('brief');
     expect(contract.provenance.seed.motionUnit).toBe('engine-default');
     const audit = renderDesignPackage({ contractFile: join(dir, 'resolved', 'design-contract.json'), resolvedDir: join(dir, 'resolved') });
     expect(audit.status).toBe('PASS');
-    expect(JSON.parse(readFileSync(join(dir, 'resolved', 'provenance.json'), 'utf8')).engine.run).toMatchObject({ path: 'container', version: '0.22.1' });
+    expect(JSON.parse(readFileSync(join(dir, 'resolved', 'provenance.json'), 'utf8')).engine.run).toMatchObject({ path: 'clone', version: '0.22.1' });
   });
 
-  it('the contract bytes do not depend on which engine path ran', () => {
-    const cloneDir = tmp();
-    const engineDir = join(cloneDir, 'apps', 'daemon', 'src', 'brands', 'engine');
-    spawnSync(process.execPath, ['-e', `require('fs').mkdirSync(${JSON.stringify(engineDir)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(join(engineDir, 'derive.ts'))},'')`]);
-    const viaContainer = buildBrandSystem({ brand, dir: join(tmp(), 'a'), extras: EXTRAS, run: okRun(), env: {} });
-    const viaClone = buildBrandSystem({ brand, dir: join(tmp(), 'b'), extras: EXTRAS, engine: 'clone', clone: cloneDir, run: fakeRun([[(c) => c !== 'git', { stdout: engineStdout() }]]), env: {} });
-    expect(viaContainer.engine).toBe('container');
+  it('the contract bytes are the same for --engine auto and --engine clone', () => {
+    const clone = fakeClone();
+    const viaAuto = buildBrandSystem({ brand, dir: join(tmp(), 'a'), extras: EXTRAS, clone, run: okRun(), env: {} });
+    const viaClone = buildBrandSystem({ brand, dir: join(tmp(), 'b'), extras: EXTRAS, engine: 'clone', clone, run: okRun(), env: {} });
+    expect(viaAuto.engine).toBe('clone');
     expect(viaClone.engine).toBe('clone');
-    expect(viaClone.contractSha256).toBe(viaContainer.contractSha256);
+    expect(viaClone.contractSha256).toBe(viaAuto.contractSha256);
   });
 
   it('records BLOCKED in engine-run.json and writes no contract when the engine is unavailable', () => {
     const dir = join(tmp(), 'gestuor');
-    const result = buildBrandSystem({ brand, dir, run: fakeRun([[isDockerPs, { stdout: '' }]]), env: {}, clone: join(tmp(), 'none'), now: () => '2026-09-19T00:00:00.000Z' });
+    const result = buildBrandSystem({ brand, dir, run: fakeRun([]), env: {}, clone: join(tmp(), 'none'), now: () => '2026-09-19T00:00:00.000Z' });
     expect(result.status).toBe('BLOCKED');
     expect(result.reasonCode).toBe('OD_BRAND_ENGINE_UNAVAILABLE');
     expect(result.resume).toContain('od-brand-build.mjs');
@@ -156,10 +156,6 @@ describe('od-brand-build', () => {
 });
 
 const cloneAvailable = existsSync(join(process.env.OD_CLONE_DIR ?? join(homedir(), '.open-design'), 'apps', 'daemon', 'src', 'brands', 'engine', 'derive.ts'));
-const dockerAvailable = (() => {
-  const listed = spawnSync('docker', ['ps', '--format', '{{.Names}}'], { encoding: 'utf8', timeout: 15_000 });
-  return listed.status === 0 && /open-?design/i.test(listed.stdout);
-})();
 
 describe('real engines (skipped when unavailable)', () => {
   const brand = readFixture('brand.json');
@@ -175,13 +171,5 @@ describe('real engines (skipped when unavailable)', () => {
     expect(contract.themes.dark['--accent']).not.toBe(contract.themes.light['--accent']);
     const resolvedDir = join(result.contract, '..');
     expect(renderDesignPackage({ contractFile: result.contract, resolvedDir }).status).toBe('PASS');
-  });
-
-  it.skipIf(!cloneAvailable || !dockerAvailable)('container and clone produce the same contract byte for byte (same engine version)', () => {
-    const a = build('container');
-    const b = build('clone');
-    expect(a.status).toBe('ok');
-    expect(b.status).toBe('ok');
-    expect(readFileSync(b.contract, 'utf8')).toBe(readFileSync(a.contract, 'utf8'));
   });
 });

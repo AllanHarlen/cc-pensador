@@ -1,9 +1,9 @@
 /**
  * od-register-system: registers resolved/ in an Open Design daemon and refuses unless the daemon serves the
  * tokens.css verbatim. The daemon is SIMULATED (in-memory fetch + a temp data dir): no test touches a real
- * daemon, Docker or the network, and none may ever start a run.
+ * daemon or the network, and none may ever start a run.
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { initState } from '../scripts/pensador-engine.mjs';
 import { renderDesignPackage } from '../scripts/design-package.mjs';
 import {
-  REGISTER_REASON, VALIDATED_DAEMON_VERSIONS, collectResolvedFiles, dockerTarget, fsTarget, registerDesignSystem,
+  REGISTER_REASON, VALIDATED_DAEMON_VERSIONS, collectResolvedFiles, defaultDataDir, fsTarget, registerDesignSystem,
 } from '../scripts/lib/od-register.mjs';
 import { REGISTER_CONSENT_HEADER, registerCommand } from '../scripts/od-register-system.mjs';
 import { fixtureContract } from './helpers/design-fixture.js';
@@ -208,7 +208,7 @@ describe('registerDesignSystem - refusals', () => {
     expect(result.reasonCode).toBe('OD_REGISTER_LAYOUT_MISSING');
     expect(result.daemonVersion).toBe('0.30.0');
     expect(result.message).toMatch(/0\.30\.0/);
-    expect(result.remediation).toMatch(/--data-dir|--container/);
+    expect(result.remediation).toMatch(/--data-dir/);
     expect(existsSync(join(dataDir, 'design-systems'))).toBe(false);
   });
 
@@ -292,7 +292,7 @@ describe('registerDesignSystem - refusals', () => {
   });
 });
 
-describe('registerCommand - user acceptance and the container target', () => {
+describe('registerCommand - user acceptance and the host data dir', () => {
   it('needs the user\'s acceptance (--accepted) and does nothing without it', async () => {
     const { systemDir } = renderedResolved();
     const daemon = fakeDaemon({ dataDir: tmp('od-data-') });
@@ -312,49 +312,32 @@ describe('registerCommand - user acceptance and the container target', () => {
     expect(result.systemId).toBe('gestuor');
   });
 
-  it('a daemon in Docker is written through docker exec/cp and never gets a run', async () => {
+  it('defaults the data dir to the host daemon clone (~/.open-design/.od) and OD_DATA_DIR overrides it', () => {
+    expect(defaultDataDir({ env: {}, home: join('h', 'me') })).toBe(join(process.cwd(), 'h', 'me', '.open-design', '.od'));
+    expect(defaultDataDir({ env: { OD_DATA_DIR: join('x', 'data') }, home: 'h' })).toBe(join(process.cwd(), 'x', 'data'));
+  });
+
+  it('without --data-dir it registers into the host daemon data dir and never gets a run', async () => {
     const { systemDir } = renderedResolved();
     const dataDir = tmp('od-data-');
     const daemon = fakeDaemon({ dataDir });
-    const execCalls = [];
-    // stands in for the container: `test -d` looks at the data dir, `cp <stage>/. container:<path>` copies into it
-    const exec = (command, args) => {
-      execCalls.push([command, ...args]);
-      if (args[0] === 'exec' && args[2] === 'test') return { status: existsSync(join(dataDir, 'design-systems', 'gestuor')) ? 0 : 1 };
-      if (args[0] === 'cp') {
-        const stage = args[1].replace(/[\\/]\.$/, '');
-        cpSync(stage, join(dataDir, 'design-systems', 'gestuor'), { recursive: true });
-        return { status: 0 };
-      }
-      return { status: 1 };
-    };
-    const result = await registerCommand({ dir: systemDir, daemonUrl: 'http://127.0.0.1:7456', container: 'open-design', accepted: true, token: null, fetchFn: daemon.fetchFn, exec });
+    const result = await registerCommand({ dir: systemDir, daemonUrl: 'http://127.0.0.1:7456', accepted: true, token: null, fetchFn: daemon.fetchFn, env: { OD_DATA_DIR: dataDir } });
     expect(result.status).toBe('ok');
-    expect(result.daemonWhere).toBe('container');
-    expect(execCalls.map((call) => call[1])).toEqual(['exec', 'cp']);
-    expect(execCalls[0]).toEqual(['docker', 'exec', 'open-design', 'test', '-d', '/app/.od/design-systems/gestuor']);
-    expect(execCalls[1][3]).toBe('open-design:/app/.od/design-systems/gestuor');
-    expect(execCalls.flat()).not.toContain('run');
+    expect(result.daemonWhere).toBe('host');
+    expect(existsSync(join(dataDir, 'design-systems', 'gestuor', 'tokens.css'))).toBe(true);
     expect(startedRun(daemon.calls)).toBe(false);
-    // the staging directory is removed after the copy
-    const staged = execCalls[1][2].replace(/[\\/]\.$/, '');
-    expect(existsSync(staged)).toBe(false);
   });
 
-  it('a failing docker cp is a stable COPY_FAILED refusal', async () => {
+  it('talks to the loopback IP even when given localhost (the daemon answers 403 to fetch on localhost)', async () => {
     const { systemDir } = renderedResolved();
-    const daemon = fakeDaemon({ dataDir: tmp('od-data-') });
-    const exec = (command, args) => (args[0] === 'exec' ? { status: 0 } : { status: 1 });
-    const result = await registerCommand({ dir: systemDir, daemonUrl: 'http://127.0.0.1:7456', container: 'open-design', accepted: true, token: null, fetchFn: daemon.fetchFn, exec });
-    expect(result.reasonCode).toBe('OD_REGISTER_COPY_FAILED');
-  });
-
-  it('dockerTarget checks the directory inside the container and refuses a path escape', () => {
-    const calls = [];
-    const target = dockerTarget({ container: 'od', dataDir: '/data/.od/', exec: (c, a) => { calls.push(a); return { status: 0 }; } });
-    expect(target.exists('x')).toBe(true);
-    expect(calls[0]).toEqual(['exec', 'od', 'test', '-d', '/data/.od/design-systems/x']);
-    expect(() => target.commit('x', new Map([['../evil', Buffer.from('a')]]))).toThrow(/unsafe path/);
+    const dataDir = tmp('od-data-');
+    const urls = [];
+    const daemon = fakeDaemon({ dataDir });
+    const fetchFn = (url, init) => { urls.push(String(url)); return daemon.fetchFn(url, init); };
+    const result = await registerCommand({ dir: systemDir, daemonUrl: 'http://localhost:7456', dataDir, accepted: true, token: null, fetchFn });
+    expect(result.status).toBe('ok');
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => url.startsWith('http://127.0.0.1:7456/'))).toBe(true);
   });
 
   it('fsTarget refuses a path escape and writes nested preview files', () => {

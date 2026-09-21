@@ -3103,8 +3103,10 @@ export const OPEN_DESIGN = {
    * (`open-design.ai/install.sh | sh -s <agent>`), but this repo deliberately
    * does NOT use it — it is opaque (nothing to review before running it) and
    * this repo already clones the source, which is auditable. Open Design is a
-   * local-first daemon + web/desktop app run via Docker or a pnpm dev
-   * environment (Node 24 + pnpm 10.33). `od mcp install <agent>` DOES exist
+   * local-first daemon + web/desktop app that the Pensador runs ON THE HOST from a
+   * pnpm build of the clone (Node 24 + pnpm 10.33): a daemon in a Docker container
+   * cannot launch the host's claude/codex/agy, so Docker is not supported.
+   * `od mcp install <agent>` DOES exist
    * and is the real post-setup step that wires the daemon's stdio MCP server
    * into the agent. See the canonical-sources note in
    * skills/pensador/references/open-design.md — the root CHANGELOG.md is
@@ -3114,9 +3116,14 @@ export const OPEN_DESIGN = {
     /** Recommended: the repo's installer script offered via AskUserQuestion. */
     scriptWindows: 'scripts/install-open-design.ps1',
     scriptUnix: 'scripts/install-open-design.sh',
-    /** What the script does under the hood (Docker — simplest, no Node toolchain). */
-    docker:
-      'git clone --depth 1 https://github.com/nexu-io/open-design && cd open-design/deploy && cp .env.example .env && docker compose up -d',
+    /** What the script does under the hood: clone, pnpm install + build, register the host agents, start the daemon. */
+    host:
+      'git clone --depth 1 https://github.com/nexu-io/open-design ~/.open-design && cd ~/.open-design && corepack enable && pnpm install && pnpm --filter @open-design/daemon build && node apps/daemon/dist/cli.js',
+    /** Starts the built host daemon (with the agents on PATH) again, e.g. after a reboot. */
+    launchWindows: 'scripts/onboard-open-design-agents.ps1 -Launch -SkipBuild',
+    launchUnix: 'scripts/onboard-open-design-agents.sh --launch --skip-build',
+    /** Windows only: a logon Scheduled Task that keeps the host daemon running after a reboot. */
+    autostartWindows: 'scripts/register-open-design-daemon-task.ps1',
     /** Alternative: the pnpm dev environment, which also yields the `od` binary. */
     local:
       'git clone https://github.com/nexu-io/open-design && cd open-design && corepack enable && pnpm install && pnpm tools-dev run web',
@@ -3492,11 +3499,11 @@ export function isDesignApproved(brief, contractSha256) {
 export const DESIGN_AGENT_HEADER = 'AgenteDesign';
 /** Option label (and `designAgent.id`) for "no agent": prototype and Critique stay off. */
 export const DESIGN_AGENT_NONE = 'none';
-export const DESIGN_AGENT_LOCATIONS = ['host', 'container'];
+export const DESIGN_AGENT_LOCATIONS = ['host'];
 
 /**
  * Validates a persisted `state.designAgent`: `null` (not asked yet), `{ id: 'none' }` or
- * `{ id, where: 'host'|'container', chosenAt: ISO-8601 }`. Pure and total.
+ * `{ id, where: 'host', chosenAt: ISO-8601 }`. Pure and total.
  *
  * @returns {{ ok: boolean, issues: string[] }}
  */
@@ -3515,12 +3522,13 @@ export function validateDesignAgent(value) {
 /**
  * Binds the agent the user picked for the design prototype/Critique to what was detected.
  *
- * `agents` is the preflight `designAgents.agents` list: `{ id, where: 'host'|'container', available,
+ * `agents` is the preflight `designAgents.agents` list: `{ id, where: 'host', available,
  * authenticated?: true|false|'unknown' }`. `choice` is the AskUserQuestion answer: an agent id, or
  * `'none'` / `{ id: 'none' }`. `daemonWhere` is where the Open Design daemon runs (`'host'` |
- * `'container'` | null when unreachable): the daemon can only launch an agent that lives in ITS
- * environment, so a host-only agent with a container daemon (or the reverse) is refused with the two
- * remediations instead of being accepted silently. `now` is injected to keep the function pure.
+ * `'container'` = a LEFTOVER Docker container holding the port | null when unreachable): the daemon can
+ * only launch an agent that lives in ITS environment. A container daemon cannot see the host's
+ * claude/codex/agy, so it is refused with the migration remediations instead of being accepted silently.
+ * `now` is injected to keep the function pure.
  *
  * Returns `{ ok, designAgent, prototypeEnabled, issues, remediations }`. Only an accepted, launchable
  * agent sets `prototypeEnabled`; even then the run itself still needs the user's explicit consent
@@ -3550,10 +3558,8 @@ export function resolveDesignAgent(agents, choice, { daemonWhere = null, now = n
     // The agent exists but the daemon is not reachable: record the choice, keep the prototype off.
     return { ok: true, designAgent: { id, where, chosenAt: now }, prototypeEnabled: false, issues: ['daemon-unreachable'], remediations: ['start-open-design-daemon'] };
   }
-  return refuse('agent-not-visible-to-daemon', [
-    daemonWhere === 'container' ? `install-and-authenticate-${id}-in-container` : `install-and-authenticate-${id}-in-daemon-host`,
-    daemonWhere === 'container' ? 'run-daemon-on-host' : 'run-daemon-in-container',
-  ]);
+  if (daemonWhere === 'container') return refuse('agent-not-visible-to-daemon', ['stop-legacy-container', 'start-host-daemon']);
+  return refuse('agent-not-visible-to-daemon', [`install-and-authenticate-${id}-in-daemon-host`]);
 }
 
 /**

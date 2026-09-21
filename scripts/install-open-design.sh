@@ -1,24 +1,35 @@
 #!/usr/bin/env bash
 #
-# Instalador local do Open Design (https://github.com/nexu-io/open-design) via Docker,
-# para uso opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end.
+# Instalador local do Open Design (https://github.com/nexu-io/open-design) para uso
+# opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end. O daemon
+# roda NO HOST (Docker nao e suportado).
 #
-# O Open Design e um app local-first (daemon + web). O upstream documenta um instalador
-# hospedado de uma linha (open-design.ai/install.sh | sh -s <agent>) mas este script
-# NAO o usa deliberadamente: e opaco (nao dá para revisar o script antes de rodar) e
-# este repo ja clona o codigo-fonte de qualquer forma. Em vez disso, automatiza o
-# caminho Docker do QUICKSTART oficial a partir do clone:
+# O upstream documenta um instalador hospedado de uma linha (open-design.ai/install.sh
+# | sh -s <agent>) mas este script NAO o usa deliberadamente: e opaco (nao da para
+# revisar o script antes de rodar) e este repo ja clona o codigo-fonte de qualquer forma.
 #
-#   1. Verifica pre-requisitos (git, docker, docker compose v2).
+# Por que no host: o Pensador aciona o prototipo/critica do Open Design com o agente
+# que voce escolher (claude, codex, antigravity...). O daemon so lanca agentes que
+# existem no ambiente DELE; um container Linux nao enxerga os binarios do host.
+#
+#   1. Verifica pre-requisitos (git, node >= 22.6, corepack).
 #   2. Clona (ou atualiza) nexu-io/open-design em --target-dir.
-#   3. Prepara deploy/.env com um OD_API_TOKEN gerado (preserva um token existente).
-#   4. Sobe o servico com `docker compose up -d`.
-#   5. Aguarda o daemon responder em http://localhost:<porta>.
-#   6. Tenta registrar o MCP no agente via `od mcp install <agente>` quando `od` existir;
-#      caso contrario imprime o passo manual (Settings -> MCP server).
+#   3. Delega ao onboard-open-design-agents.sh: registra claude/codex/antigravity no
+#      app-config do daemon, instala dependencias e compila (pnpm), verifica a porta
+#      (container Docker legado e recusado, ou parado com --stop-legacy-container) e
+#      sobe o daemon no host.
+#   4. Registra o MCP no agente via `od mcp install <agente>` quando `od` existir; caso
+#      contrario grava a entrada no .mcp.json a partir de /api/mcp/install-info.
+#
+# O daemon do host em loopback nao exige token de API (a autenticacao so liga se
+# OD_API_TOKEN estiver definido para ele).
 #
 # Uso:
-#   bash scripts/install-open-design.sh [--target-dir DIR] [--agent claude] [--port 7456] [--skip-mcp]
+#   bash scripts/install-open-design.sh [--target-dir DIR] [--agent claude] [--port 7456]
+#        [--skip-mcp] [--skip-launch] [--stop-legacy-container]
+#
+# Para subir o daemon sozinho a cada boot no macOS/Linux, use launchd/systemd --user
+# chamando: bash scripts/onboard-open-design-agents.sh --launch --skip-build --foreground
 
 set -euo pipefail
 
@@ -29,7 +40,8 @@ PORT="7456"
 MCP_CONFIG="$(pwd)/.mcp.json"
 MCP_NAME="open-design"
 SKIP_MCP="0"
-SKIP_ONBOARD_AGENTS="0"
+SKIP_LAUNCH="0"
+STOP_LEGACY="0"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,25 +51,35 @@ while [ $# -gt 0 ]; do
     --mcp-config) MCP_CONFIG="$2"; shift 2 ;;
     --mcp-name)   MCP_NAME="$2"; shift 2 ;;
     --skip-mcp)   SKIP_MCP="1"; shift ;;
-    --skip-onboard-agents) SKIP_ONBOARD_AGENTS="1"; shift ;;
+    --skip-launch) SKIP_LAUNCH="1"; shift ;;
+    --stop-legacy-container) STOP_LEGACY="1"; shift ;;
     -h|--help)
-      sed -n '2,30p' "$0"; exit 0 ;;
+      sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "Argumento desconhecido: $1" >&2; exit 2 ;;
   esac
 done
+
+# 127.0.0.1, nao localhost: o daemon responde 403 a clientes de API que o acessam como localhost (origem de powered preview).
+DAEMON_URL="http://127.0.0.1:${PORT}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 step() { printf '\033[36m==> %s\033[0m\n' "$1"; }
 ok()   { printf '\033[32m[ok] %s\033[0m\n' "$1"; }
 warn() { printf '\033[33m[!] %s\033[0m\n' "$1"; }
 
 assert_prerequisites() {
-  step "Verificando pre-requisitos (git, docker, docker compose)"
+  step "Verificando pre-requisitos (git, node >= 22.6, corepack)"
   command -v git >/dev/null 2>&1 || { echo "git nao encontrado. Instale: https://git-scm.com/downloads" >&2; exit 1; }
-  command -v docker >/dev/null 2>&1 || { echo "docker nao encontrado. Instale o Docker: https://docs.docker.com/get-docker/" >&2; exit 1; }
-  if ! docker compose version >/dev/null 2>&1; then
-    echo "docker compose (v2) indisponivel. Atualize o Docker para uma versao com Compose v2." >&2
+  command -v node >/dev/null 2>&1 || { echo "node nao encontrado. Instale o Node 24+: https://nodejs.org" >&2; exit 1; }
+  local version major minor
+  version="$(node --version | sed 's/^v//')"
+  major="${version%%.*}"; minor="$(echo "${version}" | cut -d. -f2)"
+  if [ "${major}" -lt 22 ] || { [ "${major}" -eq 22 ] && [ "${minor}" -lt 6 ]; }; then
+    echo "Node ${version} e antigo demais (o brand engine remove tipos TypeScript: Node >= 22.6; o Open Design pede Node 24)." >&2
     exit 1
   fi
+  [ "${major}" -lt 24 ] && warn "Node ${version}: o Open Design pede Node 24; o build pode falhar."
+  command -v corepack >/dev/null 2>&1 || { echo "corepack nao encontrado (vem com o Node). Reinstale o Node 24+." >&2; exit 1; }
   ok "Pre-requisitos presentes."
 }
 
@@ -72,99 +94,30 @@ sync_repo() {
   ok "Repositorio pronto."
 }
 
-gen_token() {
-  # NOTE: deliberately does NOT fall back to `od` (octal-dump). If a real Open
-  # Design `od` binary is first on PATH (this script's whole job is putting one
-  # there) and openssl is absent, `od -An -tx1` would break this pipeline under
-  # `set -euo pipefail`. `node` is a hard requirement of cc-pensador already,
-  # so it is a safe fallback that never collides with the CLI this script installs.
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  elif command -v node >/dev/null 2>&1; then
-    node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
-  else
-    date +%s | sha256sum | head -c 64
-  fi
-}
-
-init_env() {
-  local deploy_dir="$1"
-  local env_path="${deploy_dir}/.env"
-  local example_path="${deploy_dir}/.env.example"
-  [ -f "${example_path}" ] || { echo "deploy/.env.example nao encontrado em ${deploy_dir}." >&2; exit 1; }
-  [ -f "${env_path}" ] || { cp "${example_path}" "${env_path}"; ok "deploy/.env criado a partir do .env.example."; }
-
-  local existing
-  existing="$(grep -E '^OD_API_TOKEN=' "${env_path}" | head -n1 | cut -d= -f2- || true)"
-  if [ -z "${existing}" ]; then
-    TOKEN="$(gen_token)"
-    if grep -qE '^OD_API_TOKEN=' "${env_path}"; then
-      # edicao in-place portavel (BSD/GNU sed): reescreve via arquivo temporario.
-      tmp="$(mktemp)"
-      sed "s|^OD_API_TOKEN=.*$|OD_API_TOKEN=${TOKEN}|" "${env_path}" > "${tmp}" && mv "${tmp}" "${env_path}"
-    else
-      printf '\nOD_API_TOKEN=%s\n' "${TOKEN}" >> "${env_path}"
-    fi
-    ok "OD_API_TOKEN gerado e gravado em deploy/.env."
-  else
-    TOKEN="${existing}"
-    ok "OD_API_TOKEN ja configurado em deploy/.env (preservado)."
-  fi
-}
-
-start_daemon() {
-  local deploy_dir="$1"
-  step "Subindo o Open Design (docker compose up -d)"
-  ( cd "${deploy_dir}" && docker compose up -d )
-  ok "Container iniciado."
-}
-
-# Prefer the upstream-maintained installer (deploy/scripts/install.sh) when the
-# clone has it: it already handles .env prep + `docker compose up -d` +
-# systemd registration in one command, so this script stops reimplementing
-# what upstream maintains. Falls back to the manual init_env+start_daemon path
-# (kept for older clones or if the upstream script's flags change).
-# Not verified live against the current upstream release — see the
-# "Suposições não verificadas" note in the implementation plan.
-try_upstream_installer() {
-  local deploy_dir="$1"
-  local upstream_installer="${deploy_dir}/scripts/install.sh"
-  if [ ! -f "${upstream_installer}" ]; then
-    return 1
-  fi
-  step "Usando o instalador upstream: deploy/scripts/install.sh --non-interactive --port ${PORT}"
-  if ( cd "${deploy_dir}" && bash "scripts/install.sh" --non-interactive --port "${PORT}" ); then
-    ok "Instalador upstream concluido."
-    return 0
-  fi
-  warn "Instalador upstream falhou ou nao aceitou esses flags; caindo para o caminho manual (docker compose)."
-  return 1
-}
-
 wait_daemon() {
-  local url="http://localhost:${PORT}/api/health"
+  local url="${DAEMON_URL}/api/health"
   local timeout=120
   step "Aguardando o daemon em ${url} (ate ${timeout}s)"
   local elapsed=0
   while [ "${elapsed}" -lt "${timeout}" ]; do
     if curl -fsS -m 5 "${url}" >/dev/null 2>&1; then
-      ok "Daemon respondendo em http://localhost:${PORT}"
+      ok "Daemon respondendo em ${DAEMON_URL}"
       return 0
     fi
     sleep 3; elapsed=$((elapsed + 3))
   done
-  warn "Daemon nao respondeu em ${timeout}s. Verifique: (cd ${TARGET_DIR}/deploy && docker compose logs -f)"
-  return 0
+  warn "Daemon nao respondeu em ${timeout}s. Rode: bash ${SCRIPT_DIR}/onboard-open-design-agents.sh --launch --skip-build"
+  return 1
 }
 
 register_mcp() {
   [ "${SKIP_MCP}" = "1" ] && { warn "Registro de MCP pulado (--skip-mcp)."; return 0; }
-  local daemon_url="http://localhost:${PORT}"
 
-  # Caminho nativo: se `od` existir no host (instalacao pnpm), usa-o.
+  # Caminho nativo: se `od` existir no host, usa-o. (GNU coreutils tambem tem um `od`:
+  # o `mcp install` falha nele e cai no aviso abaixo.)
   if command -v od >/dev/null 2>&1; then
     step "Registrando o MCP do Open Design no agente '${AGENT}' (od mcp install)"
-    if od mcp install "${AGENT}" --daemon-url "${daemon_url}"; then
+    if od mcp install "${AGENT}" --daemon-url "${DAEMON_URL}"; then
       ok "MCP registrado no agente '${AGENT}'."
     else
       warn "od mcp install falhou. Registre manualmente pela UI (Settings -> MCP server)."
@@ -172,68 +125,39 @@ register_mcp() {
     return 0
   fi
 
-  # Modo Docker (sem `od` no host): busca a spec do daemon (/api/mcp/install-info)
-  # e escreve a entrada mcpServers.<nome> no .mcp.json via helper Node.
-  if ! command -v node >/dev/null 2>&1; then
-    warn "Sem 'od' e sem 'node' no host: nao foi possivel auto-configurar o MCP."
-    echo  "    Conecte pela app (Settings -> MCP server) ou use o caminho pnpm e rode: od mcp install ${AGENT}"
-    return 0
-  fi
+  # Sem `od` no PATH: busca a spec do daemon (/api/mcp/install-info) e escreve a
+  # entrada mcpServers.<nome> no .mcp.json via helper Node.
   step "Configurando o MCP via daemon (/api/mcp/install-info) em ${MCP_CONFIG}"
-  local helper
-  helper="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/od-mcp-config.mjs"
-  if node "${helper}" --config "${MCP_CONFIG}" --name "${MCP_NAME}" --daemon-url "${daemon_url}" --token "${TOKEN}"; then
+  if node "${SCRIPT_DIR}/od-mcp-config.mjs" --config "${MCP_CONFIG}" --name "${MCP_NAME}" --daemon-url "${DAEMON_URL}"; then
     ok "Entrada MCP '${MCP_NAME}' gravada em ${MCP_CONFIG}."
-    warn "Modo Docker: o bridge stdio do MCP precisa do binario 'od' no host para subir."
-    echo  "    Se o agente reportar falha ao iniciar o MCP 'open-design', use o caminho pnpm (fornece 'od')."
-    echo  "    Enquanto isso, o Pensador le os design systems pela API: ${daemon_url}/api/design-systems"
+    echo  "    O bridge stdio do MCP precisa do binario 'od' no PATH para subir; se o agente falhar ao iniciar o MCP,"
+    echo  "    o Pensador segue lendo os design systems pela API: ${DAEMON_URL}/api/design-systems"
   else
-    warn "Falha ao configurar o MCP via daemon. A API REST em ${daemon_url} segue utilizavel."
+    warn "Falha ao configurar o MCP via daemon. A API REST em ${DAEMON_URL} segue utilizavel."
   fi
-}
-
-onboard_agents() {
-  [ "${SKIP_ONBOARD_AGENTS}" = "1" ] && { warn "Onboarding de agentes pulado (--skip-onboard-agents)."; return 0; }
-  local script_dir onboarder
-  script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-  onboarder="${script_dir}/od-onboard-agents.mjs"
-  if ! command -v node >/dev/null 2>&1 || [ ! -f "${onboarder}" ]; then
-    warn "Onboarding de agentes pulado (node ou od-onboard-agents.mjs ausente)."
-    return 0
-  fi
-  step "Detectando agentes do host (claude, codex, antigravity) e registrando no app-config local"
-  node "${onboarder}" --clone-dir "${TARGET_DIR}" || true
-  warn "O daemon Docker (container Linux) NAO executa binarios do host — os agentes acima"
-  echo  "    so sao detectados por um daemon rodando NO HOST. Para subir esse daemon local:"
-  echo  "      bash \"${script_dir}/onboard-open-design-agents.sh\" --launch --stop-docker"
 }
 
 # ---- Main ------------------------------------------------------------------
 assert_prerequisites
 sync_repo
-DEPLOY_DIR="${TARGET_DIR}/deploy"
-if try_upstream_installer "${DEPLOY_DIR}"; then
-  # Upstream already prepared deploy/.env and started the container; just
-  # read the OD_API_TOKEN it generated so register_mcp can use it below.
-  init_env "${DEPLOY_DIR}"
-else
-  init_env "${DEPLOY_DIR}"
-  start_daemon "${DEPLOY_DIR}"
+
+onboard_args=(--clone-dir "${TARGET_DIR}" --port "${PORT}")
+[ "${SKIP_LAUNCH}" = "1" ] || onboard_args+=(--launch)
+[ "${STOP_LEGACY}" = "1" ] && onboard_args+=(--stop-legacy-container)
+bash "${SCRIPT_DIR}/onboard-open-design-agents.sh" "${onboard_args[@]}"
+
+if [ "${SKIP_LAUNCH}" != "1" ]; then
+  wait_daemon && register_mcp
 fi
-wait_daemon
-register_mcp
-onboard_agents
 
 echo ""
 echo "============================================================"
-ok   "Open Design instalado via Docker."
-echo "  App / UI:    http://localhost:${PORT}"
+ok   "Open Design instalado (daemon no host)."
+echo "  App / UI:    ${DAEMON_URL}"
 echo "  Repo local:  ${TARGET_DIR}"
-echo "  API token:   ${TOKEN}"
-echo "  API REST:    http://localhost:${PORT}/api/design-systems"
+echo "  API REST:    ${DAEMON_URL}/api/design-systems  (sem token em loopback)"
 echo "  MCP config:  ${MCP_CONFIG} (server: ${MCP_NAME})"
 echo ""
-echo "  Comandos uteis:"
-echo "    (cd ${DEPLOY_DIR} && docker compose logs -f)"
-echo "    (cd ${DEPLOY_DIR} && docker compose down)"
+echo "  Comando util (religar o daemon):"
+echo "    bash ${SCRIPT_DIR}/onboard-open-design-agents.sh --launch --skip-build"
 echo "============================================================"

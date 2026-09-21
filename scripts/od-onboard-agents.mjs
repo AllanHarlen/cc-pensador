@@ -7,7 +7,7 @@
  * ----------------
  * Open Design's onboarding detects an agent by probing its binary on the daemon
  * process's PATH (apps/daemon/src/runtimes/executables.ts `resolveOnPath`). When
- * the daemon runs under the bundled Docker install, the container is a Linux
+ * the daemon runs in a Docker container (no longer supported by the plugin), the container is a Linux
  * image with its own PATH and no view of the host filesystem — so the Windows
  * host binaries (`claude.cmd`, `codex.cmd`, `agy.exe`) can never be found or
  * executed there. Agent detection therefore only works against a daemon running
@@ -339,7 +339,7 @@ async function main() {
       missing.length
         ? `Not found on host: ${missing.join(", ")}. Install them or pass --<agent>-bin.`
         : "All three agents resolved on the host.",
-      "Agent detection only works against a daemon running on the HOST. The bundled Docker daemon (Linux container) cannot see or execute host binaries.",
+      "Agent detection only works against a daemon running on the HOST: a Docker daemon (Linux container) cannot see or execute host binaries, so it is not supported.",
       pathAdditions.length
         ? `Launch the host daemon with these dirs prepended to PATH: ${pathAdditions.join(delimiter)}`
         : "No PATH additions required.",

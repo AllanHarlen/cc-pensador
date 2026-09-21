@@ -325,11 +325,17 @@ describe('Open Design descriptor', () => {
       'brand',
       'anti-patterns',
     ]);
-    // Open Design is a local-first app (Docker or pnpm), offered via an installer script.
+    // Open Design is a local-first app run ON THE HOST from a pnpm build, offered via an installer script.
     expect(OPEN_DESIGN.installCommands.scriptWindows).toContain('install-open-design.ps1');
     expect(OPEN_DESIGN.installCommands.scriptUnix).toContain('install-open-design.sh');
-    expect(OPEN_DESIGN.installCommands.docker).toContain('docker compose up');
-    expect(OPEN_DESIGN.installCommands.docker).toContain('nexu-io/open-design');
+    expect(OPEN_DESIGN.installCommands.host).toContain('nexu-io/open-design');
+    expect(OPEN_DESIGN.installCommands.host).toContain('pnpm');
+    expect(OPEN_DESIGN.installCommands.launchWindows).toContain('onboard-open-design-agents.ps1');
+    expect(OPEN_DESIGN.installCommands.launchUnix).toContain('onboard-open-design-agents.sh');
+    expect(OPEN_DESIGN.installCommands.autostartWindows).toContain('register-open-design-daemon-task.ps1');
+    // Docker is no longer a supported runtime (a container cannot launch the host's agents).
+    expect(OPEN_DESIGN.installCommands.docker).toBeUndefined();
+    expect(JSON.stringify(OPEN_DESIGN.installCommands)).not.toMatch(/docker/i);
     expect(OPEN_DESIGN.installCommands.local).toContain('pnpm tools-dev');
     // `od mcp install` is the real post-setup wiring step.
     expect(OPEN_DESIGN.installCommands.mcp).toContain('od mcp install');

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * od-mcp-config.mjs — wire the Open Design MCP server into an agent's `.mcp.json`
- * WITHOUT a host `od` binary (the Docker install path).
+ * WITHOUT a host `od` binary on PATH.
  *
  * The `od mcp install <agent>` CLI is the native wiring path, but it needs the
- * `od` binary on the host — which the Docker install does not provide. This
- * helper closes that gap: it asks the running daemon for the canonical launch
+ * `od` binary on PATH — which the pnpm build the installer makes does not put
+ * there. This helper closes that gap: it asks the running daemon for the canonical launch
  * spec (GET /api/mcp/install-info — the exact `{ command, args, env }` the
  * Settings → MCP panel and `od mcp install` use) and deep-merges an
  * `mcpServers.<name>` entry into a JSON config file (project `.mcp.json` by
@@ -33,7 +33,8 @@ function arg(name, fallback = undefined) {
   return fallback;
 }
 
-const daemonUrl = (arg("daemon-url", process.env.OD_DAEMON_URL || "http://localhost:7456")).replace(/\/$/, "");
+// `localhost` is the daemon's "powered preview" origin (403 for fetch): always talk to the loopback IP.
+const daemonUrl = (arg("daemon-url", process.env.OD_DAEMON_URL || "http://127.0.0.1:7456")).replace(/\/$/, "").replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
 const configPath = arg("config");
 const serverName = arg("name", "open-design");
 const token = arg("token", process.env.OD_API_TOKEN || "");

@@ -8,17 +8,16 @@
 
 .DESCRIPTION
   O onboarding do Open Design detecta um agente probing seu binário no PATH do
-  processo do daemon. Sob o install Docker (deploy/), o daemon roda num container
-  Linux que NÃO enxerga os binários do host (claude.cmd / codex.cmd / agy.exe),
-  então a detecção sempre falha. Detectar/rodar os agentes do host exige um
-  daemon rodando NO HOST.
+  processo do daemon. O daemon do cc-pensador roda SEMPRE NO HOST (Docker não é
+  suportado: um container Linux não enxerga claude.cmd / codex.cmd / agy.exe).
 
   Este script:
     1. Detecta os paths do host via scripts/od-onboard-agents.mjs e grava
        CLAUDE_BIN / CODEX_BIN em <clone>/.od/app-config.json (antigravity não tem
        chave *_BIN — é resolvido por PATH).
-    2. Com -Launch: garante deps + build do daemon local, libera a porta (parando
-       o container Docker se ele a estiver segurando), e sobe
+    2. Com -Launch: garante deps + build do daemon local, verifica a porta (um
+       container Docker LEGADO segurando-a é recusado; -StopLegacyContainer o
+       para e desliga o restart automático dele) e sobe
        `node apps/daemon/dist/cli.js` com o diretório do agy prependido ao PATH.
     3. Aguarda /api/health e consulta /api/agents para confirmar que claude,
        codex e antigravity reportam `available`.
@@ -37,12 +36,18 @@
 .PARAMETER SkipBuild
   Não rodar pnpm install / build (usa um dist já existente).
 
-.PARAMETER StopDocker
-  Parar o container Docker `open-design` se ele estiver segurando a porta.
+.PARAMETER StopLegacyContainer
+  Parar (e definir --restart=no) um container Docker legado `open-design` que
+  esteja publicando a porta. Alias: -StopDocker. Sem o switch, um container
+  segurando a porta faz o script recusar em vez de subir um daemon conflitante.
+
+.PARAMETER Foreground
+  Mantém o daemon como filho deste processo e só retorna quando ele encerra
+  (usado pela Tarefa Agendada, que precisa de um processo vivo para reiniciar em falha).
 
 .EXAMPLE
   pwsh -File scripts/onboard-open-design-agents.ps1
-  pwsh -File scripts/onboard-open-design-agents.ps1 -Launch -StopDocker
+  pwsh -File scripts/onboard-open-design-agents.ps1 -Launch -StopLegacyContainer
 #>
 [CmdletBinding()]
 param(
@@ -53,7 +58,9 @@ param(
   [string]$AgyBin = '',
   [switch]$Launch,
   [switch]$SkipBuild,
-  [switch]$StopDocker
+  [Alias('StopDocker')]
+  [switch]$StopLegacyContainer,
+  [switch]$Foreground
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,7 +74,8 @@ function Test-Command { param([string]$Name) return [bool](Get-Command $Name -Er
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Onboarder = Join-Path $ScriptDir 'od-onboard-agents.mjs'
 $DataDir = Join-Path $CloneDir '.od'
-$DaemonUrl = "http://localhost:$Port"
+# 127.0.0.1, not localhost: the daemon answers 403 to API clients that reach it as localhost (powered-preview origin).
+$DaemonUrl = "http://127.0.0.1:$Port"
 
 if (-not (Test-Command 'node')) {
   throw 'node nao encontrado no PATH. Instale o Node 24+ para o onboarding do Open Design.'
@@ -100,20 +108,39 @@ if (-not $Launch) {
   Write-Ok 'Agentes registrados no app-config do daemon local.'
   Write-Host "  app-config: $(Join-Path $DataDir 'app-config.json')"
   Write-Host '  Para o Open Design DETECTAR e RODAR esses agentes, suba o daemon NO HOST:'
-  Write-Host "    pwsh -File `"$($MyInvocation.MyCommand.Path)`" -Launch -StopDocker"
-  Write-Host '  (o daemon Docker, sendo um container Linux, nao executa binarios do host.)'
+  Write-Host "    pwsh -File `"$($MyInvocation.MyCommand.Path)`" -Launch"
+  Write-Host '  (para subir sozinho a cada logon: scripts/register-open-design-daemon-task.ps1)'
   return
 }
 
-# ── 2. Free the port (Docker daemon holds it under the bundled install) ──────
-if ($StopDocker -and (Test-Command 'docker')) {
-  $running = (& docker ps --filter 'name=open-design' --format '{{.Names}}') 2>$null
-  if ($running -match 'open-design') {
-    Write-Step "Parando o container Docker 'open-design' para liberar a porta $Port (daemon local assume os agentes)"
-    & docker stop open-design *> $null
-    Write-Ok 'Container Docker parado (o setup permanece em disco; `docker compose up -d` o retoma).'
+# ── 2. Port guard (a LEGACY Docker container may still hold the port) ────────
+if (Test-Command 'docker') {
+  $legacy = @()
+  $rows = (& docker ps --format '{{.Names}}|{{.Ports}}') 2>$null
+  foreach ($row in @($rows)) {
+    $name, $ports = "$row" -split '\|', 2
+    if ($name -match 'open-?design' -and $ports -match ":$Port->") { $legacy += $name }
+  }
+  foreach ($name in $legacy) {
+    if (-not $StopLegacyContainer) {
+      throw "O container Docker '$name' esta publicando a porta $Port e nao enxerga os agentes do host. Rode de novo com -StopLegacyContainer (para o container e faz 'docker update --restart=no')."
+    }
+    Write-Step "Parando o container Docker legado '$name' (porta $Port) e desligando o restart automatico"
+    & docker stop $name *> $null
+    & docker update --restart=no $name *> $null
+    Write-Ok "Container '$name' parado; nao volta sozinho no boot. O daemon do host assume a porta."
   }
 }
+
+# A host daemon that already answers on the port is left alone (idempotent: the logon task may fire twice).
+try {
+  $existing = Invoke-WebRequest -Uri "$DaemonUrl/api/health" -UseBasicParsing -TimeoutSec 3
+  if ($existing.StatusCode -ge 200 -and $existing.StatusCode -lt 500) {
+    Write-Ok "Ja existe um daemon respondendo em $DaemonUrl; nada a subir."
+    & node $Onboarder --clone-dir $CloneDir --verify $DaemonUrl
+    return
+  }
+} catch { <# nothing listening: proceed to launch #> }
 
 # ── 3. Ensure deps + build ───────────────────────────────────────────────────
 $DistEntry = Join-Path $CloneDir 'apps\daemon\dist\cli.js'
@@ -162,6 +189,7 @@ $psi.UseShellExecute = $false
 foreach ($k in $daemonEnv.Keys) { $psi.EnvironmentVariables[$k] = $daemonEnv[$k] }
 $proc = [System.Diagnostics.Process]::Start($psi)
 Write-Ok "Daemon local iniciado (PID $($proc.Id))."
+if ($Foreground) { Write-Host '  (-Foreground: este processo aguarda o daemon encerrar)' }
 
 # ── 5. Wait for health + verify /api/agents ──────────────────────────────────
 Write-Step "Aguardando o daemon em $DaemonUrl/api/health"
@@ -187,5 +215,10 @@ Write-Host '============================================================' -Foreg
 Write-Ok   'Onboarding de agentes concluido (daemon local no host).'
 Write-Host "  Daemon local:  $DaemonUrl  (PID $($proc.Id))"
 Write-Host "  app-config:    $(Join-Path $DataDir 'app-config.json')"
-Write-Host '  Para parar o daemon local: Stop-Process -Id ' $proc.Id
+Write-Host "  Para parar o daemon local: Stop-Process -Id $($proc.Id)"
 Write-Host '============================================================' -ForegroundColor Cyan
+
+if ($Foreground) {
+  $proc.WaitForExit()
+  exit $proc.ExitCode
+}

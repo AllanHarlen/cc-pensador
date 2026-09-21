@@ -1,5 +1,5 @@
-/** Optional brand-URL path: input validation, the container runner contract and the CLI proposal flow. */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+/** Optional brand-URL path: input validation, the host-clone runner contract and the CLI proposal flow. */
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,10 +16,16 @@ const tmp = () => {
   return root;
 };
 
-const okRun = (seed) => (command, args) => {
-  if (args[0] === 'ps') return { status: 0, stdout: 'open-design\n', stderr: '' };
-  return { status: 0, stdout: JSON.stringify({ seed, engine: { version: '0.22.1' } }), stderr: '' };
+/** A clone whose daemon was built (the compiled engine entry point exists), as the host installer leaves it. */
+const builtClone = () => {
+  const clone = tmp();
+  const engineDir = join(clone, 'apps', 'daemon', 'dist', 'brands', 'engine');
+  mkdirSync(engineDir, { recursive: true });
+  writeFileSync(join(engineDir, 'build.js'), '');
+  return clone;
 };
+
+const okRun = (seed) => () => ({ status: 0, stdout: JSON.stringify({ seed, engine: { version: '0.22.1' } }), stderr: '' });
 
 describe('brandUrl', () => {
   it('is a brief field, validated as an http(s) URL', () => {
@@ -39,25 +45,33 @@ describe('brandUrl', () => {
 
 describe('deriveSeedFromUrl', () => {
   it('turns the engine seed into proposals for the primary colour and the font only', () => {
-    const result = deriveSeedFromUrl({ url: 'https://stripe.com', run: okRun({ colorPrimary: '#533afd', fontFamily: 'sohne-var, sans-serif', borderRadius: 6, colorInfo: '#533afd' }), env: {} });
-    expect(result).toMatchObject({ status: 'ok', proposals: { colorPrimary: '#533AFD', fontFamily: 'sohne-var, sans-serif' }, engine: { version: '0.22.1' } });
+    const clone = builtClone();
+    const result = deriveSeedFromUrl({ url: 'https://stripe.com', clone, run: okRun({ colorPrimary: '#533afd', fontFamily: 'sohne-var, sans-serif', borderRadius: 6, colorInfo: '#533afd' }), env: {} });
+    expect(result).toMatchObject({ status: 'ok', target: clone, proposals: { colorPrimary: '#533AFD', fontFamily: 'sohne-var, sans-serif' }, engine: { version: '0.22.1' } });
     expect(Object.keys(result.proposals)).toEqual(['colorPrimary', 'fontFamily']);
   });
 
-  it('is UNAVAILABLE (never throws) without a container, on a bad URL, on runner failure and on garbage output', () => {
+  it('is UNAVAILABLE (never throws) on a bad URL, an unbuilt clone, runner failure and garbage output', () => {
     expect(deriveSeedFromUrl({ url: 'nope' })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'INVALID_URL' });
-    const noDocker = () => ({ status: null, stdout: '', stderr: '', error: Object.assign(new Error('x'), { code: 'ENOENT' }) });
-    expect(deriveSeedFromUrl({ url: 'https://a.com', run: noDocker, env: {} })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'DOCKER_MISSING' });
-    const failing = (command, args) => (args[0] === 'ps' ? { status: 0, stdout: 'open-design\n', stderr: '' } : { status: 1, stdout: '', stderr: 'Could not fetch https://a.com' });
-    expect(deriveSeedFromUrl({ url: 'https://a.com', run: failing, env: {} })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'OD_BRAND_URL_UNAVAILABLE' });
-    const garbage = (command, args) => (args[0] === 'ps' ? { status: 0, stdout: 'open-design\n', stderr: '' } : { status: 0, stdout: 'not json', stderr: '' });
-    expect(deriveSeedFromUrl({ url: 'https://a.com', run: garbage, env: {} })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'INVALID_OUTPUT' });
+    const unbuilt = deriveSeedFromUrl({ url: 'https://a.com', clone: join(tmp(), 'none'), run: () => { throw new Error('must not run'); }, env: {} });
+    expect(unbuilt).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'CLONE_NOT_BUILT' });
+    expect(unbuilt.message).not.toMatch(/docker/i);
+    const failing = () => ({ status: 1, stdout: '', stderr: 'Could not fetch https://a.com' });
+    expect(deriveSeedFromUrl({ url: 'https://a.com', clone: builtClone(), run: failing, env: {} })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'OD_BRAND_URL_UNAVAILABLE' });
+    const garbage = () => ({ status: 0, stdout: 'not json', stderr: '' });
+    expect(deriveSeedFromUrl({ url: 'https://a.com', clone: builtClone(), run: garbage, env: {} })).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'INVALID_OUTPUT' });
+  });
+
+  it('honours OD_CLONE_DIR', () => {
+    const clone = builtClone();
+    const result = deriveSeedFromUrl({ url: 'https://a.com', run: okRun({ colorPrimary: '#533afd' }), env: { OD_CLONE_DIR: clone } });
+    expect(result).toMatchObject({ status: 'ok', target: clone });
   });
 
   it('never runs a shell: the URL travels on stdin, not in the command line', () => {
     let seen;
-    deriveSeedFromUrl({ url: 'https://a.com/?x=$(id)', container: 'od', run: (command, args, options) => { seen = { command, args, options }; return { status: 1, stdout: '', stderr: '' }; }, env: {} });
-    expect(seen.command).toBe('docker');
+    deriveSeedFromUrl({ url: 'https://a.com/?x=$(id)', clone: builtClone(), run: (command, args, options) => { seen = { command, args, options }; return { status: 1, stdout: '', stderr: '' }; }, env: {} });
+    expect(seen.command).toBe(process.execPath);
     expect(seen.args.join(' ')).not.toContain('a.com');
     expect(JSON.parse(seen.options.input)).toEqual({ url: 'https://a.com/?x=$(id)' });
   });
@@ -83,8 +97,8 @@ describe('brand-url CLI flow', () => {
     const feature = tmp();
     buildCommand({ feature, name: 'Probe', slug: 'probe', answers: { fontFamily: 'Inter, sans-serif' } });
     expect(brandUrlCommand({ feature, dir: join(feature, 'd'), derive })).toMatchObject({ status: 'REFUSED', issue: 'brand-url-missing' });
-    const down = brandUrlCommand({ feature, dir: join(feature, 'd'), url: 'https://stripe.com', derive: () => ({ status: 'UNAVAILABLE', reasonCode: 'DOCKER_MISSING', message: 'no docker' }) });
-    expect(down).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'DOCKER_MISSING' });
+    const down = brandUrlCommand({ feature, dir: join(feature, 'd'), url: 'https://stripe.com', derive: () => ({ status: 'UNAVAILABLE', reasonCode: 'CLONE_NOT_BUILT', message: 'engine not built' }) });
+    expect(down).toMatchObject({ status: 'UNAVAILABLE', reasonCode: 'CLONE_NOT_BUILT' });
     expect(down.note).toContain('optional');
   });
 });

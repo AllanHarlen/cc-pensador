@@ -21,6 +21,9 @@ function url(value) {
   try {
     const parsed = new URL(String(value ?? "").trim());
     if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    // The daemon treats `localhost` as its "powered preview" origin and refuses most API routes to requests
+    // carrying Sec-Fetch-* headers (Node's fetch sends them): API clients must talk to the loopback IP.
+    if (parsed.hostname === "localhost") parsed.hostname = "127.0.0.1";
     parsed.pathname = parsed.pathname.replace(/\/+$/, "");
     parsed.search = "";
     parsed.hash = "";
@@ -57,9 +60,18 @@ function mcpEvidence(files, cwd) {
   return { configuredIn: [...new Set(configuredIn)], urls: [...new Set(urls)] };
 }
 
-/** Daemon bearer token (env first, then the OD deploy .env). Never printed: callers only forward it as a header. */
+/** Directory of the Open Design clone the host daemon runs from (`OD_CLONE_DIR` overrides ~/.open-design). */
+export function odCloneDir({ env = process.env, home = homedir() } = {}) {
+  return env.OD_CLONE_DIR || join(home, ".open-design");
+}
+
+/**
+ * Daemon bearer token: `OD_API_TOKEN` from the environment, then `<clone>/.env`. The loopback host daemon
+ * needs none (auth only turns on when `OD_API_TOKEN` is set for it), so `null` is a normal answer.
+ * Never printed: callers only forward it as a header.
+ */
 export function odApiToken({ env = process.env, home = homedir() } = {}) {
-  return env.OD_API_TOKEN || dotenv(join(home, ".open-design", "deploy", ".env")).OD_API_TOKEN || null;
+  return env.OD_API_TOKEN || dotenv(join(odCloneDir({ env, home }), ".env")).OD_API_TOKEN || null;
 }
 
 async function probe(baseUrl, token, timeoutMs) {
@@ -79,12 +91,16 @@ async function probe(baseUrl, token, timeoutMs) {
   }
 }
 
-/** Read-only `docker ps` evidence of an Open Design container (also used to tell WHERE the daemon runs). */
-export function detectOdContainer(env, timeoutMs) {
-  return docker(env, timeoutMs);
+/**
+ * Read-only `docker ps` evidence of a LEFTOVER Open Design container. The Docker install is no longer a
+ * supported runtime (a Linux container cannot launch the host's claude/codex/agy), so this only feeds the
+ * port-conflict guard: a container publishing the daemon's port is the daemon the preflight would talk to.
+ */
+export function detectLegacyContainer(env, timeoutMs) {
+  return legacyContainer(env, timeoutMs);
 }
 
-function docker(env, timeoutMs) {
+function legacyContainer(env, timeoutMs) {
   try {
     const stdout = execFileSync("docker", ["ps", "--format", "{{json .}}"], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: Math.max(100, timeoutMs), windowsHide: true });
     for (const line of stdout.split(/\r?\n/).filter(Boolean)) {
@@ -94,51 +110,68 @@ function docker(env, timeoutMs) {
       const match = String(row.Ports ?? "").match(/:(\d+)->\d+\/tcp/i);
       return { detected: true, healthy: /healthy/i.test(row.Status ?? ""), publishedPort: match ? Number(match[1]) : null, container: row.Names ?? null };
     }
-  } catch { /* docker is optional and raw errors may expose environment data */ }
+  } catch { /* docker is optional (and now unexpected); raw errors may expose environment data */ }
   return { detected: false, healthy: false, publishedPort: null, container: null };
 }
 
-export async function detectOpenDesign({ cwd = process.cwd(), env = process.env, timeoutMs = 1_500, cliCheck = { ok: false }, legacy = {}, home = homedir() } = {}) {
-  const deploy = dotenv(join(home, ".open-design", "deploy", ".env"));
-  const token = env.OD_API_TOKEN || deploy.OD_API_TOKEN || null;
+export async function detectOpenDesign({ cwd = process.cwd(), env = process.env, timeoutMs = 1_500, cliCheck = { ok: false }, legacy = {}, home = homedir(), containerProbe = legacyContainer } = {}) {
+  const cloneEnv = dotenv(join(odCloneDir({ env, home }), ".env"));
+  const token = env.OD_API_TOKEN || cloneEnv.OD_API_TOKEN || null;
   const authSource = env.OD_API_TOKEN ? "environment" : token ? "open-design-env-file" : null;
   const mcp = mcpEvidence([join(cwd, ".mcp.json"), join(cwd, ".kiro", "settings", "mcp.json"), join(home, ".claude", ".mcp.json"), join(home, ".claude", "settings", "mcp.json"), join(home, ".claude.json")], cwd);
   const defaultUrl = env.OD_PREFLIGHT_DISABLE_DEFAULT_URL === "1" ? null : "http://127.0.0.1:7456";
-  const candidates = [...new Set([env.OD_DAEMON_URL, ...mcp.urls, deploy.OD_DAEMON_URL, deploy.DAEMON_URL, defaultUrl].map(url).filter(Boolean))];
+  const candidates = [...new Set([env.OD_DAEMON_URL, ...mcp.urls, cloneEnv.OD_DAEMON_URL, cloneEnv.DAEMON_URL, defaultUrl].map(url).filter(Boolean))];
   const probes = [];
   for (const candidate of candidates) {
     const result = await probe(candidate, token, timeoutMs);
     probes.push(result);
     if (result.authenticated) break;
   }
-  const container = probes.some((item) => item.authenticated) || env.OD_PREFLIGHT_DISABLE_DOCKER === "1"
-    ? { detected: false, healthy: false, publishedPort: null, container: null }
-    : docker(env, timeoutMs);
-  if (!probes.some((item) => item.authenticated) && container.publishedPort) {
-    const discovered = `http://127.0.0.1:${container.publishedPort}`;
-    if (!candidates.includes(discovered)) probes.push(await probe(discovered, token, timeoutMs));
-  }
   const usable = probes.find((item) => item.authenticated) ?? null;
   const auth = probes.find((item) => [401, 403].includes(item.httpStatus)) ?? null;
   const reachable = probes.find((item) => item.reachable) ?? null;
-  const configured = mcp.configuredIn.length > 0;
-  const available = cliCheck.ok || Boolean(usable);
-  const detected = available || configured || container.detected || Boolean(reachable);
-  const reasonCode = available ? null : auth ? "AUTH_REQUIRED" : container.detected ? "DETECTED_UNREACHABLE" : detected ? "HTTP_ERROR" : "NOT_DETECTED";
   const chosen = usable ?? auth ?? reachable;
+  // Port-conflict guard: a leftover Docker container publishing the port the preflight just reached IS the
+  // daemon answering. It cannot launch the host's agents, so it is refused instead of used.
+  const leftover = env.OD_PREFLIGHT_DISABLE_DOCKER === "1"
+    ? { detected: false, healthy: false, publishedPort: null, container: null }
+    : containerProbe(env, timeoutMs);
+  let chosenPort = null;
+  try { chosenPort = chosen?.url ? Number(new URL(chosen.url).port) || null : null; } catch { /* keep null */ }
+  const containerDaemon = Boolean(chosen?.reachable && leftover.detected && leftover.publishedPort && chosenPort === leftover.publishedPort);
+  const portConflict = containerDaemon
+    ? {
+      container: leftover.container,
+      port: leftover.publishedPort,
+      remediation: [
+        `docker stop ${leftover.container ?? "open-design"}`,
+        `docker update --restart=no ${leftover.container ?? "open-design"}`,
+        "start the host daemon: scripts/onboard-open-design-agents.ps1|.sh --launch (Windows: scripts/register-open-design-daemon-task.ps1 keeps it running after a reboot)",
+      ],
+    }
+    : null;
+  const configured = mcp.configuredIn.length > 0;
+  const available = !containerDaemon && (cliCheck.ok || Boolean(usable));
+  const detected = available || configured || leftover.detected || Boolean(reachable);
+  const reasonCode = containerDaemon ? "LEGACY_CONTAINER_DAEMON" : available ? null : auth ? "AUTH_REQUIRED" : leftover.detected ? "DETECTED_UNREACHABLE" : detected ? "HTTP_ERROR" : "NOT_DETECTED";
   return {
     ...legacy,
     detected,
     available,
-    source: cliCheck.ok ? "cli" : usable ? "daemon-rest" : configured ? "mcp-config" : container.detected ? "docker" : null,
+    source: cliCheck.ok ? "cli" : usable && !containerDaemon ? "daemon-rest" : configured ? "mcp-config" : null,
     reasonCode,
     configured,
     configuredIn: mcp.configuredIn,
     mcpFunctional: cliCheck.ok,
-    daemon: { url: chosen?.url ?? null, reachable: Boolean(chosen?.reachable), authenticated: Boolean(usable), httpStatus: chosen?.httpStatus ?? null, authSource },
-    docker: container,
-    artifactAccess: [...new Set(["clone", ...(usable ? ["rest"] : []), ...(cliCheck.ok ? ["cli"] : [])])],
+    daemon: { url: chosen?.url ?? null, reachable: Boolean(chosen?.reachable), authenticated: Boolean(usable), httpStatus: chosen?.httpStatus ?? null, authSource, where: chosen?.reachable ? (containerDaemon ? "container" : "host") : null },
+    legacyContainer: leftover,
+    portConflict,
+    artifactAccess: [...new Set(["clone", ...(usable && !containerDaemon ? ["rest"] : []), ...(cliCheck.ok ? ["cli"] : [])])],
     stage: "BRAINSTORM_GERAL (brief) + DESIGN (resolved authoritative package)",
-    fallbackBehavior: reasonCode === "AUTH_REQUIRED" ? "Configure OD_API_TOKEN and resume; do not reinstall." : reasonCode === "DETECTED_UNREACHABLE" ? "Repair/start the detected daemon and resume; do not reinstall." : "Offer installation only when no CLI, MCP, daemon, or container was detected.",
+    fallbackBehavior: containerDaemon
+      ? "Stop the leftover Docker container and start the host daemon (see portConflict.remediation); do not reinstall the Docker image."
+      : reasonCode === "AUTH_REQUIRED" ? "Set OD_API_TOKEN (or <clone>/.env) to the token the daemon was started with and resume; do not reinstall."
+        : reasonCode === "DETECTED_UNREACHABLE" ? "Start the host daemon (scripts/onboard-open-design-agents.ps1|.sh --launch) and resume; do not reinstall."
+          : "Offer installation only when no CLI, MCP or daemon was detected.",
   };
 }

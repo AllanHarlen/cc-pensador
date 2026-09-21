@@ -6,14 +6,18 @@
 # que a deteccao de agentes do Open Design finalmente os encontre.
 #
 # O onboarding do Open Design detecta um agente probing seu binario no PATH do
-# processo do daemon. Sob o install Docker, o daemon roda num container Linux que
-# NAO enxerga os binarios do host, entao a deteccao sempre falha. Detectar/rodar
-# os agentes do host exige um daemon rodando NO HOST.
+# processo do daemon. O daemon do cc-pensador roda SEMPRE NO HOST (Docker nao e
+# suportado: um container Linux nao enxerga os binarios do host).
 #
 # Uso:
 #   bash scripts/onboard-open-design-agents.sh [--clone-dir DIR] [--port 7456]
 #        [--claude-bin PATH] [--codex-bin PATH] [--agy-bin PATH]
-#        [--launch] [--skip-build] [--stop-docker]
+#        [--launch] [--skip-build] [--stop-legacy-container] [--foreground]
+#
+#   --stop-legacy-container  (alias --stop-docker) para e faz "docker update --restart=no"
+#                            de um container Docker legado que publique a porta; sem a
+#                            flag, um container segurando a porta faz o script recusar.
+#   --foreground             aguarda o daemon encerrar (para systemd/launchd reiniciarem)
 
 set -euo pipefail
 
@@ -24,7 +28,8 @@ CODEX_BIN=""
 AGY_BIN=""
 LAUNCH="0"
 SKIP_BUILD="0"
-STOP_DOCKER="0"
+STOP_LEGACY="0"
+FOREGROUND="0"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,8 +40,9 @@ while [ $# -gt 0 ]; do
     --agy-bin)    AGY_BIN="$2"; shift 2 ;;
     --launch)     LAUNCH="1"; shift ;;
     --skip-build) SKIP_BUILD="1"; shift ;;
-    --stop-docker) STOP_DOCKER="1"; shift ;;
-    -h|--help)    sed -n '2,18p' "$0"; exit 0 ;;
+    --stop-legacy-container|--stop-docker) STOP_LEGACY="1"; shift ;;
+    --foreground) FOREGROUND="1"; shift ;;
+    -h|--help)    sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "Argumento desconhecido: $1" >&2; exit 2 ;;
   esac
 done
@@ -48,7 +54,8 @@ warn() { printf '\033[33m[!] %s\033[0m\n' "$1"; }
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ONBOARDER="${SCRIPT_DIR}/od-onboard-agents.mjs"
 DATA_DIR="${CLONE_DIR}/.od"
-DAEMON_URL="http://localhost:${PORT}"
+# 127.0.0.1, nao localhost: o daemon responde 403 a clientes de API que o acessam como localhost (origem de powered preview).
+DAEMON_URL="http://127.0.0.1:${PORT}"
 
 command -v node >/dev/null 2>&1 || { echo "node nao encontrado no PATH. Instale o Node 24+." >&2; exit 1; }
 
@@ -77,18 +84,31 @@ if [ "${LAUNCH}" != "1" ]; then
   ok "Agentes registrados no app-config do daemon local."
   echo "  app-config: ${DATA_DIR}/app-config.json"
   echo "  Para o Open Design DETECTAR e RODAR esses agentes, suba o daemon NO HOST:"
-  echo "    bash \"$0\" --launch --stop-docker"
-  echo "  (o daemon Docker, sendo um container Linux, nao executa binarios do host.)"
+  echo "    bash \"$0\" --launch"
   exit 0
 fi
 
-# ── 2. Free the port (Docker daemon holds it under the bundled install) ──────
-if [ "${STOP_DOCKER}" = "1" ] && command -v docker >/dev/null 2>&1; then
-  if docker ps --filter 'name=open-design' --format '{{.Names}}' 2>/dev/null | grep -q 'open-design'; then
-    step "Parando o container Docker 'open-design' para liberar a porta ${PORT}"
-    docker stop open-design >/dev/null 2>&1 || true
-    ok "Container Docker parado (o setup permanece em disco; 'docker compose up -d' o retoma)."
-  fi
+# ── 2. Port guard (a LEGACY Docker container may still hold the port) ────────
+if command -v docker >/dev/null 2>&1; then
+  LEGACY_NAMES="$(docker ps --format '{{.Names}}|{{.Ports}}' 2>/dev/null | awk -F'|' -v p=":${PORT}->" '$1 ~ /open-?design/ && index($2, p) { print $1 }' || true)"
+  while IFS= read -r name; do
+    [ -n "${name}" ] || continue
+    if [ "${STOP_LEGACY}" != "1" ]; then
+      echo "O container Docker '${name}' esta publicando a porta ${PORT} e nao enxerga os agentes do host. Rode de novo com --stop-legacy-container (para o container e faz 'docker update --restart=no')." >&2
+      exit 1
+    fi
+    step "Parando o container Docker legado '${name}' (porta ${PORT}) e desligando o restart automatico"
+    docker stop "${name}" >/dev/null 2>&1 || true
+    docker update --restart=no "${name}" >/dev/null 2>&1 || true
+    ok "Container '${name}' parado; nao volta sozinho no boot. O daemon do host assume a porta."
+  done <<< "${LEGACY_NAMES}"
+fi
+
+# A host daemon that already answers on the port is left alone (idempotent).
+if curl -fsS -m 3 "${DAEMON_URL}/api/health" >/dev/null 2>&1; then
+  ok "Ja existe um daemon respondendo em ${DAEMON_URL}; nada a subir."
+  node "${ONBOARDER}" --clone-dir "${CLONE_DIR}" --verify "${DAEMON_URL}"
+  exit 0
 fi
 
 # ── 3. Ensure deps + build ───────────────────────────────────────────────────
@@ -148,3 +168,7 @@ echo "  Daemon local:  ${DAEMON_URL}  (PID ${DAEMON_PID})"
 echo "  app-config:    ${DATA_DIR}/app-config.json"
 echo "  Para parar o daemon local: kill ${DAEMON_PID}"
 echo "============================================================"
+
+if [ "${FOREGROUND}" = "1" ]; then
+  wait "${DAEMON_PID}"
+fi

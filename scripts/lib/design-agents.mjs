@@ -5,17 +5,15 @@
  * Two places are inspected, both READ-ONLY (nothing here writes state, starts a run or prints a secret):
  *   - host      the agent CLI is on the PATH of the machine running Claude Code (PATH walk, PATHEXT aware);
  *   - daemon    what the Open Design daemon itself sees, via GET /api/agents (its own detection). The
- *               daemon lives in Docker (`where: 'container'`) or on the host (`where: 'host'`); only an
- *               agent visible in the daemon's environment can be launched by `od run start`. Without a
- *               token, a `command -v` probe inside the container is the fallback.
+ *               daemon runs on the host (`where: 'host'`); only an agent visible in the daemon's
+ *               environment can be launched by `od run start`.
  *
- * Every dependency (PATH resolver, fetch, docker exec) is injectable, so the tests need no host state.
- * Output entries: { id, where: 'host'|'container', available, authenticated: true|false|'unknown', source }.
+ * Every dependency (PATH resolver, fetch) is injectable, so the tests need no host state.
+ * Output entries: { id, where: 'host', available, authenticated: true|false|'unknown', source }.
  * `id` follows the Open Design runtime ids (agy -> antigravity, kiro-cli -> kiro).
  */
-import { execFileSync } from "node:child_process";
 import { resolveOnPath } from "../od-onboard-agents.mjs";
-import { detectOdContainer, odApiToken } from "./open-design-preflight.mjs";
+import { odApiToken } from "./open-design-preflight.mjs";
 
 /** Host CLIs worth offering. `sibling` ones are listed only when the sibling plugin is installed. */
 export const DESIGN_AGENT_CANDIDATES = [
@@ -58,13 +56,20 @@ export function agentsFromDaemonPayload(payload, where) {
     }));
 }
 
+/**
+ * `GET /api/agents` makes the daemon probe ~30 agent CLIs (each `--version`, and on Windows each is a `.cmd`
+ * shim), measured at 5.2-5.4 s on the host daemon: longer than the preflight's generic 5 s timeout, which made
+ * the daemon answer look "unreachable". This call gets its own floor, whatever the caller's timeout is.
+ */
+export const DAEMON_AGENTS_MIN_TIMEOUT_MS = 20_000;
+
 /** GET <daemonUrl>/api/agents. Returns { entries, status } — never throws, never returns the token. */
-export async function detectDaemonDesignAgents({ daemonUrl, token, where, fetchFn = fetch, timeoutMs = 4_000 } = {}) {
+export async function detectDaemonDesignAgents({ daemonUrl, token, where, fetchFn = fetch, timeoutMs = DAEMON_AGENTS_MIN_TIMEOUT_MS } = {}) {
   if (!daemonUrl || !where) return { entries: [], status: "no-daemon" };
   try {
     const response = await fetchFn(`${daemonUrl}/api/agents`, {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Connection: "close" },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(Math.max(timeoutMs, DAEMON_AGENTS_MIN_TIMEOUT_MS)),
     });
     if (response.status === 401 || response.status === 403) return { entries: [], status: "auth-required" };
     if (!response.ok) return { entries: [], status: "http-error" };
@@ -75,45 +80,18 @@ export async function detectDaemonDesignAgents({ daemonUrl, token, where, fetchF
 }
 
 /**
- * Fallback when the REST answer is unavailable: `command -v <bin>` INSIDE the container (read-only).
- * `MSYS_NO_PATHCONV=1` keeps Git Bash from rewriting container paths.
+ * Full detection. `openDesign` is the preflight openDesign block; its `daemon.where` says where the
+ * daemon answered. Returns { agents, daemonWhere, daemonStatus }: `daemonWhere` is 'host', 'container'
+ * (a LEFTOVER Docker container holding the port: the agents are refused, see the port-conflict guard) or
+ * null when the daemon is unreachable.
  */
-export function probeContainerAgents({ container, exec, env = process.env, siblings = {}, timeoutMs = 4_000 } = {}) {
-  if (!container) return [];
-  const run = exec ?? ((bin) => {
-    execFileSync("docker", ["exec", container, "sh", "-c", `command -v ${bin}`], {
-      env: { ...env, MSYS_NO_PATHCONV: "1" }, stdio: ["ignore", "pipe", "pipe"], timeout: timeoutMs, windowsHide: true,
-    });
-    return true;
-  });
-  return DESIGN_AGENT_CANDIDATES
-    .filter((candidate) => !candidate.sibling || siblings[candidate.sibling] === true)
-    .map((candidate) => {
-      let found = false;
-      for (const bin of candidate.bins) {
-        try { if (run(bin)) { found = true; break; } } catch { /* not on the container PATH */ }
-      }
-      return { id: candidate.id, where: "container", available: found, authenticated: "unknown", source: "container-path" };
-    });
-}
-
-/**
- * Full detection. `openDesign` is the preflight openDesign block (daemon url + docker evidence).
- * Returns { agents, daemonWhere, daemonStatus }; `daemonWhere` is null when the daemon is unreachable.
- */
-export async function detectDesignAgents({ openDesign = null, env = process.env, siblings = {}, resolve, fetchFn, exec, timeoutMs, home, dockerProbe } = {}) {
+export async function detectDesignAgents({ openDesign = null, env = process.env, siblings = {}, resolve, fetchFn, timeoutMs, home } = {}) {
   const agents = detectHostDesignAgents({ resolve, siblings });
   const daemon = openDesign?.daemon ?? {};
-  // The preflight skips `docker ps` once the REST probe authenticates, so ask again (read-only) to
-  // learn WHERE the daemon lives: an OD container publishing the daemon's port means "container".
-  const dockerInfo = openDesign?.docker?.detected ? openDesign.docker : (dockerProbe ?? ((e, t) => detectOdContainer(e, t)))(env, timeoutMs ?? 1_500);
-  const inDocker = Boolean(dockerInfo?.detected);
-  let port = null;
-  try { port = daemon.url ? Number(new URL(daemon.url).port) || null : null; } catch { /* keep null */ }
-  const daemonInContainer = inDocker && (!dockerInfo.publishedPort || !port || dockerInfo.publishedPort === port);
-  const daemonWhere = daemon.reachable ? (daemonInContainer ? "container" : "host") : null;
+  const daemonWhere = daemon.reachable ? (daemon.where === "container" ? "container" : "host") : null;
   let daemonStatus = daemonWhere ? "reachable" : "no-daemon";
-  if (daemonWhere) {
+  if (daemonWhere === "container") daemonStatus = "legacy-container";
+  else if (daemonWhere) {
     const token = odApiToken({ env, ...(home ? { home } : {}) });
     const rest = await detectDaemonDesignAgents({ daemonUrl: daemon.url, token, where: daemonWhere, fetchFn, timeoutMs });
     daemonStatus = rest.status;
@@ -123,9 +101,7 @@ export async function detectDesignAgents({ openDesign = null, env = process.env,
       const kept = agents.filter((a) => !seen.has(`${a.where}:${a.id}`));
       agents.length = 0;
       agents.push(...kept, ...rest.entries);
-    } else if (daemonWhere === "container") agents.push(...probeContainerAgents({ container: dockerInfo?.container ?? env.OD_CONTAINER ?? "open-design", exec, env, siblings, timeoutMs }));
-  } else if (inDocker) {
-    agents.push(...probeContainerAgents({ container: dockerInfo?.container ?? env.OD_CONTAINER ?? "open-design", exec, env, siblings, timeoutMs }));
+    }
   }
   return { agents, daemonWhere, daemonStatus };
 }

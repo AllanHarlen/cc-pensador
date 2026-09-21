@@ -5,13 +5,13 @@
  *
  *   build   --feature <featurePath> --answers answers.json [--name "Produto"] [--slug produto]
  *   seed    --feature <featurePath> --dir <featurePath>/design-systems/<id> [--proposals proposals.json]
- *   brand-url --feature <featurePath> --dir <featurePath>/design-systems/<id> [--url https://site] [--container name]
+ *   brand-url --feature <featurePath> --dir <featurePath>/design-systems/<id> [--url https://site] [--clone dir]
  *           optional: the engine reads the brand site (no LLM) and proposes colorPrimary/fontFamily for the UNLOCKED fields;
  *           writes source/brand-url.json, which the user confirms before it is passed to `seed --proposals`
  *   adjust  --feature <featurePath> --set '{"colorPrimary":"#0F766E"}'   (quick adjustments of the visual approval)
  *   approve --feature <featurePath> --dir <featurePath>/design-systems/<id> [--unverified]   (after the user approved preview/)
  *           needs the approval question (AskUserQuestion header AprovDesign) in the hook log; --unverified only where hooks are disabled
- *   agent   --agents <preflight.json|designAgents.json> --choose <agentId|none> [--daemon-where host|container]
+ *   agent   --agents <preflight.json|designAgents.json> --choose <agentId|none> [--daemon-where host|container]   (container = a leftover Docker container holding the port: refused)
  *           binds the agent the user picked (AskUserQuestion header AgenteDesign) to the OPTIONAL OD prototype/Critique;
  *           prints statePatch.designAgent. Refuses (exit 1, with remediations) an agent the daemon cannot see; never starts a run
  *
@@ -88,11 +88,11 @@ export function seedCommand({ feature, dir, proposals = {} }) {
 }
 
 /** Proposes seed fields from the brand URL (brief field brandUrl or --url). A locked field is never overridden later by briefToSeed. */
-export function brandUrlCommand({ feature, dir, url, container, derive = deriveSeedFromUrl }) {
+export function brandUrlCommand({ feature, dir, url, clone, derive = deriveSeedFromUrl }) {
   const { brief } = loadBrief(feature);
   const target = url ?? brief.fields?.brandUrl?.value;
   if (!target) return { status: 'REFUSED', issue: 'brand-url-missing', message: 'pass --url or record brandUrl in the brief' };
-  const result = derive({ url: target, container });
+  const result = derive({ url: target, clone });
   if (result.status !== 'ok') return { status: 'UNAVAILABLE', reasonCode: result.reasonCode, message: result.message, note: 'the brand URL is optional: continue without it (the AGY proposal and the engine defaults still apply)' };
   const locked = Object.entries(brief.fields ?? {}).filter(([, field]) => field?.locked === true).map(([name]) => name);
   const file = join(resolve(dir), 'source', 'brand-url.json');
@@ -185,7 +185,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     if (command === 'build' && need('feature', 'answers')) result = buildCommand({ feature: args.feature, answers: readJson(resolve(args.answers)), name: args.name, slug: args.slug });
     else if (command === 'seed' && need('feature', 'dir')) result = seedCommand({ feature: args.feature, dir: args.dir, proposals: args.proposals ? unwrapProposals(readJson(resolve(args.proposals))) : {} });
-    else if (command === 'brand-url' && need('feature', 'dir')) result = brandUrlCommand({ feature: args.feature, dir: args.dir, url: typeof args.url === 'string' ? args.url : undefined, container: typeof args.container === 'string' ? args.container : undefined });
+    else if (command === 'brand-url' && need('feature', 'dir')) result = brandUrlCommand({ feature: args.feature, dir: args.dir, url: typeof args.url === 'string' ? args.url : undefined, clone: typeof args.clone === 'string' ? args.clone : undefined });
     else if (command === 'adjust' && need('feature', 'set')) result = adjustCommand({ feature: args.feature, set: JSON.parse(args.set) });
     else if (command === 'approve' && need('feature', 'dir')) result = approveCommand({ feature: args.feature, dir: args.dir, unverified: args.unverified === true });
     else if (command === 'agent' && need('agents', 'choose')) result = agentCommand({ agents: readJson(resolve(args.agents)), choose: args.choose, daemonWhere: typeof args['daemon-where'] === 'string' ? args['daemon-where'] : undefined });

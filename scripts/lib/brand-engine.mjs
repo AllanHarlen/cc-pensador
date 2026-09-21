@@ -3,10 +3,9 @@
  *
  * The engine has no public REST endpoint (Phase 0: POST /api/brand/build is a 404 and there is no
  * `pnpm brand:build`), so the adapter runs the engine's own modules with Node built-ins only:
- *   1. container: `docker exec -i <container> node --input-type=module -e <runner>` against the
- *      daemon's compiled engine (/app/apps/daemon/dist/brands/engine/*.js);
- *   2. clone: `node --import ts-register.mjs -e <runner>` against ~/.open-design sources (*.ts);
- *   3. BLOCKED (OD_BRAND_ENGINE_UNAVAILABLE) with remediation and the resume command.
+ *   1. clone: `node --import ts-register.mjs -e <runner>` against the host daemon's sources in
+ *      ~/.open-design (*.ts) — the same clone the host daemon runs from;
+ *   2. BLOCKED (OD_BRAND_ENGINE_UNAVAILABLE) with remediation and the resume command.
  * No token, secret or daemon state is involved. The runner mirrors brands/system.ts:139-143:
  * `seedFromBrand()` ignores `brand.seed`, so the sanitized overrides are merged on top of it.
  */
@@ -22,8 +21,6 @@ export const ENGINE_FILES = [
   'tokens.default.json', 'tokens.dark.json', 'tokens.compact.json',
   'variables.default.css', 'variables.dark.css', 'variables.compact.css',
 ];
-export const CONTAINER_ENGINE_DIR = '/app/apps/daemon/dist/brands/engine/';
-const CONTAINER_PACKAGE_JSONS = ['/app/apps/daemon/package.json', '/app/package.json'];
 
 /** Runner executed inside the engine's runtime. `__CONFIG__` is replaced by a JSON literal. */
 const RUNNER_TEMPLATE = `
@@ -95,27 +92,6 @@ function parseEngineOutput(stdout) {
 
 const tail = (text) => String(text ?? '').trim().split(/\r?\n/).slice(-3).join(' | ').slice(0, 400);
 
-export function findContainer({ run, env }) {
-  if (env.OD_CONTAINER) return { name: env.OD_CONTAINER };
-  const listed = run('docker', ['ps', '--format', '{{.Names}}'], { timeout: 15_000 });
-  if (listed.error?.code === 'ENOENT') return { reasonCode: 'DOCKER_MISSING', message: 'docker is not installed or not on PATH' };
-  if (listed.status !== 0) return { reasonCode: 'DOCKER_UNAVAILABLE', message: `docker ps failed: ${tail(listed.stderr)}` };
-  const name = listed.stdout.split(/\r?\n/).map((line) => line.trim()).find((line) => /open-?design/i.test(line));
-  return name ? { name } : { reasonCode: 'CONTAINER_NOT_FOUND', message: 'no running container whose name matches open-design' };
-}
-
-export function attemptContainer({ brand, run = defaultRun, env = process.env, container }) {
-  const found = container ? { name: container } : findContainer({ run, env });
-  if (!found.name) return { engine: 'container', ok: false, reasonCode: found.reasonCode, message: found.message };
-  const source = buildRunnerSource({ engineDir: CONTAINER_ENGINE_DIR, ext: '.js', packageJsons: CONTAINER_PACKAGE_JSONS });
-  const result = run('docker', ['exec', '-i', found.name, 'node', '--input-type=module', '-e', source], { input: JSON.stringify(brand) });
-  if (result.error || result.status !== 0) {
-    return { engine: 'container', ok: false, reasonCode: 'CONTAINER_ENGINE_FAILED', message: `docker exec failed in ${found.name}: ${tail(result.stderr) || result.error?.message || `exit ${result.status}`}` };
-  }
-  const parsed = parseEngineOutput(result.stdout);
-  return { engine: 'container', target: found.name, ...parsed };
-}
-
 export function resolveCloneDir({ clone, env = process.env, home = homedir() } = {}) {
   return resolve(clone || env.OD_CLONE_DIR || join(home, '.open-design'));
 }
@@ -146,26 +122,21 @@ export function attemptClone({ brand, run = defaultRun, env = process.env, clone
 }
 
 const REMEDIATION = [
-  'Start the Open Design container (docker ps must list a container named open-design), or',
-  'clone Open Design to ~/.open-design (or set OD_CLONE_DIR) with Node >= 22.6, then',
+  'clone Open Design to ~/.open-design (or set OD_CLONE_DIR) with Node >= 22.6 (scripts/install-open-design.ps1|.sh does it), then',
   're-run the same od-brand-build.mjs command to resume the DESIGN stage.',
 ];
 
 /**
- * Runs the chain container -> clone and returns the first success, or a BLOCKED result.
+ * Runs the engine from the host clone and returns its result, or a BLOCKED result.
+ * `engine` accepts 'auto' or 'clone' (the same thing): the Docker container is no longer a supported runtime.
  * @returns {{status:'ok'|'BLOCKED', engine?:string, files?:object, seed?:object, tokens?:object, engineInfo?:object, attempts:object[], reasonCode?:string, remediation?:string[]}}
  */
-export function deriveWithEngine({ brand, engine = 'auto', container, clone, run, env, home, nodeVersion } = {}) {
+export function deriveWithEngine({ brand, engine = 'auto', clone, run, env, home, nodeVersion } = {}) {
   if (!brand || typeof brand !== 'object') throw new TypeError('brand object is required');
-  const order = engine === 'container' ? ['container'] : engine === 'clone' ? ['clone'] : ['container', 'clone'];
-  const attempts = [];
-  for (const name of order) {
-    const outcome = name === 'container'
-      ? attemptContainer({ brand, run, env, container })
-      : attemptClone({ brand, run, env, clone, home, nodeVersion });
-    const { files, seed, tokens, engineInfo, ...record } = outcome;
-    attempts.push({ engine: record.engine, target: record.target ?? null, ok: outcome.ok, reasonCode: outcome.reasonCode ?? null, message: outcome.message ?? null });
-    if (outcome.ok) return { status: 'ok', engine: record.engine, files, seed, tokens, engineInfo, attempts };
-  }
+  if (engine !== 'auto' && engine !== 'clone') throw new TypeError(`unsupported engine "${engine}": use auto or clone (the Docker container runtime was removed)`);
+  const outcome = attemptClone({ brand, run, env, clone, home, nodeVersion });
+  const { files, seed, tokens, engineInfo, ...record } = outcome;
+  const attempts = [{ engine: record.engine, target: record.target ?? null, ok: outcome.ok, reasonCode: outcome.reasonCode ?? null, message: outcome.message ?? null }];
+  if (outcome.ok) return { status: 'ok', engine: record.engine, files, seed, tokens, engineInfo, attempts };
   return { status: 'BLOCKED', reasonCode: REASON_ENGINE_UNAVAILABLE, attempts, remediation: REMEDIATION };
 }

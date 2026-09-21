@@ -90,7 +90,7 @@ Fluxo (o Pensador dirige o Open Design; o diálogo continua sendo `AskUserQuesti
 |---|---|
 | BRAINSTORM_GERAL | o brief de design é coletado via `AskUserQuestion` (`openDesignBriefPlan()`); campos decididos pelo usuário ficam travados |
 | DESIGN — seed | `design-brief.mjs build` persiste o `design-brief.json` e `design-brief.mjs seed` (`briefToSeed()`) grava `brand.json`, `seed.json` e `seed-origin.json` em `source/`; o AGY só propõe os campos **não travados**, e o usuário confirma |
-| DESIGN — derivação | `od-brand-build.mjs` roda o brand engine do Open Design (cadeia **container → clone → `BLOCKED`**) e mapeia a saída para o TOKEN_SCHEMA; nunca um LLM |
+| DESIGN — derivação | `od-brand-build.mjs` roda o brand engine do Open Design (cadeia **clone → `BLOCKED`**, a partir do clone do daemon do host) e mapeia a saída para o TOKEN_SCHEMA; nunca um LLM |
 | DESIGN — contrato e render | `design-contract.json` (v2) → `tokens.css`, `design-tokens.json` (DTCG), `tailwind-v4.css`, `DESIGN.md`, `components.html`, `preview/`, `USAGE.md`, `manifest.json` (`design-package.mjs render`, obrigatório) |
 | DESIGN — gates | `design-package.mjs audit` → `design-audit.json` com `checks` por gate: `structure` (arquivos, escalas monótonas, estados com `focus-visible`), `contrast` (matriz WCAG 2.2 AA nos temas claro **e** escuro, só variantes seguras), `conformance` (campo **travado** do brief que diverge bloqueia; primária comparada só ao tema claro, ΔE ≤ 2), `integrity` (re-render em memória byte a byte + `provenance.json`) e `engineRun` (`source/engine-run.json` com `status: "ok"` para o mesmo contrato) |
 | DESIGN — aprovação visual | o usuário vê `preview/` nos dois temas via `AskUserQuestion`; ajustes rápidos (primária, densidade, raio, tipografia, tema padrão) passam por `design-brief.mjs adjust` e refazem só seed → derivação → render → audit; `design-brief.mjs approve` grava `approvedAt` + `approvedSha256` no brief e o registro assinado `.pensador-approval.json` (só para um contrato auditado e com a pergunta `AprovDesign` registrada pelo hook; `brief` e registro são protegidos contra escrita direta). Protótipo do Open Design e Critique Theater são **opcionais e consultivos**, nunca bloqueiam |
@@ -100,11 +100,12 @@ Fluxo (o Pensador dirige o Open Design; o diálogo continua sendo `AskUserQuesti
 
 O README do engine cita `POST /api/brand/build` e `pnpm brand:build`, mas **nenhum dos dois existe** na versão 0.22.1 (a rota devolve 404; não há script no `package.json`). O engine roda, porém, só com built-ins do Node, importando `seed`, `derive` e `export` dele. `scripts/od-brand-build.mjs` (adaptador em `scripts/lib/brand-engine.mjs`) executa:
 
-1. **container:** `docker exec -i <container open-design> node --input-type=module -e <runner>` sobre o engine compilado do daemon (`/app/apps/daemon/dist/brands/engine/*.js`). Sem estado, sem token, sem `node_modules`. O container é o de nome `open-design` (ou `OD_CONTAINER`).
-2. **clone:** `node --import scripts/lib/ts-register.mjs -e <runner>` sobre `~/.open-design/apps/daemon/src/brands/engine/*.ts` (ou `OD_CLONE_DIR`; Node >= 22.6 com remoção de tipos).
-3. **`BLOCKED`** (`reasonCode: OD_BRAND_ENGINE_UNAVAILABLE`, exit 1) com `attempts[]`, remediação e comando de retomada, gravados em `source/engine-run.json`.
+1. **clone:** `node --import scripts/lib/ts-register.mjs -e <runner>` sobre `~/.open-design/apps/daemon/src/brands/engine/*.ts` — o **mesmo clone** de onde o daemon do host roda (ou `OD_CLONE_DIR`; Node >= 22.6 com remoção de tipos). Sem estado, sem token, sem `node_modules`.
+2. **`BLOCKED`** (`reasonCode: OD_BRAND_ENGINE_UNAVAILABLE`, exit 1) com `attempts[]`, remediação (clonar/instalar o Open Design no host) e comando de retomada, gravados em `source/engine-run.json`.
 
-O runner replica o merge de `brands/system.ts:139-143`: `seedFromBrand()` ignora `brand.seed`, então as sobreposições sanitizadas (20 campos) são aplicadas por cima. O mesmo seed produz o mesmo `design-contract.json` byte a byte no container e no clone (mesma versão do engine); qual caminho rodou fica só em `source/engine-run.json` e no `provenance.json`, nunca no contrato.
+> O passo `container` (`docker exec` no engine compilado do daemon em Docker, `OD_CONTAINER`, `--engine container`) foi **removido**: o Docker não é mais um runtime suportado. `--engine` aceita `auto` e `clone` (a mesma coisa); `container` é recusado com um erro explícito.
+
+O runner replica o merge de `brands/system.ts:139-143`: `seedFromBrand()` ignora `brand.seed`, então as sobreposições sanitizadas (20 campos) são aplicadas por cima. O mesmo seed produz o mesmo `design-contract.json` byte a byte (mesma versão do engine); qual caminho rodou fica só em `source/engine-run.json` e no `provenance.json`, nunca no contrato.
 
 O mapeador (`scripts/lib/token-mapper.mjs`) troca o namespace `--brand-*` pelo TOKEN_SCHEMA do Open Design e aplica regras determinísticas para o que o engine não emite (`--accent-on` = branco ou preto de maior contraste; `--section-y-*` = 24/16/12 × `sizeUnit`; `--container-*`; `--elev-*`; `--tracking-display`). Extensões (camada C, declaradas pelo Pensador): `--info`, `--success-text`, `--warn-text`, `--danger-text`, `--info-text`, `--border-strong`, `--focus`, `--border-width`, `--control-h*`. Valores crus do engine que reprovam WCAG AA (semânticas como texto, `--border` a 1.41:1, foco no escuro) são trocados por variantes seguras (`*-text`, `--border-strong` ≥ 3:1, `--focus` ≥ 3:1) escolhidas na própria escada do engine e, se nenhuma servir, misturadas em direção ao `--fg`. O tema escuro é derivado pelo engine e **não** mantém a cor de marca travada (só o tema claro a mantém); `themes.compact` guarda apenas a densidade.
 
@@ -132,7 +133,7 @@ A tabela abaixo descreve o papel de cada dimensão no Open Design (o antigo dest
 |---|---|---|
 | `sectorContext` | `input` | vocabulário de domínio para `tagline`/copy das seções e **seleção de imagery/iconografia** (ver `references/imagery.md`) — não escolhe o system, mas orienta o que popular nele |
 | `visualTone` | `selection` | tom/mood: alimenta a **proposta do AGY para os campos não travados** do seed, que o usuário confirma (não há mais escolha de system de catálogo) |
-| `brandReferences` | `selection` | marca de referência (texto ou URL da marca): entra como referência do seed. A URL vai no campo opcional `brandUrl`; `design-brief.mjs brand-url` a deriva pelo `buildFromUrl` do próprio engine (sem LLM; só no container) e propõe `colorPrimary`/`fontFamily` para os campos não travados, com o resultado confirmado pelo usuário |
+| `brandReferences` | `selection` | marca de referência (texto ou URL da marca): entra como referência do seed. A URL vai no campo opcional `brandUrl`; `design-brief.mjs brand-url` a deriva pelo `buildFromUrl` do próprio engine (sem LLM; roda o `build.js` compilado do clone do daemon do host, `<clone>/apps/daemon/dist/brands/engine/build.js`, com as dependências do próprio clone) e propõe `colorPrimary`/`fontFamily` para os campos não travados, com o resultado confirmado pelo usuário |
 | `colorPalette` | `parameter` | `accent_hue` (matiz da cor de marca) / `accent_strength` (opacity) |
 | `typography` | `parameter` | escala/família via `sections:[typography]` (override doc se conflita) |
 | `componentStates` | `input` | inventário de estados exigidos, **validado vs `components.html`** |
@@ -190,18 +191,20 @@ Use o contrato `openDesignSpecContract(featurePath, state.designSystems, state.u
 
 ---
 
-## Fallback — instalação (Docker, via script) ou DESIGN.md inline
+## Fallback — instalação (daemon no host, via script) ou DESIGN.md inline
 
 Quando o preflight reportar `integrations.openDesign.available = false` **e** a demanda tiver front-end (`hasFrontend = true`), o Pensador pergunta via `AskUserQuestion`:
 
 ```text
 [Pensador | BRAINSTORM_GERAL/FINAL] O Open Design não foi detectado.
 Ele fornece um design system brand-grade (DESIGN.md) para a UI. Deseja instalar agora?
-A instalação é local e usa Docker; o Open Design roda na sua máquina.
+A instalação é local: o daemon roda NO SEU HOST (não em Docker), para poder usar os
+agentes que você já tem (claude, codex, antigravity).
 
-Opção A (recomendada): Instalar o Open Design via Docker
-  O Claude executa o script instalador do cc-pensador (verifica git+docker, sobe o
-  daemon, conecta o MCP) e retoma usando o Open Design.
+Opção A (recomendada): Instalar o Open Design no host
+  O Claude executa o script instalador do cc-pensador (verifica git/node/pnpm,
+  compila o clone, sobe o daemon no host com os agentes no PATH, conecta o MCP)
+  e retoma usando o Open Design.
 
 Opção B: Seguir sem o Open Design
   O Pensador escreve um design-system.md inline a partir do mesmo schema de 9 seções.
@@ -209,7 +212,7 @@ Opção B: Seguir sem o Open Design
 
 ### Se o usuário escolher "Instalar" (Opção A)
 
-O Claude executa o **script instalador** que acompanha o cc-pensador. Ele automatiza o caminho Docker do [QUICKSTART oficial](https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md): verifica `git`/`docker`/`docker compose`, clona `nexu-io/open-design`, prepara `deploy/.env` com um `OD_API_TOKEN` gerado, sobe `docker compose up -d`, aguarda o daemon em `http://localhost:7456` e tenta `od mcp install <agent>`.
+O Claude executa o **script instalador** que acompanha o cc-pensador. **Não usa Docker**: um daemon num container Linux não enxerga `claude.cmd` / `codex.cmd` / `agy.exe` do host, então nunca poderia lançar o agente que o usuário escolher em `AgenteDesign`. O script verifica `git`, `node` (>= 22.6; o Open Design pede 24) e `corepack`, clona `nexu-io/open-design` em `~/.open-design`, delega ao `onboard-open-design-agents` (registra os agentes, `pnpm install` + build, guarda de porta, sobe o daemon no host), aguarda o daemon em `http://127.0.0.1:7456` e tenta `od mcp install <agent>`.
 
 ```powershell
 # Windows (PowerShell) — use "powershell" (Windows PowerShell 5.1, presente em todo Windows);
@@ -222,25 +225,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scrip
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-open-design.sh"
 ```
 
-Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Port`/`--port` (padrão 7456), `-McpConfig`/`--mcp-config` (alvo do `.mcp.json`, padrão `<cwd>/.mcp.json`), `-McpName`/`--mcp-name` (padrão `open-design`), `-SkipMcp`/`--skip-mcp`. Pré-requisitos que o usuário precisa ter: **git** e **Docker Desktop** (com Compose v2). O script é idempotente — preserva um `OD_API_TOKEN` existente e apenas atualiza o repo em execuções seguintes.
+Parâmetros úteis: `-Agent`/`--agent` (slug do agente, padrão `claude`), `-Port`/`--port` (padrão 7456), `-McpConfig`/`--mcp-config` (alvo do `.mcp.json`, padrão `<cwd>/.mcp.json`), `-McpName`/`--mcp-name` (padrão `open-design`), `-SkipMcp`/`--skip-mcp`, `-SkipLaunch`/`--skip-launch` (só clona e registra os agentes), `-StopLegacyContainer`/`--stop-legacy-container` (ver a guarda de porta abaixo) e, só no Windows, `-Autostart` (registra a Tarefa Agendada). Pré-requisitos que o usuário precisa ter: **git**, **Node 24** (com corepack). O script é idempotente: atualiza o repo e não sobe um segundo daemon se já houver um respondendo.
 
-> 🔑 **Localização do `OD_API_TOKEN`:** o script instalador gera e grava o token em `~/.open-design/deploy/.env` (dentro do clone Docker). A derivação dos tokens (`POST /api/brand/build`, Fase 3 do plano) lê `OD_API_TOKEN` do ambiente ou desse `.env` e nunca o imprime. Se precisar exportar manualmente: `export OD_API_TOKEN=$(grep OD_API_TOKEN ~/.open-design/deploy/.env | cut -d= -f2-)`.
+> 🔑 **Token da API:** o daemon do host em loopback **não exige token** (a autenticação só liga quando `OD_API_TOKEN` está definido para ele). Os scripts do Pensador (`preflight.mjs`, `od-register-system.mjs`, `od-mcp-config.mjs`) usam `OD_API_TOKEN` do ambiente e, depois, `<clone>/.env` (o clone é `~/.open-design`, ou `OD_CLONE_DIR`); sem nenhum dos dois seguem sem `Authorization`. O antigo `deploy/.env` do Docker **não é mais lido**. O token nunca é impresso.
+
+> 🌐 **Use `127.0.0.1`, nunca `localhost`:** o daemon trata `localhost` como a origem de "powered preview" e responde `403 Powered preview origin cannot access this API route` a clientes de API com cabeçalhos `Sec-Fetch-*` (o `fetch` do Node os envia). Os scripts normalizam `localhost` para `127.0.0.1`; passe sempre `--daemon-url http://127.0.0.1:<porta>`.
 
 **Conexão do MCP (automática):** o script conecta o MCP nos dois cenários:
 
-- Se houver o binário `od` no host (caminho pnpm), usa o nativo `od mcp install <agent>`.
-- No modo Docker (sem `od` no host), chama o helper `scripts/od-mcp-config.mjs`, que busca a spec de lançamento canônica do daemon em `GET /api/mcp/install-info` (o mesmo payload do Settings → MCP) e faz **merge** da entrada `mcpServers.<nome>` no `.mcp.json`, preservando o resto do arquivo. Usa Node (já requerido pelo cc-pensador), sem depender de `jq`/`python`.
+- Se houver o binário `od` no PATH, usa o nativo `od mcp install <agent>`.
+- Sem `od` no PATH (o build por pnpm não o coloca lá), chama o helper `scripts/od-mcp-config.mjs`, que busca a spec de lançamento canônica do daemon em `GET /api/mcp/install-info` (o mesmo payload do Settings → MCP) e faz **merge** da entrada `mcpServers.<nome>` no `.mcp.json`, preservando o resto do arquivo. Usa Node (já requerido pelo cc-pensador), sem depender de `jq`/`python`.
 
-> Ressalva honesta: o bridge **stdio** do MCP (`od mcp`) precisa de um binário `od` no host para realmente subir. No modo Docker puro a entrada é gravada no `.mcp.json`, mas se o agente reportar falha ao iniciar o MCP `open-design`, o caminho que dá um `od` real é o pnpm. Independentemente disso, o Pensador lê os design systems pela API do daemon (`/api/design-systems`) — então a integração funciona mesmo sem o MCP stdio. Depois que o daemon sobe, o Pensador aguarda a confirmação do usuário e retoma.
+> Ressalva honesta: o bridge **stdio** do MCP (`od mcp`) precisa de um binário `od` no PATH para realmente subir. Sem ele a entrada é gravada no `.mcp.json`, mas se o agente reportar falha ao iniciar o MCP `open-design`, o caminho que dá um `od` real é o `pnpm tools-dev`. Independentemente disso, o Pensador lê os design systems pela API do daemon (`/api/design-systems`) — então a integração funciona mesmo sem o MCP stdio. Depois que o daemon sobe, o Pensador aguarda a confirmação do usuário e retoma.
 
 ### Vínculo do agente do design (`AgenteDesign`)
 
 O protótipo e o Critique Theater do Open Design só rodam com um **agente de código** vinculado. O `preflight.mjs` reporta `integrations.designAgents` (somente leitura, sem segredos, sem executar nada que grave estado):
 
-- `agents[]`: `{ id, where: "host"|"container", available, authenticated: true|false|"unknown", source }`. `where: "host"` vem do PATH da máquina (`claude`, `codex`, `gemini`, `opencode`, `cursor-agent`, `qwen`, e `agy`/`kiro-cli` só quando os plugins irmãos `cc-antigravity-plugin`/`cc-kiro-plugin` estão instalados); a entrada do **daemon** vem de `GET /api/agents` (a detecção do próprio Open Design) ou, sem token, de um `command -v` dentro do container. Só entram no JSON os agentes `available`; `undetectedCount` conta o resto. Os ids seguem os do Open Design (`agy → antigravity`, `kiro-cli → kiro`).
-- `daemonWhere`: onde o daemon roda (`container` quando um container do OD publica a porta do daemon; `host`; `null` se inalcançável) e `daemonStatus` (`ok`, `auth-required`, `unreachable`, …).
+- `agents[]`: `{ id, where: "host", available, authenticated: true|false|"unknown", source }`. `where: "host"` vem do PATH da máquina (`claude`, `codex`, `gemini`, `opencode`, `cursor-agent`, `qwen`, e `agy`/`kiro-cli` só quando os plugins irmãos `cc-antigravity-plugin`/`cc-kiro-plugin` estão instalados); a entrada do **daemon** vem de `GET /api/agents` (a detecção do próprio Open Design) (o daemon roda no host; sem resposta do daemon fica só o palpite por PATH). Só entram no JSON os agentes `available`; `undetectedCount` conta o resto. Os ids seguem os do Open Design (`agy → antigravity`, `kiro-cli → kiro`).
+- `daemonWhere`: onde o daemon roda (`host`; `container` **só** quando um container Docker legado do OD publica a porta que respondeu — situação recusada, ver a guarda de porta; `null` se inalcançável) e `daemonStatus` (`ok`, `auth-required`, `unreachable`, `legacy-container`, …).
 
-Regra: **o daemon só lança um agente que existe no ambiente dele.** Por isso um agente detectado só no host, com o daemon no container (ou o inverso), não é aceito em silêncio: `resolveDesignAgent()` devolve `agent-not-visible-to-daemon` com as duas remediações — instalar/autenticar o agente no ambiente do daemon, ou mover o daemon (para o host, ver o onboarding abaixo) — e o Pensador pergunta como proceder via `AskUserQuestion`.
+Regra: **o daemon só lança um agente que existe no ambiente dele.** Um agente que o daemon do host não enxerga devolve `agent-not-visible-to-daemon` com a remediação `install-and-authenticate-<id>-in-daemon-host`; um daemon que na verdade é um **container legado** devolve a mesma recusa com `stop-legacy-container` e `start-host-daemon` (o container não vê nenhum agente do host). O Pensador pergunta como proceder via `AskUserQuestion`.
 
 Pergunta (uma vez, antes do DESIGN, com front-end e ao menos um agente `available`; `multiSelect: false`, `header: "AgenteDesign"`):
 
@@ -254,30 +259,37 @@ O protótipo (`od project create --design-system user:<id>`) só respeita os tok
 
 ```bash
 node scripts/od-register-system.mjs --dir <featurePath>/design-systems/<id> \
-  --daemon-url http://127.0.0.1:<porta> (--data-dir <dados do daemon> | --container open-design) --accepted
+  --daemon-url http://127.0.0.1:<porta> [--data-dir <dados do daemon>] --accepted
 ```
 
 1. `POST /api/design-systems` com `{ title: <id>, category: "Generated", status: "published", body: <DESIGN.md> }` — o `<id>` sai do slug do título e precisa ser o `--system-id` e o `id` do `manifest.json`, ou o daemon ignora o sistema. O daemon cria `<dados>/design-systems/<id>/` com um wrapper genérico.
-2. Sobrepõe `tokens.css`, `design-tokens.json`, `tailwind-v4.css`, `components.html`, `components.manifest.json`, `USAGE.md`, `manifest.json`, `DESIGN.md` e `preview/` nesse diretório, e `tokens.css` também sobre `colors_and_type.css` (o wrapper não entrega uma paleta genérica por outro canal). Daemon no host: `--data-dir`; daemon em Docker: `--container` (`docker exec … test -d` + `docker cp`).
+2. Sobrepõe `tokens.css`, `design-tokens.json`, `tailwind-v4.css`, `components.html`, `components.manifest.json`, `USAGE.md`, `manifest.json`, `DESIGN.md` e `preview/` nesse diretório, e `tokens.css` também sobre `colors_and_type.css` (o wrapper não entrega uma paleta genérica por outro canal). O `--data-dir` padrão é o do daemon do host (`~/.open-design/.od`, ou `OD_DATA_DIR`); o daemon em Docker (`--container`) não é mais suportado.
 3. **Confere pelo daemon, não pelo disco:** `GET /api/design-systems/user%3A<id>/file?path=tokens.css` (e `colors_and_type.css`) precisa ser byte a byte o `resolved/tokens.css`. Divergência → exit 1, `OD_REGISTER_TOKENS_DIVERGED`, o sistema volta a rascunho (`PATCH … {"status":"draft"}`) e o protótipo **não** deve rodar. O hash de contrato que o daemon lê do `manifest.json` também é conferido (`OD_REGISTER_MANIFEST_DIVERGED`).
 
 Códigos estáveis: `OD_REGISTER_CONSENT_REQUIRED`, `OD_REGISTER_INPUT_INVALID`, `OD_REGISTER_NO_TARGET`, `OD_REGISTER_INSECURE_TARGET` (o token só vai a hosts loopback, salvo `--allow-remote`), `OD_REGISTER_DAEMON_UNREACHABLE`, `OD_REGISTER_AUTH_REQUIRED`, `OD_REGISTER_ID_MISMATCH`, `OD_REGISTER_MANIFEST_ID_MISMATCH`, `OD_REGISTER_DAEMON_REJECTED`, `OD_REGISTER_LAYOUT_MISSING`, `OD_REGISTER_COPY_FAILED`, `OD_REGISTER_TOKENS_UNREADABLE`, `OD_REGISTER_TOKENS_DIVERGED` e `OD_REGISTER_MANIFEST_DIVERGED`, cada um com `remediation`.
 
-**Limite honesto:** o passo 2 escreve em um diretório que o daemon possui. Isso **não é API pública** e foi validado só no daemon **0.22.1**; a versão (`/api/health`) fica em `statePatch.designRegistrations[<id>].daemonVersion` e a ausência do diretório esperado é a recusa `OD_REGISTER_LAYOUT_MISSING` com remediação (apontar o `--data-dir`/`--container` certo ou usar uma versão validada), nunca um registro parcial silencioso. O daemon do host leva de 10 a 30 s para responder no primeiro start. O script **nunca** dispara `od run start`: o run consome tokens, exige o aceite explícito e usa o agente escolhido em `AgenteDesign` (`od run start --daemon-url <url> --project <id> --agent <designAgent.id>`). Mesmo com o registro verbatim o protótipo é **uma execução de um agente não determinístico**: continua opcional e consultivo, e a fidelidade é garantida pelos gates do Orquestrador/Executor e pelo probe do Testador (evidência: subseção 10.10.2 do plano, 23 de 23 tokens em cada tema).
+**Limite honesto:** o passo 2 escreve em um diretório que o daemon possui. Isso **não é API pública** e foi validado só no daemon **0.22.1**; a versão (`/api/health`) fica em `statePatch.designRegistrations[<id>].daemonVersion` e a ausência do diretório esperado é a recusa `OD_REGISTER_LAYOUT_MISSING` com remediação (apontar o `--data-dir` certo ou usar uma versão validada), nunca um registro parcial silencioso. O daemon do host leva de 10 a 30 s para responder no primeiro start. O script **nunca** dispara `od run start`: o run consome tokens, exige o aceite explícito e usa o agente escolhido em `AgenteDesign` (`od run start --daemon-url <url> --project <id> --agent <designAgent.id>`). Mesmo com o registro verbatim o protótipo é **uma execução de um agente não determinístico**: continua opcional e consultivo, e a fidelidade é garantida pelos gates do Orquestrador/Executor e pelo probe do Testador (evidência: subseção 10.10.2 do plano, 23 de 23 tokens em cada tema).
 
 ### Onboarding de agentes (claude / codex / antigravity)
 
-O onboarding do Open Design detecta um agente de código probing seu **binário no PATH do processo do daemon** (`apps/daemon/src/runtimes/executables.ts → resolveOnPath`). Há uma limitação estrutural: no install **Docker** o daemon roda num container **Linux** que não enxerga nem executa os binários do **host** (`claude.cmd` / `codex.cmd` / `agy.exe`). Por isso o onboarding sempre reporta `available: false` para os três — não é erro de configuração, é isolamento do container. **Detectar e rodar agentes do host exige um daemon rodando NO HOST.**
+O onboarding do Open Design detecta um agente de código probing seu **binário no PATH do processo do daemon** (`apps/daemon/src/runtimes/executables.ts → resolveOnPath`). Por isso o daemon do cc-pensador roda **sempre no host**, onde `process.env.PATH` é o PATH real do usuário: um daemon em container Linux não enxerga nem executa os binários do host (`claude.cmd` / `codex.cmd` / `agy.exe`) e reportaria `available: false` para os três, então o Docker **não é suportado**.
 
-O cc-pensador resolve isso em duas peças:
+O cc-pensador resolve isso em três peças:
 
 - **`scripts/od-onboard-agents.mjs`** (núcleo determinístico, testado em `test/onboard-agents.test.js`): localiza o path de cada agente (PATH walk que espelha o `resolveOnPath` do Open Design, honrando `PATHEXT` no Windows; aceita overrides `--claude-bin`/`--codex-bin`/`--agy-bin`) e grava os overrides que o Open Design entende no `app-config.json` do daemon **local** (`<clone>/.od/app-config.json`):
   - `claude → agentCliEnv.claude.CLAUDE_BIN` e `codex → agentCliEnv.codex.CODEX_BIN` (chaves da allowlist em `apps/daemon/src/app-config.ts`).
   - **`antigravity` não tem chave `*_BIN`** (o `bin` é `agy`): é resolvido **por PATH**, então o script reporta o diretório do `agy` em `pathAdditions` para o launcher prepender ao PATH do daemon. Com `--verify <daemon-url>` consulta `/api/agents` e confirma `available`.
 
-- **`scripts/onboard-open-design-agents.ps1|.sh`** (orquestrador): registra os agentes e, com `--launch`/`-Launch`, garante deps + build do daemon local, libera a porta (parando o container Docker com `--stop-docker`/`-StopDocker`) e sobe `node apps/daemon/dist/cli.js` com `CLAUDE_BIN`/`CODEX_BIN` setados e o diretório do `agy` prependido ao PATH — então verifica `/api/agents`.
+- **`scripts/onboard-open-design-agents.ps1|.sh`** (orquestrador): registra os agentes e, com `--launch`/`-Launch`, garante deps + build do daemon local, aplica a **guarda de porta**, não sobe um segundo daemon se já houver um respondendo e sobe `node apps/daemon/dist/cli.js` com `CLAUDE_BIN`/`CODEX_BIN` setados e o diretório do `agy` prependido ao PATH — então verifica `/api/agents` (por `127.0.0.1`). Com `--foreground`/`-Foreground` o script só retorna quando o daemon encerra (para um supervisor reiniciá-lo).
 
-O instalador (`install-open-design.ps1|.sh`) chama a etapa de **registro** (rápida, sem build) ao final por padrão (desligável com `-SkipOnboardAgents`/`--skip-onboard-agents`) e imprime o comando único para subir o daemon local. O Docker permanece como fallback **só-design-systems** (a leitura de `/api/design-systems` independe de agente).
+- **`scripts/register-open-design-daemon-task.ps1`** (Windows): registra uma **Tarefa Agendada por usuário** (`OpenDesignDaemon`, sem administrador) que roda `onboard-open-design-agents.ps1 -Launch -SkipBuild -StopLegacyContainer -Foreground` oculto a cada logon, reinicia até 5 vezes (1 min) se o daemon cair e não tem limite de tempo. Sem ela o daemon é um processo solto que morre no reinício da máquina. `-StartNow` inicia na hora; `-Unregister` remove. No macOS/Linux use `launchd`/`systemd --user` chamando `bash scripts/onboard-open-design-agents.sh --launch --skip-build --foreground`.
+
+**Guarda de porta.** Um container Docker `open-design` antigo pode continuar segurando a 7456 (e o Docker Desktop pode religá-lo no boot, se a política de restart for `always`/`unless-stopped`). Ele responde à API mas não vê nenhum agente do host, então é tratado como conflito, não como daemon utilizável:
+
+- o `preflight.mjs` (`integrations.openDesign`) devolve `reasonCode: "LEGACY_CONTAINER_DAEMON"`, `available: false`, `daemon.where: "container"` e `portConflict: { container, port, remediation[] }` (`docker stop`, `docker update --restart=no`, subir o daemon do host); o bloco `legacyContainer` substitui o antigo `docker`. `OD_PREFLIGHT_DISABLE_DOCKER=1` desliga a consulta;
+- o onboarding recusa subir o daemon enquanto o container segurar a porta, a menos que receba `-StopLegacyContainer`/`--stop-legacy-container` (alias `-StopDocker`/`--stop-docker`), que faz `docker stop` **e** `docker update --restart=no` para ele não voltar sozinho.
+
+O instalador (`install-open-design.ps1|.sh`) chama tudo isso e, no Windows, registra a tarefa com `-Autostart`.
 
 > **AMR embutido (upstream 0.9.0+, não verificado ao vivo):** o Open Design passou a empacotar seu próprio runtime de modelo (`vela`/AMR), com login em `~/.amr`, eliminando a necessidade de configurar uma API key separada só para o app funcionar. O onboarding acima continua relevante para **claude/codex/antigravity como agentes de código** (a integração deste plugin), não para o AMR em si.
 >
@@ -317,6 +329,6 @@ O Open Design no Pensador evoluiu de uma tabela de tokens para um motor ativo de
 - O arquivo `components.html` serve como a especificação visual viva de todos os componentes do sistema (Botões, Cards, Inputs, Badges, Modais) renderizados nos 4 estados obrigatórios: `default`, `hover`, `focus` e `disabled`.
 - O Pensador sempre gera as fixtures deterministicamente a partir do `design-contract.json` (`design-package.mjs render`); elas usam só `var(--token)`, sem hex nem valor de fallback, e aparecem nos dois temas.
 
-O preflight detecta CLI `od` real (ignorando GNU coreutils), MCP estruturado, REST por `OD_DAEMON_URL`/MCP/`.open-design/deploy/.env`/porta 7456, Docker e novo probe na porta publicada. `401/403` significa `AUTH_REQUIRED`; container sem endpoint significa `DETECTED_UNREACHABLE`; nesses casos nao se oferece reinstalacao. O token vem de `OD_API_TOKEN` ou do `.env` e nunca aparece em stdout, logs ou snapshots.
+O preflight detecta CLI `od` real (ignorando GNU coreutils), MCP estruturado e REST por `OD_DAEMON_URL`/MCP/`<clone>/.env`/porta 7456 (sempre por `127.0.0.1`). `401/403` significa `AUTH_REQUIRED`; um container Docker legado sem endpoint significa `DETECTED_UNREACHABLE` e um que segura a porta que respondeu significa `LEGACY_CONTAINER_DAEMON`; nesses casos nao se oferece reinstalacao, e sim subir o daemon do host. O token vem de `OD_API_TOKEN` ou de `<clone>/.env` (o loopback do host nao exige) e nunca aparece em stdout, logs ou snapshots.
 
 A precedencia de sintese e: escolhas explicitas do usuario, PRD/criterios e prosa. Os valores de token vem do brand engine (nunca do AGY); o AGY escreve apenas o inventario de componentes, layouts, iconografia, imagery, microcopy, anti-patterns e a justificativa textual (`rationale`); renderizadores deterministas derivam CSS/JSON/Markdown; Codex audita read-only. Sao permitidas duas correcoes automaticas. Finding alto/critico bloqueia o handoff.

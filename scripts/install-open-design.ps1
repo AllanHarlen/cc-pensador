@@ -1,26 +1,34 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  Instalador local do Open Design (https://github.com/nexu-io/open-design) via Docker,
-  para uso opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end.
+  Instalador local do Open Design (https://github.com/nexu-io/open-design) para uso
+  opcional pelo cc-pensador (Pensador v2) quando a demanda tem front-end. O daemon
+  roda NO HOST (Docker nao e suportado).
 
 .DESCRIPTION
   O Open Design e um app local-first (daemon + web). O upstream documenta um instalador
   hospedado de uma linha (open-design.ai/install.sh | sh -s <agent>) mas este script
   NAO o usa deliberadamente: e opaco (nao da para revisar o script antes de rodar) e
-  este repo ja clona o codigo-fonte de qualquer forma. Em vez disso, automatiza o
-  caminho Docker do QUICKSTART oficial a partir do clone:
+  este repo ja clona o codigo-fonte de qualquer forma.
 
-    1. Verifica pre-requisitos (git, docker, docker compose v2).
+  Por que no host: o Pensador aciona o protótipo/critica do Open Design com o agente
+  que voce escolher (claude, codex, antigravity...). O daemon so lanca agentes que
+  existem no ambiente DELE; um container Linux nao enxerga claude.cmd / codex.cmd /
+  agy.exe do host. Por isso o instalador nao usa Docker.
+
+  Passos:
+    1. Verifica pre-requisitos (git, node >= 22.6, corepack).
     2. Clona (ou atualiza) nexu-io/open-design em -TargetDir.
-    3. Prepara deploy/.env com um OD_API_TOKEN gerado (preserva um token existente).
-    4. Sobe o servico com `docker compose up -d`.
-    5. Aguarda o daemon responder em http://localhost:<porta>.
-    6. Tenta registrar o MCP no agente via `od mcp install <agente>` quando o binario
-       `od` existir; caso contrario imprime o passo manual (Settings -> MCP server).
+    3. Delega ao onboard-open-design-agents.ps1: registra claude/codex/antigravity no
+       app-config do daemon, instala dependencias e compila (pnpm), verifica a porta
+       (container Docker legado e recusado, ou parado com -StopLegacyContainer) e sobe
+       o daemon no host.
+    4. Registra o MCP no agente via `od mcp install <agente>` quando `od` existir; caso
+       contrario grava a entrada no .mcp.json a partir de /api/mcp/install-info.
+    5. Com -Autostart, registra a Tarefa Agendada que sobe o daemon a cada logon.
 
-  Depois disso o Pensador consegue acionar o Open Design (via `od` ou via API do daemon
-  em http://localhost:<porta>/api/design-systems) para semear o design-system.md.
+  O daemon do host em loopback nao exige token de API (a autenticacao so liga se
+  OD_API_TOKEN estiver definido para ele).
 
 .PARAMETER TargetDir
   Pasta onde o repositorio sera clonado. Padrao: %USERPROFILE%\.open-design
@@ -29,14 +37,25 @@
   Slug do agente para o `od mcp install`. Padrao: claude.
 
 .PARAMETER Port
-  Porta exposta pelo daemon. Padrao: 7456.
+  Porta do daemon. Padrao: 7456.
 
 .PARAMETER SkipMcp
   Nao tentar registrar o MCP no agente.
 
+.PARAMETER SkipLaunch
+  So clona e registra os agentes; nao compila nem sobe o daemon.
+
+.PARAMETER StopLegacyContainer
+  Para (e faz `docker update --restart=no`) um container Docker legado `open-design`
+  que esteja publicando a porta. Sem o switch, ele faz o instalador recusar.
+
+.PARAMETER Autostart
+  Registra a Tarefa Agendada (register-open-design-daemon-task.ps1) para subir o
+  daemon a cada logon.
+
 .EXAMPLE
   pwsh -File scripts/install-open-design.ps1
-  pwsh -File scripts/install-open-design.ps1 -Agent claude -Port 7456
+  pwsh -File scripts/install-open-design.ps1 -Agent claude -Port 7456 -Autostart
 #>
 [CmdletBinding()]
 param(
@@ -46,11 +65,15 @@ param(
   [string]$McpConfig = (Join-Path (Get-Location) '.mcp.json'),
   [string]$McpName = 'open-design',
   [switch]$SkipMcp,
-  [switch]$SkipOnboardAgents
+  [switch]$SkipLaunch,
+  [switch]$StopLegacyContainer,
+  [switch]$Autostart
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoUrl = 'https://github.com/nexu-io/open-design'
+# 127.0.0.1, not localhost: the daemon answers 403 to API clients that reach it as localhost (powered-preview origin).
+$DaemonUrl = "http://127.0.0.1:$Port"
 
 function Write-Step { param([string]$Msg) Write-Host "==> $Msg" -ForegroundColor Cyan }
 function Write-Ok   { param([string]$Msg) Write-Host "[ok] $Msg" -ForegroundColor Green }
@@ -62,17 +85,21 @@ function Test-Command {
 }
 
 function Assert-Prerequisites {
-  Write-Step 'Verificando pre-requisitos (git, docker, docker compose)'
+  Write-Step 'Verificando pre-requisitos (git, node >= 22.6, corepack)'
   if (-not (Test-Command 'git')) {
     throw 'git nao encontrado no PATH. Instale o Git: https://git-scm.com/downloads'
   }
-  if (-not (Test-Command 'docker')) {
-    throw 'docker nao encontrado no PATH. Instale o Docker Desktop: https://www.docker.com/products/docker-desktop/'
+  if (-not (Test-Command 'node')) {
+    throw 'node nao encontrado no PATH. Instale o Node 24+: https://nodejs.org'
   }
-  # docker compose v2 (subcomando), nao o legado docker-compose.
-  & docker compose version *> $null
-  if ($LASTEXITCODE -ne 0) {
-    throw 'docker compose (v2) indisponivel. Atualize o Docker Desktop para uma versao com Compose v2.'
+  $version = (& node --version).TrimStart('v')
+  $major, $minor = ($version -split '\.')[0..1] | ForEach-Object { [int]$_ }
+  if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 6)) {
+    throw "Node ${version} e antigo demais (o brand engine remove tipos TypeScript: Node >= 22.6; o Open Design pede Node 24)."
+  }
+  if ($major -lt 24) { Write-Warn "Node ${version}: o Open Design pede Node 24; o build pode falhar." }
+  if (-not (Test-Command 'corepack')) {
+    throw 'corepack nao encontrado (vem com o Node). Reinstale o Node 24+.'
   }
   Write-Ok 'Pre-requisitos presentes.'
 }
@@ -89,113 +116,35 @@ function Sync-Repo {
   Write-Ok 'Repositorio pronto.'
 }
 
-function New-ApiToken {
-  $bytes = New-Object byte[] 32
-  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  return -join ($bytes | ForEach-Object { $_.ToString('x2') })
-}
-
-function Initialize-Env {
-  param([string]$DeployDir)
-  $envPath = Join-Path $DeployDir '.env'
-  $examplePath = Join-Path $DeployDir '.env.example'
-  if (-not (Test-Path $examplePath)) {
-    throw "deploy/.env.example nao encontrado em $DeployDir. O layout do repositorio mudou?"
-  }
-  if (-not (Test-Path $envPath)) {
-    Copy-Item $examplePath $envPath
-    Write-Ok 'deploy/.env criado a partir do .env.example.'
-  }
-
-  $content = Get-Content $envPath -Raw
-  $tokenMatch = [regex]::Match($content, '(?m)^OD_API_TOKEN=(.*)$')
-  $existing = if ($tokenMatch.Success) { $tokenMatch.Groups[1].Value.Trim() } else { '' }
-  if ([string]::IsNullOrWhiteSpace($existing)) {
-    $token = New-ApiToken
-    if ($tokenMatch.Success) {
-      $content = [regex]::Replace($content, '(?m)^OD_API_TOKEN=.*$', "OD_API_TOKEN=$token")
-    } else {
-      $content = $content.TrimEnd() + "`nOD_API_TOKEN=$token`n"
-    }
-    Set-Content -Path $envPath -Value $content -NoNewline
-    Write-Ok 'OD_API_TOKEN gerado e gravado em deploy/.env.'
-  } else {
-    $token = $existing
-    Write-Ok 'OD_API_TOKEN ja configurado em deploy/.env (preservado).'
-  }
-  return $token
-}
-
-function Start-Daemon {
-  param([string]$DeployDir)
-  Write-Step 'Subindo o Open Design (docker compose up -d)'
-  Push-Location $DeployDir
-  try {
-    & docker compose up -d
-    if ($LASTEXITCODE -ne 0) { throw 'docker compose up -d falhou.' }
-  } finally {
-    Pop-Location
-  }
-  Write-Ok 'Container iniciado.'
-}
-
-# Prefer the upstream-maintained installer (deploy/scripts/install.sh) when the
-# clone has it and `bash` is on PATH (Git Bash/WSL): it already handles .env
-# prep + `docker compose up -d` in one command, so this script stops
-# reimplementing what upstream maintains. Falls back to the manual
-# Initialize-Env+Start-Daemon path when bash is unavailable, the script is
-# missing (older clone), or it fails/rejects these flags.
-# Not verified live against the current upstream release — see the
-# "Suposições não verificadas" note in the implementation plan.
-function Try-UpstreamInstaller {
-  param([string]$DeployDir, [int]$Port)
-  $upstreamInstaller = Join-Path $DeployDir 'scripts/install.sh'
-  $bash = Get-Command bash -ErrorAction SilentlyContinue
-  if (-not $bash -or -not (Test-Path $upstreamInstaller)) { return $false }
-  Write-Step "Usando o instalador upstream: deploy/scripts/install.sh --non-interactive --port $Port"
-  Push-Location $DeployDir
-  try {
-    & bash 'scripts/install.sh' --non-interactive --port $Port
-    if ($LASTEXITCODE -ne 0) {
-      Write-Warn 'Instalador upstream falhou ou nao aceitou esses flags; caindo para o caminho manual (docker compose).'
-      return $false
-    }
-  } finally {
-    Pop-Location
-  }
-  Write-Ok 'Instalador upstream concluido.'
-  return $true
-}
-
 function Wait-Daemon {
-  param([int]$Port, [int]$TimeoutSec = 120)
-  $url = "http://localhost:$Port/api/health"
+  param([int]$TimeoutSec = 120)
+  $url = "$DaemonUrl/api/health"
   Write-Step "Aguardando o daemon em $url (ate ${TimeoutSec}s)"
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   while ((Get-Date) -lt $deadline) {
     try {
       $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
       if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
-        Write-Ok "Daemon respondendo em http://localhost:$Port"
+        Write-Ok "Daemon respondendo em $DaemonUrl"
         return $true
       }
     } catch {
       Start-Sleep -Seconds 3
     }
   }
-  Write-Warn "Daemon nao respondeu dentro de ${TimeoutSec}s. Verifique: docker compose logs -f (em $TargetDir\deploy)"
+  Write-Warn "Daemon nao respondeu dentro de ${TimeoutSec}s. Rode: pwsh -File scripts/onboard-open-design-agents.ps1 -Launch -SkipBuild"
   return $false
 }
 
 function Register-Mcp {
-  param([string]$Agent, [int]$Port, [string]$Token)
+  param([string]$Agent)
   if ($SkipMcp) { Write-Warn 'Registro de MCP pulado (-SkipMcp).'; return }
-  $daemonUrl = "http://localhost:$Port"
 
-  # Caminho nativo: se o binario `od` existir no host (instalacao pnpm), usa-o.
+  # Caminho nativo: se o binario `od` existir no host, usa-o. (GNU coreutils tambem
+  # tem um `od`: o `mcp install` falha nele e cai no aviso abaixo.)
   if (Test-Command 'od') {
     Write-Step "Registrando o MCP do Open Design no agente '$Agent' (od mcp install)"
-    & od mcp install $Agent --daemon-url $daemonUrl
+    & od mcp install $Agent --daemon-url $DaemonUrl
     if ($LASTEXITCODE -eq 0) {
       Write-Ok "MCP registrado no agente '$Agent'."
     } else {
@@ -204,67 +153,47 @@ function Register-Mcp {
     return
   }
 
-  # Modo Docker (sem `od` no host): busca a spec de lancamento do daemon
-  # (/api/mcp/install-info) e escreve a entrada mcpServers.<nome> no .mcp.json.
-  if (-not (Test-Command 'node')) {
-    Write-Warn "Sem 'od' e sem 'node' no host: nao foi possivel auto-configurar o MCP."
-    Write-Host  "    Conecte pela app (Settings -> MCP server) ou instale o caminho pnpm e rode: od mcp install $Agent"
-    return
-  }
+  # Sem `od` no PATH: busca a spec de lancamento do daemon (/api/mcp/install-info)
+  # e escreve a entrada mcpServers.<nome> no .mcp.json.
   Write-Step "Configurando o MCP via daemon (/api/mcp/install-info) em $McpConfig"
   $helper = Join-Path $PSScriptRoot 'od-mcp-config.mjs'
-  & node $helper --config $McpConfig --name $McpName --daemon-url $daemonUrl --token $Token
+  & node $helper --config $McpConfig --name $McpName --daemon-url $DaemonUrl
   if ($LASTEXITCODE -eq 0) {
     Write-Ok "Entrada MCP '$McpName' gravada em $McpConfig."
-    Write-Warn "Modo Docker: o bridge stdio do MCP precisa do binario 'od' no host para subir."
-    Write-Host  "    Se o agente reportar falha ao iniciar o MCP 'open-design', use o caminho pnpm (fornece 'od')."
-    Write-Host  "    Enquanto isso, o Pensador le os design systems direto pela API: $daemonUrl/api/design-systems"
+    Write-Host  "    O bridge stdio do MCP precisa do binario 'od' no PATH para subir; se o agente falhar ao iniciar o MCP,"
+    Write-Host  "    o Pensador segue lendo os design systems direto pela API: $DaemonUrl/api/design-systems"
   } else {
-    Write-Warn "Falha ao configurar o MCP via daemon (codigo $LASTEXITCODE). A API REST em $daemonUrl segue utilizavel."
+    Write-Warn "Falha ao configurar o MCP via daemon (codigo $LASTEXITCODE). A API REST em $DaemonUrl segue utilizavel."
   }
-}
-
-function Invoke-OnboardAgents {
-  param([string]$TargetDir)
-  if ($SkipOnboardAgents) { Write-Warn 'Onboarding de agentes pulado (-SkipOnboardAgents).'; return }
-  $onboarder = Join-Path $PSScriptRoot 'od-onboard-agents.mjs'
-  if (-not (Test-Command 'node') -or -not (Test-Path $onboarder)) {
-    Write-Warn 'Onboarding de agentes pulado (node ou od-onboard-agents.mjs ausente).'
-    return
-  }
-  Write-Step 'Detectando agentes do host (claude, codex, antigravity) e registrando no app-config local'
-  & node $onboarder --clone-dir $TargetDir
-  Write-Warn 'O daemon Docker (container Linux) NAO executa binarios do host — os agentes acima'
-  Write-Host  '    so sao detectados por um daemon rodando NO HOST. Para subir esse daemon local:'
-  Write-Host  "      pwsh -File `"$(Join-Path $PSScriptRoot 'onboard-open-design-agents.ps1')`" -Launch -StopDocker"
 }
 
 # ---- Main ------------------------------------------------------------------
 Assert-Prerequisites
 Sync-Repo
-$deployDir = Join-Path $TargetDir 'deploy'
-if (Try-UpstreamInstaller -DeployDir $deployDir -Port $Port) {
-  # Upstream already prepared deploy/.env and started the container; just
-  # read the OD_API_TOKEN it generated so Register-Mcp can use it below.
-  $token = Initialize-Env -DeployDir $deployDir
-} else {
-  $token = Initialize-Env -DeployDir $deployDir
-  Start-Daemon -DeployDir $deployDir
+
+$onboarder = Join-Path $PSScriptRoot 'onboard-open-design-agents.ps1'
+$onboardArgs = @{ CloneDir = $TargetDir; Port = $Port }
+if (-not $SkipLaunch) { $onboardArgs['Launch'] = $true }
+if ($StopLegacyContainer) { $onboardArgs['StopLegacyContainer'] = $true }
+& $onboarder @onboardArgs
+
+if (-not $SkipLaunch) {
+  $healthy = Wait-Daemon
+  if ($healthy) { Register-Mcp -Agent $Agent }
+  if ($Autostart) {
+    & (Join-Path $PSScriptRoot 'register-open-design-daemon-task.ps1') -CloneDir $TargetDir -Port $Port
+  }
 }
-$null = Wait-Daemon -Port $Port
-Register-Mcp -Agent $Agent -Port $Port -Token $token
-Invoke-OnboardAgents -TargetDir $TargetDir
 
 Write-Host ''
 Write-Host '============================================================' -ForegroundColor Cyan
-Write-Ok   'Open Design instalado via Docker.'
-Write-Host "  App / UI:    http://localhost:$Port"
+Write-Ok   'Open Design instalado (daemon no host).'
+Write-Host "  App / UI:    $DaemonUrl"
 Write-Host "  Repo local:  $TargetDir"
-Write-Host "  API token:   $token"
-Write-Host "  API REST:    http://localhost:$Port/api/design-systems"
+Write-Host "  API REST:    $DaemonUrl/api/design-systems  (sem token em loopback)"
 Write-Host "  MCP config:  $McpConfig (server: $McpName)"
 Write-Host ''
-Write-Host '  Comandos uteis (no diretorio deploy):'
-Write-Host "    docker compose -f `"$deployDir\docker-compose.yml`" logs -f"
-Write-Host "    docker compose -f `"$deployDir\docker-compose.yml`" down"
+Write-Host '  Comandos uteis:'
+Write-Host "    Religar o daemon:      pwsh -File `"$(Join-Path $PSScriptRoot 'onboard-open-design-agents.ps1')`" -Launch -SkipBuild"
+Write-Host "    Subir a cada logon:    pwsh -File `"$(Join-Path $PSScriptRoot 'register-open-design-daemon-task.ps1')`" -StartNow"
 Write-Host '============================================================' -ForegroundColor Cyan
