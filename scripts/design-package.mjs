@@ -12,7 +12,7 @@ import {
   checkBriefConformance, checkComponentStates, checkContrastMatrix, checkScales, isBlocking,
 } from './lib/design-gates.mjs';
 import {
-  DEFAULT_COMPONENTS, REQUIRED_COMPONENT_STATES, renderComponentsCss, renderComponentsHtml, renderComponentsManifest, renderDesignMarkdown,
+  DEFAULT_COMPONENTS, REQUIRED_COMPONENT_STATES, componentStyleCoverage, renderComponentsCss, renderComponentsHtml, renderComponentsManifest, renderDesignMarkdown,
   renderDtcg, renderManifest, renderPreviewPages, renderTailwind, renderTokensCss, renderUsageMarkdown,
 } from './lib/design-render.mjs';
 import {
@@ -177,6 +177,12 @@ export function auditDesignPackage({ resolvedDir, contract, brief, briefFile, st
   }
   checks.structure = verdict(mark);
 
+  // Declared components without product CSS: visible but not blocking (a bespoke component can be
+  // legitimate). The implementer builds them from tokens; USAGE.md and components.css list them.
+  const { generic } = componentStyleCoverage(contract);
+  for (const name of generic) add('medium', 'COMPONENT_WITHOUT_RULES', `${name} has no dedicated rule in components.css (no known kind matches its name); it must be built from tokens`, `components.${name}`);
+  checks.componentCoverage = generic.length ? 'WARN' : 'PASS';
+
   mark = findings.length;
   findings.push(...checkContrastMatrix(contract));
   checks.contrast = verdict(mark);
@@ -270,6 +276,51 @@ export function renderDesignPackage({ contractFile, resolvedDir, resolved, prove
   return audit;
 }
 
+export const DESIGN_REVIEW_FILE = 'design-review.json';
+const REVIEW_VERDICTS = new Set(['PASS', 'FAIL']);
+
+/**
+ * Records the read-only review of the resolved package (Codex, SKILL.md DESIGN step 3) bound to the
+ * contract hash, so "PASS" in the handoff means the mechanical audit AND the reviewer both passed
+ * THIS contract. Audit finding: a real handoff (OficinaAI, 2026-09) declared the design PASS while its
+ * own summary said the Codex audit had rejected it; nothing tied the reviewer's verdict to the contract.
+ * A PASS is refused over a non-PASS audit, over a stale audit, or with blocking findings still open.
+ */
+export function recordDesignReview({ resolvedDir, verdict, reviewer, report = null, blockingFindings = 0, now = new Date().toISOString() }) {
+  const refuse = (reasonCode, message) => ({ status: 'REFUSED', reasonCode, message });
+  const normalizedVerdict = String(verdict ?? '').toUpperCase();
+  if (!REVIEW_VERDICTS.has(normalizedVerdict)) return refuse('REVIEW_VERDICT_INVALID', '--verdict must be PASS or FAIL');
+  if (typeof reviewer !== 'string' || !reviewer.trim()) return refuse('REVIEW_REVIEWER_REQUIRED', '--reviewer is required (e.g. codex)');
+  const count = Number(blockingFindings);
+  if (!Number.isInteger(count) || count < 0) return refuse('REVIEW_FINDINGS_INVALID', '--blocking-findings must be a non-negative integer');
+  const contractFile = join(resolvedDir, 'design-contract.json');
+  if (!existsSync(contractFile)) return refuse('CONTRACT_MISSING', `${contractFile} not found`);
+  const contract = readJson(contractFile);
+  if (normalizedVerdict === 'PASS') {
+    if (count > 0) return refuse('REVIEW_PASS_WITH_BLOCKING_FINDINGS', 'a PASS review cannot carry blocking findings; fix them at the source (brief/seed) and re-render first');
+    const auditFile = join(resolvedDir, 'design-audit.json');
+    const audit = existsSync(auditFile) ? readJson(auditFile) : null;
+    if (audit?.status !== 'PASS') return refuse('REVIEW_WITHOUT_PASSING_AUDIT', 'run design-package.mjs audit until it is PASS before recording a PASS review');
+    if (audit.contractSha256 !== contract.sha256) return refuse('REVIEW_AUDIT_STALE', 'design-audit.json belongs to another contract; re-run the audit first');
+  }
+  const record = {
+    schemaVersion: 1,
+    systemId: contract.systemId ?? null,
+    contractSha256: contract.sha256 ?? null,
+    verdict: normalizedVerdict,
+    reviewer: reviewer.trim(),
+    reviewedAt: now,
+    report: report ? String(report) : null,
+    blockingFindings: count,
+  };
+  writeText(join(resolvedDir, DESIGN_REVIEW_FILE), canonicalJson(record));
+  return {
+    status: 'ok',
+    review: record,
+    statePatch: record.systemId ? { designPackages: { [record.systemId]: { reviewStatus: normalizedVerdict, reviewContractSha256: record.contractSha256 } } } : {},
+  };
+}
+
 function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
@@ -285,6 +336,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const command = args._[0] ?? 'audit';
   const resolvedDir = resolve(String(args.resolved ?? args.dir ?? '.'));
   const briefFile = typeof args.brief === 'string' ? resolve(args.brief) : undefined;
+  if (command === 'review') {
+    const result = recordDesignReview({
+      resolvedDir,
+      verdict: args.verdict,
+      reviewer: typeof args.reviewer === 'string' ? args.reviewer : undefined,
+      report: typeof args.report === 'string' ? args.report : null,
+      blockingFindings: args['blocking-findings'] === undefined ? 0 : args['blocking-findings'],
+    });
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.status === 'ok' ? 0 : 1);
+  }
   // The CLI is the real gate: a missing brief or engine-run is a blocking finding, never a skip.
   const audit = command === 'render'
     ? renderDesignPackage({ contractFile: resolve(String(args.contract ?? join(resolvedDir, 'design-contract.json'))), resolvedDir, briefFile, strict: true })

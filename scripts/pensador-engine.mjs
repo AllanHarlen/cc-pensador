@@ -3798,7 +3798,7 @@ export const API_CONTRACT_FORMATS = {
     file: 'openapi.yaml',
     label: 'OpenAPI 3.1 (REST/JSON)',
     mock: 'prism mock openapi.yaml',
-    validate: 'schemathesis run openapi.yaml',
+    validate: 'st run openapi.yaml --url <base-url>',
   },
   graphql: {
     style: 'graphql',
@@ -4422,6 +4422,13 @@ export function buildArtifactList(state) {
       // Without that evidence the status is UNVERIFIED — never a hardcoded PASS.
       const pkg = packages[id] && typeof packages[id] === 'object' ? packages[id] : {};
       const auditStatus = typeof pkg.auditStatus === 'string' && pkg.auditStatus ? pkg.auditStatus : 'UNVERIFIED';
+      // PASS only when the mechanical audit AND the recorded review (design-review.json, bound to the
+      // same contract) both passed; a review of another contract counts as not reviewed.
+      const reviewStatus = typeof pkg.reviewStatus === 'string' && pkg.reviewStatus
+        && (!pkg.reviewContractSha256 || !pkg.contractSha256 || pkg.reviewContractSha256 === pkg.contractSha256)
+        ? pkg.reviewStatus
+        : 'UNREVIEWED';
+      const validationStatus = auditStatus !== 'PASS' ? auditStatus : reviewStatus === 'PASS' ? 'PASS' : reviewStatus === 'FAIL' ? 'FAIL' : 'UNREVIEWED';
       artifacts.push({
         kind: 'design-system-files',
         filename: `design-systems/${id}/resolved/`,
@@ -4438,7 +4445,7 @@ export function buildArtifactList(state) {
         // Light and dark are always derived from the same seed (plan decision 2).
         themes: Array.isArray(pkg.themes) && pkg.themes.length ? pkg.themes : ['light', 'dark'],
         designBriefPath: state.designBriefPath ? 'design-brief.json' : null,
-        validation: { status: auditStatus, audit: 'design-audit.json' },
+        validation: { status: validationStatus, audit: 'design-audit.json', review: 'design-review.json', auditStatus, reviewStatus },
         // The eventual UI package the executor materializes these into.
         materializeInto: `${materializeRoot}/design-systems/${id}/`,
       });

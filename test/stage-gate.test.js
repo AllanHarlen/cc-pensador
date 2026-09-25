@@ -186,6 +186,14 @@ describe('checkTransition — DESIGN', () => {
     expect(evidenceCodes({ [run]: { status: 'ok', contractSha256: 'e'.repeat(64) } })).toContain('ENGINE_RUN_CONTRACT_MISMATCH');
   });
 
+  it('requires the design review (design-review.json) PASS for THIS contract', () => {
+    const review = 'design-systems/professional/resolved/design-review.json';
+    const current = JSON.parse(designEvidence().files[review]);
+    expect(evidenceCodes({ [review]: null })).toContain('DESIGN_REVIEW_MISSING');
+    expect(evidenceCodes({ [review]: { ...current, contractSha256: 'c'.repeat(64) } })).toContain('DESIGN_REVIEW_STALE');
+    expect(evidenceCodes({ [review]: { ...current, verdict: 'FAIL', blockingFindings: 2 } })).toContain('DESIGN_REVIEW_NOT_PASS');
+  });
+
   it('requires the visual approval of THIS contract in design-brief.json', () => {
     expect(evidenceCodes({ 'design-brief.json': null })).toContain('DESIGN_NOT_APPROVED');
     const brief = JSON.parse(designEvidence().files['design-brief.json']);

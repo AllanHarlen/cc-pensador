@@ -274,8 +274,109 @@ export function componentCss() {
 .modal { min-width: 16rem; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elev-raised); }
 .modal.state-disabled { opacity: 0.5; }
 .modal.state-focus, .modal.state-focus-visible { box-shadow: var(--focus-ring); }
-`;
+${EXTENDED_COMPONENT_CSS}`;
 }
+
+/** Rules for every kind beyond the original six (see componentKind). Tokens only; px only as 0. */
+const EXTENDED_COMPONENT_CSS = `.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: var(--control-h); height: var(--control-h); padding: 0; border: var(--border-width) solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard); }
+.icon-btn:hover, .icon-btn.state-hover { background: var(--surface-warm); }
+.icon-btn:active, .icon-btn.state-active, .icon-btn[aria-current="page"] { background: var(--border-soft); }
+.icon-btn:focus-visible, .icon-btn.state-focus, .icon-btn.state-focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.icon-btn:disabled, .icon-btn.state-disabled { opacity: 0.5; cursor: not-allowed; }
+.icon-btn.state-loading { opacity: 0.75; cursor: progress; }
+.textarea, .select { width: 100%; min-height: var(--control-h); padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); font: var(--text-base)/var(--leading-body) var(--font-body); }
+.textarea { min-height: calc(var(--control-h) * 2.5); resize: vertical; }
+.select { appearance: none; padding-right: var(--space-8); background-image: linear-gradient(45deg, transparent 50%, var(--fg-2) 50%), linear-gradient(135deg, var(--fg-2) 50%, transparent 50%); background-position: calc(100% - var(--space-4)) 50%, calc(100% - var(--space-3)) 50%; background-size: var(--space-1) var(--space-1); background-repeat: no-repeat; cursor: pointer; }
+.textarea:hover, .textarea.state-hover, .select:hover, .select.state-hover { border-color: var(--fg-2); }
+.textarea:focus-visible, .textarea.state-focus, .textarea.state-focus-visible, .select:focus-visible, .select.state-focus, .select.state-focus-visible, .select.state-open, .select.state-active { outline: none; box-shadow: var(--focus-ring); }
+.textarea:disabled, .textarea.state-disabled, .select:disabled, .select.state-disabled { opacity: 0.5; cursor: not-allowed; }
+.textarea.state-error, .select.state-error { border-color: var(--danger-text); }
+.field { display: grid; gap: var(--space-1); }
+.field-label { color: var(--fg); font: 600 var(--text-sm)/var(--leading-tight) var(--font-body); }
+.field-hint { color: var(--muted); font-size: var(--text-xs); }
+.field.state-error .field-label { color: var(--danger-text); }
+.field.state-hover .input { border-color: var(--fg-2); }
+.field.state-focus .input, .field.state-focus-visible .input { box-shadow: var(--focus-ring); }
+.field.state-disabled { opacity: 0.5; }
+.checkbox, .radio { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--text-sm); cursor: pointer; }
+.checkbox input, .radio input { width: var(--space-4); height: var(--space-4); margin: 0; accent-color: var(--accent); }
+.checkbox:hover input, .checkbox.state-hover input, .radio:hover input, .radio.state-hover input { outline: var(--border-width) solid var(--border-strong); }
+.checkbox input:focus-visible, .checkbox.state-focus input, .checkbox.state-focus-visible input, .radio input:focus-visible, .radio.state-focus input, .radio.state-focus-visible input { outline: none; box-shadow: var(--focus-ring); }
+.checkbox.state-disabled, .radio.state-disabled { opacity: 0.5; cursor: not-allowed; }
+.checkbox.state-error, .radio.state-error { color: var(--danger-text); }
+.switch { display: inline-flex; align-items: center; width: calc(var(--space-8) + var(--space-2)); height: var(--space-6); padding: 0 var(--space-1); border: 0; border-radius: var(--radius-pill); background: var(--border-strong); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard); }
+.switch::after { content: ""; width: var(--space-4); height: var(--space-4); border-radius: var(--radius-pill); background: var(--surface); box-shadow: var(--elev-ring); transition: transform var(--motion-fast) var(--ease-standard); }
+.switch:not([aria-checked="true"]):hover, .switch.state-hover { background: var(--fg-2); }
+.switch[aria-checked="true"], .switch.state-checked { background: var(--accent); }
+.switch[aria-checked="true"]::after, .switch.state-checked::after { transform: translateX(var(--space-4)); }
+.switch:focus-visible, .switch.state-focus, .switch.state-focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.switch:disabled, .switch.state-disabled { opacity: 0.5; cursor: not-allowed; }
+.card.state-active { box-shadow: var(--elev-flat); }
+.card[aria-selected="true"], .card.state-selected { box-shadow: 0 0 0 var(--border-width) var(--accent), var(--elev-raised); }
+.carousel { display: flex; gap: var(--space-4); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: var(--space-2); }
+.carousel > * { flex: 0 0 auto; min-width: 12rem; scroll-snap-align: start; }
+.carousel:hover, .carousel.state-hover { scrollbar-color: var(--border-strong) transparent; }
+.table { width: 100%; border-collapse: collapse; background: var(--surface); color: var(--fg); font-size: var(--text-sm); }
+.table th, .table td { padding: var(--space-2) var(--space-3); border-bottom: var(--border-width) solid var(--border); text-align: left; }
+.table th { background: var(--surface-warm); color: var(--fg-2); font-weight: 600; }
+.table tbody tr:hover, .table.state-hover tbody tr:first-child { background: var(--surface-warm); }
+.table tbody tr[aria-selected="true"] { background: var(--border-soft); }
+.table.state-loading { opacity: 0.6; cursor: progress; }
+.table-empty { padding: var(--space-6); color: var(--muted); text-align: center; }
+.tabs { display: flex; gap: var(--space-1); border-bottom: var(--border-width) solid var(--border); }
+.tab { padding: var(--space-2) var(--space-4); border: 0; border-bottom: calc(var(--border-width) * 2) solid transparent; background: transparent; color: var(--fg-2); font: 600 var(--text-sm)/1 var(--font-body); cursor: pointer; }
+.tab:hover, .tabs.state-hover .tab:first-child { color: var(--fg); }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tab:focus-visible, .tabs.state-focus .tab:first-child, .tabs.state-focus-visible .tab:first-child { outline: none; box-shadow: var(--focus-ring); }
+.tab:disabled, .tabs.state-disabled .tab { opacity: 0.5; cursor: not-allowed; }
+.toast { display: flex; align-items: center; gap: var(--space-3); min-width: 16rem; max-width: 24rem; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--fg); color: var(--bg); box-shadow: var(--elev-raised); font-size: var(--text-sm); transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard); }
+.toast.error { border-left: var(--space-1) solid var(--danger); }
+.toast.state-visible { opacity: 1; transform: none; }
+.toast.state-exiting { opacity: 0; transform: translateY(var(--space-2)); }
+.sidebar { display: flex; flex-direction: column; gap: var(--space-1); width: 16rem; padding: var(--space-4) var(--space-3); background: var(--surface); border-right: var(--border-width) solid var(--border); }
+.sidebar.state-collapsed { width: calc(var(--control-h) + var(--space-6)); overflow: hidden; }
+.sidebar.state-expanded { width: 16rem; }
+.topnav { display: flex; align-items: center; gap: var(--space-4); min-height: calc(var(--control-h) + var(--space-4)); padding: 0 var(--space-4); background: var(--surface); border-bottom: var(--border-width) solid var(--border); }
+.topnav.state-scrolled { border-bottom-color: transparent; box-shadow: var(--elev-raised); }
+.nav-item { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-h); padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--fg-2); font-size: var(--text-sm); text-decoration: none; }
+.nav-item:hover, .sidebar.state-hover .nav-item:last-child, .topnav.state-hover .nav-item:last-child { background: var(--surface-warm); color: var(--fg); }
+.nav-item[aria-current="page"], .nav-item.state-active { background: var(--border-soft); color: var(--fg); font-weight: 600; }
+.nav-item:focus-visible, .sidebar.state-focus .nav-item:first-child, .sidebar.state-focus-visible .nav-item:first-child, .topnav.state-focus .nav-item:first-child, .topnav.state-focus-visible .nav-item:first-child { outline: none; box-shadow: var(--focus-ring); }
+.empty-state { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-8) var(--space-4); border: var(--border-width) dashed var(--border-strong); border-radius: var(--radius-md); color: var(--muted); text-align: center; }
+.empty-state h3 { color: var(--fg); }
+.empty-state.state-hover { border-color: var(--fg-2); }
+.skeleton { display: block; min-height: var(--space-4); border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--surface-warm) 25%, var(--border-soft) 50%, var(--surface-warm) 75%); background-size: 200% 100%; animation: skeleton-pulse 1.4s ease-in-out infinite; }
+@keyframes skeleton-pulse { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.stepper { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.step { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.step::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: var(--space-6); height: var(--space-6); border: var(--border-width) solid var(--border-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--fg-2); font-weight: 600; }
+.step[aria-current="step"], .step.state-active { color: var(--fg); }
+.step[aria-current="step"]::before, .step.state-active::before { border-color: var(--accent); background: var(--accent); color: var(--accent-on); }
+.step.state-completed { color: var(--fg-2); }
+.step.state-completed::before { border-color: var(--success); background: var(--surface-warm); color: var(--success-text); }
+.stepper.state-hover .step:first-child { color: var(--fg); }
+.tooltip { display: inline-block; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--fg); color: var(--bg); font-size: var(--text-xs); box-shadow: var(--elev-raised); }
+.avatar { display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-warm); color: var(--fg-2); font-weight: 600; box-shadow: var(--elev-ring); }
+.pagination { display: flex; gap: var(--space-1); }
+.breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.breadcrumb a { color: var(--fg-2); }
+.breadcrumb [aria-current="page"] { color: var(--fg); font-weight: 600; }
+.progress { width: 100%; height: var(--space-2); overflow: hidden; border-radius: var(--radius-pill); background: var(--border-soft); }
+.progress > span { display: block; height: 100%; background: var(--accent); }
+.spinner { display: inline-block; width: var(--space-6); height: var(--space-6); border: calc(var(--border-width) * 2) solid var(--border-soft); border-top-color: var(--accent); border-radius: var(--radius-pill); animation: spinner-rotate 0.8s linear infinite; }
+@keyframes spinner-rotate { to { transform: rotate(360deg); } }
+.accordion { border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.accordion > summary { padding: var(--space-3) var(--space-4); color: var(--fg); font-weight: 600; cursor: pointer; }
+.accordion > :not(summary) { margin: 0; padding: 0 var(--space-4) var(--space-3); color: var(--fg-2); }
+.menu { display: grid; min-width: 12rem; padding: var(--space-1); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--elev-raised); }
+.menu-item { min-height: var(--control-h); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg); text-align: left; font: var(--text-sm) var(--font-body); cursor: pointer; }
+.menu-item:hover, .menu.state-hover .menu-item:first-child { background: var(--surface-warm); }
+.menu-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:is(.carousel, .table, .toast, .sidebar, .topnav, .empty-state, .skeleton, .stepper, .tooltip, .avatar, .pagination, .breadcrumb, .progress, .spinner, .accordion, .menu):is(:focus-visible, .state-focus, .state-focus-visible) { outline: none; box-shadow: var(--focus-ring); }
+:is(.carousel, .table, .toast, .sidebar, .topnav, .empty-state, .skeleton, .stepper, .tooltip, .avatar, .pagination, .breadcrumb, .progress, .spinner, .accordion, .menu).state-disabled { opacity: 0.5; pointer-events: none; }
+:is(.avatar, .tooltip, .progress, .spinner, .accordion, .pagination, .breadcrumb).state-hover { filter: brightness(0.97); }
+@media (prefers-reduced-motion: reduce) { .skeleton, .spinner { animation: none; } .toast, .switch, .switch::after { transition: none; } }
+`;
 
 const PREVIEW_SCAFFOLD_TAIL = `.component { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--elev-ring); }
 .component.state-disabled { opacity: 0.5; }
@@ -301,21 +402,103 @@ export function baseCss() {
 
 /* ------------------------------------------------------------------ components */
 
-const COMPONENT_ALIASES = { botao: 'button', button: 'button', campo: 'input', input: 'input', 'campo-de-texto': 'input', cartao: 'card', card: 'card', selo: 'badge', badge: 'badge', alerta: 'alert', alert: 'alert', modal: 'modal', dialogo: 'modal' };
+/**
+ * Component name -> styled kind. Exact names first (English and Portuguese, with or without
+ * separators), then suffix rules so product-specific names (ServiceCard, StatusPill, PhoneInput)
+ * inherit the rules of their base kind. A name that matches nothing stays `generic`: it is
+ * declared in the contract but has no product CSS, and the audit reports it (componentCoverage).
+ * Audit finding: a real contract (OficinaAI, 2026-09) declared 24 components and only 6 had rules;
+ * the other 18 rendered as one grey placeholder and the audit still said PASS.
+ */
+const COMPONENT_KIND_BY_NAME = {
+  button: 'button', botao: 'button',
+  iconbutton: 'icon-button', botaoicone: 'icon-button', botaodeicone: 'icon-button',
+  input: 'input', campo: 'input', campodetexto: 'input', textfield: 'input',
+  textarea: 'textarea', areadetexto: 'textarea',
+  select: 'select', selecao: 'select', combobox: 'select', dropdown: 'select', seletor: 'select',
+  formfield: 'field', field: 'field', campodeformulario: 'field',
+  checkbox: 'checkbox', caixadeselecao: 'checkbox',
+  radio: 'radio', radiobutton: 'radio', radiogroup: 'radio',
+  switch: 'switch', toggle: 'switch', interruptor: 'switch',
+  card: 'card', cartao: 'card',
+  carousel: 'carousel', carrossel: 'carousel',
+  badge: 'badge', selo: 'badge', pill: 'badge', chip: 'badge', tag: 'badge',
+  alert: 'alert', alerta: 'alert', banner: 'alert', aviso: 'alert',
+  modal: 'modal', dialog: 'modal', dialogo: 'modal', drawer: 'modal',
+  table: 'table', tabela: 'table', datatable: 'table', datagrid: 'table',
+  tabs: 'tabs', tab: 'tabs', abas: 'tabs',
+  toast: 'toast', snackbar: 'toast', notificacao: 'toast',
+  sidebar: 'sidebar', sidenav: 'sidebar', barralateral: 'sidebar', menulateral: 'sidebar',
+  topnav: 'topnav', navbar: 'topnav', header: 'topnav', appbar: 'topnav', cabecalho: 'topnav',
+  emptystate: 'empty-state', estadovazio: 'empty-state',
+  skeleton: 'skeleton', esqueleto: 'skeleton',
+  stepper: 'stepper', steps: 'stepper', etapas: 'stepper', wizard: 'stepper',
+  tooltip: 'tooltip', dica: 'tooltip',
+  avatar: 'avatar',
+  pagination: 'pagination', paginacao: 'pagination',
+  breadcrumb: 'breadcrumb', breadcrumbs: 'breadcrumb', trilha: 'breadcrumb',
+  progress: 'progress', progressbar: 'progress', progresso: 'progress',
+  spinner: 'spinner', loader: 'spinner', carregando: 'spinner',
+  accordion: 'accordion', acordeao: 'accordion', collapse: 'accordion',
+  menu: 'menu', dropdownmenu: 'menu', contextmenu: 'menu',
+};
+const COMPONENT_KIND_SUFFIXES = [
+  ['iconbutton', 'icon-button'], ['button', 'button'], ['botao', 'button'],
+  ['textarea', 'textarea'], ['input', 'input'], ['field', 'field'], ['select', 'select'],
+  ['card', 'card'], ['cartao', 'card'], ['pill', 'badge'], ['badge', 'badge'], ['chip', 'badge'], ['tag', 'badge'],
+  ['alert', 'alert'], ['banner', 'alert'], ['modal', 'modal'], ['dialog', 'modal'], ['drawer', 'modal'],
+  ['table', 'table'], ['tabela', 'table'], ['tabs', 'tabs'], ['toast', 'toast'], ['nav', 'topnav'], ['navbar', 'topnav'],
+  ['header', 'topnav'], ['sidebar', 'sidebar'], ['menu', 'menu'], ['stepper', 'stepper'], ['carousel', 'carousel'],
+  ['skeleton', 'skeleton'], ['avatar', 'avatar'], ['tooltip', 'tooltip'], ['spinner', 'spinner'], ['progress', 'progress'],
+];
+
+/** The styled kind of a contract component (`generic` when no product rule applies). */
+export function componentKind(name) {
+  const compact = slug(name).replace(/-/g, '');
+  if (COMPONENT_KIND_BY_NAME[compact]) return COMPONENT_KIND_BY_NAME[compact];
+  for (const [suffix, kind] of COMPONENT_KIND_SUFFIXES) if (compact.endsWith(suffix)) return kind;
+  return 'generic';
+}
 
 function fixture(component, state) {
-  const kind = COMPONENT_ALIASES[slug(component.name)] ?? 'generic';
+  const kind = componentKind(component.name);
   const cls = `state-${state}`;
   const disabled = state === 'disabled' ? ' disabled' : '';
   const label = esc(component.name);
+  const st = esc(state);
+  const on = ['checked', 'selected', 'active', 'open', 'expanded', 'completed'].includes(state);
   switch (kind) {
-    case 'button': return `<button type="button" class="btn ${cls}"${disabled}>${label} (${esc(state)})</button>`;
-    case 'input': return `<input type="text" class="input ${cls}" aria-label="${label} ${esc(state)}" value="${state === 'empty' ? '' : esc(state)}" placeholder="${label}"${disabled}>${state === 'error' ? '<span class="field-error">Required field</span>' : ''}`;
-    case 'card': return `<div class="card ${cls}"><h3>${label}</h3><p>${state === 'empty' ? 'Nothing here yet' : `State: ${esc(state)}`}</p></div>`;
-    case 'badge': return `<span class="badge ${cls}">${label} (${esc(state)})</span>`;
-    case 'alert': return `<div class="alert ${cls}" role="status">${label} (${esc(state)})</div>`;
-    case 'modal': return `<div class="modal ${cls}" role="dialog" aria-label="${label}"><h3>${label}</h3><p>State: ${esc(state)}</p></div>`;
-    default: return `<div class="component ${cls}"><span>${label} [${esc(state)}]</span></div>`;
+    case 'button': return `<button type="button" class="btn ${cls}"${disabled}>${label} (${st})</button>`;
+    case 'icon-button': return `<button type="button" class="icon-btn ${cls}" aria-label="${label} ${st}"${disabled}><span aria-hidden="true">+</span></button>`;
+    case 'input': return `<input type="text" class="input ${cls}" aria-label="${label} ${st}" value="${state === 'empty' ? '' : st}" placeholder="${label}"${disabled}>${state === 'error' ? '<span class="field-error">Required field</span>' : ''}`;
+    case 'textarea': return `<textarea class="textarea ${cls}" aria-label="${label} ${st}" placeholder="${label}"${disabled}>${state === 'empty' ? '' : st}</textarea>${state === 'error' ? '<span class="field-error">Required field</span>' : ''}`;
+    case 'select': return `<select class="select ${cls}" aria-label="${label} ${st}"${disabled}><option>${label} (${st})</option><option>Option 2</option></select>${state === 'error' ? '<span class="field-error">Choose an option</span>' : ''}`;
+    case 'field': return `<div class="field ${cls}"><label class="field-label">${label}</label><input type="text" class="input${state === 'error' ? ' state-error' : ''}" aria-label="${label} ${st}"${disabled}><span class="${state === 'error' ? 'field-error' : 'field-hint'}">${state === 'error' ? 'Required field' : 'Helper text'}</span></div>`;
+    case 'checkbox': return `<label class="checkbox ${cls}"><input type="checkbox"${state === 'checked' ? ' checked' : ''}${disabled}> ${label} (${st})</label>`;
+    case 'radio': return `<label class="radio ${cls}"><input type="radio" name="r-${slug(component.name)}-${st}"${state === 'checked' ? ' checked' : ''}${disabled}> ${label} (${st})</label>`;
+    case 'switch': return `<button type="button" role="switch" class="switch ${cls}" aria-checked="${on}" aria-label="${label} ${st}"${disabled}></button>`;
+    case 'card': return `<div class="card ${cls}"${state === 'selected' ? ' aria-selected="true"' : ''}><h3>${label}</h3><p>${state === 'empty' ? 'Nothing here yet' : `State: ${st}`}</p></div>`;
+    case 'carousel': return `<div class="carousel ${cls}" tabindex="0" aria-label="${label} ${st}"><div class="card">1</div><div class="card">2</div><div class="card">3</div></div>`;
+    case 'badge': return `<span class="badge ${cls}">${label} (${st})</span>`;
+    case 'alert': return `<div class="alert ${cls}" role="status">${label} (${st})</div>`;
+    case 'modal': return `<div class="modal ${cls}" role="dialog" aria-label="${label}"><h3>${label}</h3><p>State: ${st}</p></div>`;
+    case 'table': return `<table class="table ${cls}" aria-label="${label} ${st}"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>${state === 'empty' ? '<tr><td class="table-empty" colspan="2">No records yet</td></tr>' : `<tr${state === 'active' ? ' aria-selected="true"' : ''}><td>${label}</td><td>${st}</td></tr><tr><td>Row 2</td><td>ok</td></tr>`}</tbody></table>`;
+    case 'tabs': return `<div class="tabs ${cls}" role="tablist" aria-label="${label} ${st}"><button type="button" role="tab" class="tab" aria-selected="${on || state === 'default'}"${disabled}>${label}</button><button type="button" role="tab" class="tab" aria-selected="false"${disabled}>Second</button></div>`;
+    case 'toast': return `<div class="toast ${cls}" role="status">${label} (${st})</div>`;
+    case 'sidebar': return `<nav class="sidebar ${cls}" aria-label="${label} ${st}"><a class="nav-item" aria-current="page" href="#">Dashboard</a><a class="nav-item" href="#">${label}</a></nav>`;
+    case 'topnav': return `<header class="topnav ${cls}"><strong>${label}</strong><a class="nav-item" aria-current="page" href="#">Home</a><a class="nav-item" href="#">${st}</a></header>`;
+    case 'empty-state': return `<div class="empty-state ${cls}"><h3>${label}</h3><p>Nothing here yet (${st})</p><button type="button" class="btn">Create</button></div>`;
+    case 'skeleton': return `<div class="skeleton ${cls}" aria-busy="true" aria-label="${label} ${st}"></div>`;
+    case 'stepper': return `<ol class="stepper ${cls}" aria-label="${label} ${st}"><li class="step state-completed">Done</li><li class="step${state === 'completed' ? ' state-completed' : ''}" aria-current="step">${label}</li><li class="step">Next</li></ol>`;
+    case 'tooltip': return `<span class="tooltip ${cls}" role="tooltip">${label} (${st})</span>`;
+    case 'avatar': return `<span class="avatar ${cls}" aria-label="${label} ${st}">AB</span>`;
+    case 'pagination': return `<nav class="pagination ${cls}" aria-label="${label} ${st}"><button type="button" class="icon-btn"${disabled}>1</button><button type="button" class="icon-btn" aria-current="page"${disabled}>2</button><button type="button" class="icon-btn"${disabled}>3</button></nav>`;
+    case 'breadcrumb': return `<nav class="breadcrumb ${cls}" aria-label="${label} ${st}"><a href="#">Home</a><span aria-hidden="true">/</span><span aria-current="page">${label}</span></nav>`;
+    case 'progress': return `<div class="progress ${cls}" role="progressbar" aria-label="${label} ${st}" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100"><span style="width: 60%"></span></div>`;
+    case 'spinner': return `<span class="spinner ${cls}" role="status" aria-label="${label} ${st}"></span>`;
+    case 'accordion': return `<details class="accordion ${cls}"${on ? ' open' : ''}><summary>${label} (${st})</summary><p>Content</p></details>`;
+    case 'menu': return `<div class="menu ${cls}" role="menu" aria-label="${label} ${st}"><button type="button" role="menuitem" class="menu-item"${disabled}>${label}</button><button type="button" role="menuitem" class="menu-item"${disabled}>Second</button></div>`;
+    default: return `<div class="component ${cls}"><span>${label} [${st}]</span></div>`;
   }
 }
 
@@ -346,10 +529,18 @@ export function componentStyleCoverage(contract) {
   const styled = [];
   const generic = [];
   for (const component of components) {
-    (COMPONENT_ALIASES[slug(component.name)] ? styled : generic).push(component.name);
+    (componentKind(component.name) === 'generic' ? generic : styled).push(component.name);
   }
   return { styled, generic };
 }
+
+/** Every product class components.css defines (listed in its header and in USAGE.md). */
+export const COMPONENT_CLASSES = [
+  '.btn', '.icon-btn', '.input', '.textarea', '.select', '.field', '.field-label', '.field-hint', '.field-error', '.checkbox',
+  '.radio', '.switch', '.card', '.carousel', '.badge', '.alert', '.modal', '.table', '.tabs', '.tab', '.toast', '.sidebar',
+  '.topnav', '.nav-item', '.empty-state', '.skeleton', '.stepper', '.step', '.tooltip', '.avatar', '.pagination',
+  '.breadcrumb', '.progress', '.spinner', '.accordion', '.menu', '.menu-item',
+];
 
 /** components.css (package root): the importable product component rules, nothing from the preview. */
 export function renderComponentsCss(contract) {
@@ -357,7 +548,7 @@ export function renderComponentsCss(contract) {
   const note = generic.length
     ? ` * Without dedicated rules (build them from tokens, never from preview scaffolding): ${generic.join(', ')}.\n`
     : '';
-  return `/*\n * ${contract.systemId} component styles · contract ${contract.sha256 ?? 'unsigned'}\n * Import after tokens.css. Classes: .btn .input .field-error .card .badge .alert .modal + state-* modifiers.\n * Styled components: ${styled.join(', ') || 'none'}.\n${note} */\n${componentCss()}`;
+  return `/*\n * ${contract.systemId} component styles · contract ${contract.sha256 ?? 'unsigned'}\n * Import after tokens.css. Classes: ${COMPONENT_CLASSES.join(' ')} + state-* modifiers.\n * Styled components: ${styled.join(', ') || 'none'}.\n${note} */\n${componentCss()}`;
 }
 
 /** components.html (package root): all components, all states, both themes, straight from the contract. */

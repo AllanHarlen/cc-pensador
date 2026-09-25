@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import fc from 'fast-check';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { auditDesignPackage, renderDesignPackage } from '../scripts/design-package.mjs';
+import { auditDesignPackage, recordDesignReview, renderDesignPackage } from '../scripts/design-package.mjs';
+import { componentKind, componentStyleCoverage, renderComponentsCss } from '../scripts/lib/design-render.mjs';
 import { APPROVAL_FILE, DESIGN_APPROVAL_HEADER, loadApprovalKey, verifyApprovalRecord } from '../scripts/lib/design-approval.mjs';
 import { approveCommand, adjustCommand, buildCommand, seedCommand } from '../scripts/design-brief.mjs';
 import { deltaE } from '../scripts/lib/color.mjs';
@@ -185,7 +186,7 @@ describe('render integrity and engine run (on disk)', () => {
     const { audit, resolvedDir, contract } = feature();
     expect(audit.findings.filter((f) => f.severity !== 'info')).toEqual([]);
     expect(audit.status).toBe('PASS');
-    expect(audit.checks).toEqual({ structure: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
+    expect(audit.checks).toEqual({ structure: 'PASS', componentCoverage: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
     expect(audit.contractSha256).toBe(contract.sha256);
     const provenance = JSON.parse(readFileSync(join(resolvedDir, 'provenance.json'), 'utf8'));
     expect(provenance.contractSha256).toBe(contract.sha256);
@@ -431,7 +432,7 @@ describe('property: any valid brief yields a resolved/ that passes audit, confor
       write(join(resolvedDir, 'design-contract.json'), contract);
       const audit = renderDesignPackage({ contractFile: join(resolvedDir, 'design-contract.json'), resolvedDir, strict: true });
       expect(audit.findings.filter((f) => f.severity === 'critical' || f.severity === 'high'), JSON.stringify(values)).toEqual([]);
-      expect(audit.checks).toEqual({ structure: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
+      expect(audit.checks).toEqual({ structure: 'PASS', componentCoverage: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
       // every LOCKED field is present, unchanged, in the contract
       expect(checkBriefConformance(brief, contract).status).toBe('PASS');
       rmSync(root, { recursive: true, force: true });
@@ -446,6 +447,61 @@ describe('property: any valid brief yields a resolved/ that passes audit, confor
       const contract = mapEngineToContract({ systemId: 'p', seed: { ...seed, colorPrimary: other }, tokens: derive({ ...seed, colorPrimary: other, colorSuccess: '#16A34A', colorWarning: '#D97706', colorError: '#DC2626', fontFamily: 'Inter, sans-serif', fontFamilyCode: 'JetBrains Mono, monospace', controlHeight: 36, borderRadius: 8 }), engine: { version: '1' }, extras: EXTRAS });
       expect(checkBriefConformance(brief, contract).status).toBe('BLOCKED');
     }), { numRuns: 40 });
+  });
+});
+
+describe('design review record (design-review.json)', () => {
+  it('records a PASS bound to the contract only over a PASS audit of the same contract', () => {
+    const { resolvedDir, contract } = feature();
+    const result = recordDesignReview({ resolvedDir, verdict: 'pass', reviewer: 'codex', report: 'review/design-codex.md', now: '2026-09-25T10:00:00.000Z' });
+    expect(result.status).toBe('ok');
+    const stored = JSON.parse(readFileSync(join(resolvedDir, 'design-review.json'), 'utf8'));
+    expect(stored).toMatchObject({ verdict: 'PASS', reviewer: 'codex', contractSha256: contract.sha256, blockingFindings: 0 });
+    expect(result.statePatch.designPackages[contract.systemId]).toEqual({ reviewStatus: 'PASS', reviewContractSha256: contract.sha256 });
+  });
+
+  it('refuses a PASS with blocking findings, over a failing audit, or without a reviewer', () => {
+    const { resolvedDir } = feature();
+    expect(recordDesignReview({ resolvedDir, verdict: 'PASS', reviewer: 'codex', blockingFindings: 2 }).reasonCode).toBe('REVIEW_PASS_WITH_BLOCKING_FINDINGS');
+    expect(recordDesignReview({ resolvedDir, verdict: 'PASS' }).reasonCode).toBe('REVIEW_REVIEWER_REQUIRED');
+    expect(recordDesignReview({ resolvedDir, verdict: 'MAYBE', reviewer: 'codex' }).reasonCode).toBe('REVIEW_VERDICT_INVALID');
+    write(join(resolvedDir, 'design-audit.json'), { status: 'BLOCKED', contractSha256: 'x' });
+    expect(recordDesignReview({ resolvedDir, verdict: 'PASS', reviewer: 'codex' }).reasonCode).toBe('REVIEW_WITHOUT_PASSING_AUDIT');
+    // a FAIL is always recordable: it is what keeps the handoff from claiming PASS
+    expect(recordDesignReview({ resolvedDir, verdict: 'FAIL', reviewer: 'codex', blockingFindings: 3 }).status).toBe('ok');
+  });
+});
+
+describe('component coverage (components.css)', () => {
+  // The 24 components of a real contract (OficinaAI, 2026-09): only 6 had rules before.
+  const REAL = ['Button', 'IconButton', 'Input', 'PhoneInput', 'Textarea', 'Select', 'Checkbox', 'Switch', 'Card', 'ServiceCard', 'PartCard', 'Carousel',
+    'Badge', 'StatusPill', 'Table', 'Tabs', 'Modal', 'Toast', 'Sidebar', 'TopNav', 'EmptyState', 'Skeleton', 'FormField', 'Stepper'];
+
+  it('maps every component of the real contract to a styled kind (product names inherit their base kind)', () => {
+    const contract = { systemId: 'x', components: REAL.map((name) => ({ name, states: ['default'] })) };
+    expect(componentStyleCoverage(contract).generic).toEqual([]);
+    expect(componentKind('ServiceCard')).toBe('card');
+    expect(componentKind('StatusPill')).toBe('badge');
+    expect(componentKind('PhoneInput')).toBe('input');
+    expect(componentKind('Botão')).toBe('button');
+    expect(componentKind('Widget')).toBe('generic');
+  });
+
+  it('components.css only references tokens and lists the unstyled components', () => {
+    const contract = { systemId: 'x', components: [...REAL, 'Widget'].map((name) => ({ name, states: ['default'] })) };
+    const css = renderComponentsCss(contract);
+    expect(css).toMatch(/Without dedicated rules.*Widget/);
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/[^0-9.\w-](?:[2-9]|1\d)\d*px/);
+  });
+
+  it('the audit reports an unstyled component as a non-blocking componentCoverage WARN', () => {
+    const contract = gateContract({
+      extras: { ...EXTRAS, components: [...EXTRAS.components, { name: 'Widget', states: ['default', 'hover', 'focus-visible', 'disabled'] }] },
+    });
+    const { audit } = feature({ contract });
+    expect(audit.checks.componentCoverage).toBe('WARN');
+    expect(audit.findings.find((f) => f.code === 'COMPONENT_WITHOUT_RULES')).toMatchObject({ severity: 'medium' });
   });
 });
 

@@ -168,6 +168,16 @@
               },
               "audit": {
                 "type": "string"
+              },
+              "review": {
+                "type": "string",
+                "description": "design-review.json: the recorded read-only review (Codex) bound to contractSha256."
+              },
+              "auditStatus": {
+                "type": "string"
+              },
+              "reviewStatus": {
+                "type": "string"
               }
             }
           },

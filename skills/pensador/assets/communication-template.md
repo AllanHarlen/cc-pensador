@@ -23,7 +23,7 @@
 - **Arquivo fonte:** `{{ARQUIVO_CONTRATO}}` (ex.: `openapi.yaml`)
 - **Spec:** {{SPEC}} (OpenAPI 3.1 / GraphQL SDL / Protobuf / AsyncAPI 3)
 - **Mock server (fluxo paralelo front/back):** `{{COMANDO_MOCK}}` (ex.: `prism mock openapi.yaml`)
-- **Validação de contrato (CI):** `{{COMANDO_VALIDACAO}}` (ex.: `schemathesis run openapi.yaml`)
+- **Validação de contrato (CI):** `{{COMANDO_VALIDACAO}}` (ex.: `st run openapi.yaml --url <base-url>` — schemathesis contra a API em execucao; o Orquestrador roda via `validate-api-contract.mjs`)
 
 ---
 
