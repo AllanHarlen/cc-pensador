@@ -222,7 +222,19 @@ describe('design-brief.mjs agent', () => {
     const legacy = agentCommand({ agents: preflight, choose: 'claude', daemonWhere: 'container', now: NOW });
     expect(legacy.status).toBe('REFUSED');
     expect(legacy.remediations).toEqual(['stop-legacy-container', 'start-host-daemon']);
-    expect(agentCommand({ agents: preflight, choose: 'none' }).statePatch).toEqual({ designAgent: { id: 'none' } });
+  });
+
+  // Agent selection is mandatory whenever Open Design is used — agentCommand
+  // always calls resolveDesignAgent with requireAgent: true, so there is no
+  // "skip the prototype" path through the CLI, even though the pure
+  // resolveDesignAgent function itself still defaults to requireAgent: false
+  // for other callers/tests.
+  it('refuses "none" — agent selection has no skip option', () => {
+    const refused = agentCommand({ agents: preflight, choose: 'none', now: NOW });
+    expect(refused.status).toBe('REFUSED');
+    expect(refused.statePatch).toEqual({});
+    expect(refused.issues).toEqual(['design-agent-required']);
+    expect(refused.remediations).toEqual(['select-an-available-design-agent']);
   });
 });
 

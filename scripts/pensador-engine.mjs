@@ -3534,12 +3534,15 @@ export function validateDesignAgent(value) {
  * agent sets `prototypeEnabled`; even then the run itself still needs the user's explicit consent
  * (it costs tokens) — this function never decides that.
  */
-export function resolveDesignAgent(agents, choice, { daemonWhere = null, now = new Date().toISOString() } = {}) {
+export function resolveDesignAgent(agents, choice, { daemonWhere = null, now = new Date().toISOString(), requireAgent = false } = {}) {
   const list = Array.isArray(agents) ? agents.filter((a) => a && typeof a.id === 'string') : [];
   const id = typeof choice === 'string' ? choice : choice && typeof choice === 'object' ? choice.id : null;
   const refuse = (issue, remediations = []) => ({ ok: false, designAgent: null, prototypeEnabled: false, issues: [issue], remediations });
   if (typeof id !== 'string' || !id) return refuse('no-choice');
-  if (id === DESIGN_AGENT_NONE) return { ok: true, designAgent: { id: DESIGN_AGENT_NONE }, prototypeEnabled: false, issues: [], remediations: [] };
+  if (id === DESIGN_AGENT_NONE) {
+    if (requireAgent) return refuse('design-agent-required', ['select-an-available-design-agent']);
+    return { ok: true, designAgent: { id: DESIGN_AGENT_NONE }, prototypeEnabled: false, issues: [], remediations: [] };
+  }
   const matches = list.filter((a) => a.id === id && a.available === true);
   if (matches.length === 0) return refuse('agent-not-detected');
   const usable = daemonWhere ? matches.find((a) => a.where === daemonWhere) : null;
@@ -4088,6 +4091,7 @@ export function planArtifacts(state) {
     projectBaseline: false,
     requirementsIndex: false,
     brandAssets: false,
+    designPrototype: false,
     uiDataMap: false,
     seedPlan: false,
     surfaceBenchmark: false,
@@ -4138,6 +4142,11 @@ export function planArtifacts(state) {
       projectBaseline: true,
       requirementsIndex: false,
       brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
+      // Mandatory whenever Open Design is used (agent selection has no skip
+      // option in that case — see resolveDesignAgent/agentCommand); not gated
+      // on state.designAgent because usesOpenDesign already implies an agent
+      // was chosen.
+      designPrototype: hasFrontend && usesOpenDesign,
       // ui-data-map/seed-plan are common to BOTH artifactMode, like
       // architecture.md/codebase-memory.md/project-baseline.json above —
       // gated on hasFrontend/hasBackend, not on prd vs spec.
@@ -4175,6 +4184,7 @@ export function planArtifacts(state) {
     // a different, I/O-based path this pure engine does not attempt to mirror.
     requirementsIndex: true,
     brandAssets: hasFrontend && (usesOpenDesign || Boolean(state.brandAssets)),
+    designPrototype: hasFrontend && usesOpenDesign,
     uiDataMap: hasFrontend,
     seedPlan: hasBackend,
     surfaceBenchmark: needsSurfaceBenchmark,
@@ -4382,6 +4392,16 @@ export function buildArtifactList(state) {
       path: `${basePath}assets/`,
       manifest: `${basePath}assets/manifest.json`,
       description: 'Diretório de mídia, logos, banners e ícones vetoriais gerados no DESIGN',
+    });
+  }
+
+  if (plan.designPrototype) {
+    artifacts.push({
+      kind: 'design-prototype',
+      role: 'design-prototype',
+      filename: 'prototypes/',
+      path: `${basePath}prototypes/`,
+      description: 'Diretório com o protótipo interativo (HTML/CSS/JS) gerado pelo agente do Open Design no estágio DESIGN — referência de fidelidade visual para o Orquestrador reproduzir na stack de front-end do projeto',
     });
   }
 

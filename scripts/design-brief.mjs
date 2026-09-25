@@ -11,8 +11,9 @@
  *   adjust  --feature <featurePath> --set '{"colorPrimary":"#0F766E"}'   (quick adjustments of the visual approval)
  *   approve --feature <featurePath> --dir <featurePath>/design-systems/<id> [--unverified]   (after the user approved preview/)
  *           needs the approval question (AskUserQuestion header AprovDesign) in the hook log; --unverified only where hooks are disabled
- *   agent   --agents <preflight.json|designAgents.json> --choose <agentId|none> [--daemon-where host|container]   (container = a leftover Docker container holding the port: refused)
- *           binds the agent the user picked (AskUserQuestion header AgenteDesign) to the OPTIONAL OD prototype/Critique;
+ *   agent   --agents <preflight.json|designAgents.json> --choose <agentId> [--daemon-where host|container]   (container = a leftover Docker container holding the port: refused)
+ *           binds the agent the user picked (AskUserQuestion header AgenteDesign) to the OD prototype/Critique. MANDATORY whenever
+ *           Open Design is used (requireAgent: true always) — `--choose none`/no agent available is refused, never a silent skip;
  *           prints statePatch.designAgent. Refuses (exit 1, with remediations) an agent the daemon cannot see; never starts a run
  *
  * Every command prints JSON; exit 0 = ok, 1 = refused (issues), 2 = usage.
@@ -148,7 +149,9 @@ function designAgentsFrom(json) {
 export function agentCommand({ agents, choose, daemonWhere, now }) {
   const detected = designAgentsFrom(agents);
   const where = daemonWhere ?? detected.daemonWhere;
-  const resolved = resolveDesignAgent(detected.agents, choose, { daemonWhere: where, ...(now ? { now } : {}) });
+  // requireAgent is always true here: agent selection is mandatory whenever
+  // Open Design is used (no "skip" option) — see resolveDesignAgent.
+  const resolved = resolveDesignAgent(detected.agents, choose, { daemonWhere: where, requireAgent: true, ...(now ? { now } : {}) });
   if (resolved.designAgent && !validateDesignAgent(resolved.designAgent).ok) return { status: 'ERROR', message: 'resolved designAgent failed validation' };
   return {
     status: resolved.ok ? 'ok' : 'REFUSED',

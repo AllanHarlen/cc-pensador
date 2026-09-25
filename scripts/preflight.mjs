@@ -1307,14 +1307,14 @@ function buildGuidance(codex, agy, executionMode, codebaseMemory, context7, webR
     if (usable.length > 0) {
       lines.push(
         `Design agent: ${usable.map((a) => `${a.id}@${a.where}`).join(", ")} detected — when the demand has a front-end, ask ONCE before DESIGN ` +
-          `(AskUserQuestion, header "${designAgents.header}", options = these agents + "Nenhum (pular protótipo)"), persist state.designAgent ` +
-          `(design-brief.mjs agent) and use --agent <id> in \`od run start\`; never start the run without the user's consent (it costs tokens).`,
+          `(AskUserQuestion, header "${designAgents.header}", options = one per detected agent; no "skip" option — selection is mandatory whenever Open Design is used), ` +
+          `persist state.designAgent (design-brief.mjs agent --choose <id>) and, only after the user's separate consent (it costs tokens), use --agent <id> in \`od run start\`.`,
       );
       if (designAgents.daemonWhere === "host") {
         lines.push("  → OD daemon runs on the host: only agents the daemon itself lists (GET /api/agents) can be launched; otherwise install/authenticate the agent on the host.");
       }
     } else {
-      lines.push("Design agent: none detected — the OD prototype/Critique stay off (no question needed).");
+      lines.push("Design agent: none detected — Open Design's prototype is mandatory whenever Open Design is used with a front-end demand, so DESIGN cannot close like this: install/authenticate a design agent (AskUserQuestion for how to proceed) before continuing.");
     }
   }
 

@@ -12,7 +12,7 @@ import {
   checkBriefConformance, checkComponentStates, checkContrastMatrix, checkScales, isBlocking,
 } from './lib/design-gates.mjs';
 import {
-  DEFAULT_COMPONENTS, REQUIRED_COMPONENT_STATES, renderComponentsHtml, renderComponentsManifest, renderDesignMarkdown,
+  DEFAULT_COMPONENTS, REQUIRED_COMPONENT_STATES, renderComponentsCss, renderComponentsHtml, renderComponentsManifest, renderDesignMarkdown,
   renderDtcg, renderManifest, renderPreviewPages, renderTailwind, renderTokensCss, renderUsageMarkdown,
 } from './lib/design-render.mjs';
 import {
@@ -22,7 +22,7 @@ import {
 
 export { REQUIRED_COMPONENT_STATES, renderComponentsHtml };
 export const REQUIRED_PACKAGE_FILES = [
-  'design-contract.json', 'tokens.css', 'design-tokens.json', 'tailwind-v4.css', 'DESIGN.md', 'components.html', 'USAGE.md', 'manifest.json', 'provenance.json',
+  'design-contract.json', 'tokens.css', 'components.css', 'design-tokens.json', 'tailwind-v4.css', 'DESIGN.md', 'components.html', 'USAGE.md', 'manifest.json', 'provenance.json',
 ];
 
 function readJson(file) {
@@ -214,6 +214,7 @@ export function renderPackageFiles(input) {
   const files = {
     'design-contract.json': canonicalJson(contract),
     'tokens.css': renderTokensCss(contract),
+    'components.css': renderComponentsCss(contract),
     'design-tokens.json': renderDtcg(contract),
     'tailwind-v4.css': renderTailwind(contract),
     'DESIGN.md': renderDesignMarkdown(contract),

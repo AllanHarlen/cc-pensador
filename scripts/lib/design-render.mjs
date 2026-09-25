@@ -217,8 +217,9 @@ export function renderDesignMarkdown(contract) {
 
 /* ------------------------------------------------------------------ CSS shared by components and previews */
 
-export function baseCss() {
-  return `*, *::before, *::after { box-sizing: border-box; }
+// Preview scaffolding (.page, .scope, .grid, .swatch, .app...) is NOT product CSS: `.grid` here is a
+// flex row and would override Tailwind's `grid` utility. It stays in preview.css / components.html only.
+const PREVIEW_SCAFFOLD_HEAD = `*, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: var(--text-base)/var(--leading-body) var(--font-body); }
 h1, h2, h3 { font-family: var(--font-display); line-height: var(--leading-tight); letter-spacing: var(--tracking-display); margin: 0 0 var(--space-3); }
 h1 { font-size: var(--text-3xl); } h2 { font-size: var(--text-xl); } h3 { font-size: var(--text-lg); }
@@ -233,7 +234,16 @@ code { font-family: var(--font-mono); font-size: var(--text-sm); }
 .swatch { width: 9rem; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); box-shadow: var(--elev-ring); }
 .swatch i { display: block; height: var(--space-12); }
 .swatch span { display: block; padding: var(--space-2); font-size: var(--text-xs); color: var(--muted); }
-.btn { min-height: var(--control-h); padding: 0 var(--space-4); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-on); font: 600 var(--text-sm)/1 var(--font-body); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard); }
+`;
+
+/**
+ * Product component rules (.btn, .input, .card, .badge, .alert, .modal and their states) — the part
+ * of the preview CSS an application must import. Published as components.css: a real run shipped a
+ * front-end whose Button/Card/Input/Badge/Dialog had no styles in the final bundle because these rules
+ * lived only inside components.html and preview/preview.css (OficinaAI, 2026-09-22).
+ */
+export function componentCss() {
+  return `.btn { min-height: var(--control-h); padding: 0 var(--space-4); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-on); font: 600 var(--text-sm)/1 var(--font-body); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard); }
 .btn:hover, .btn.state-hover { background: var(--accent-hover); }
 .btn:active, .btn.state-active { background: var(--accent-active); }
 .btn:focus-visible, .btn.state-focus, .btn.state-focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -264,7 +274,10 @@ code { font-family: var(--font-mono); font-size: var(--text-sm); }
 .modal { min-width: 16rem; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elev-raised); }
 .modal.state-disabled { opacity: 0.5; }
 .modal.state-focus, .modal.state-focus-visible { box-shadow: var(--focus-ring); }
-.component { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--elev-ring); }
+`;
+}
+
+const PREVIEW_SCAFFOLD_TAIL = `.component { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--elev-ring); }
 .component.state-disabled { opacity: 0.5; }
 .component.state-focus, .component.state-focus-visible { box-shadow: var(--focus-ring); }
 .app { display: grid; grid-template-columns: 12rem 1fr; min-height: 22rem; background: var(--bg); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--elev-ring); }
@@ -281,6 +294,9 @@ code { font-family: var(--font-mono); font-size: var(--text-sm); }
 @media (max-width: 720px) { .app { grid-template-columns: 1fr; } .page { padding: var(--space-6) var(--container-gutter-phone); } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 `;
+
+export function baseCss() {
+  return `${PREVIEW_SCAFFOLD_HEAD}${componentCss()}${PREVIEW_SCAFFOLD_TAIL}`;
 }
 
 /* ------------------------------------------------------------------ components */
@@ -318,6 +334,30 @@ function themeScopes(contract, body) {
 
 function htmlPage({ contract, title, css, cssHref, body, cssRel = './tokens.css' }) {
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${esc(title)} — ${esc(contract.systemId)}</title>\n  <link rel="stylesheet" href="${cssRel}">\n${cssHref ? `  <link rel="stylesheet" href="${cssHref}">\n` : `  <style>\n${css}  </style>\n`}</head>\n<body>\n<div class="page">\n<h1>${esc(title)}</h1>\n${body}\n</div>\n</body>\n</html>\n`;
+}
+
+/**
+ * Which contract components have dedicated product CSS in components.css and which only get the
+ * generic `.component` preview placeholder. The generic ones are declared (name + states) but not
+ * designed yet: the implementer must build them from tokens, and the orchestrator should know it.
+ */
+export function componentStyleCoverage(contract) {
+  const components = contract.components?.length ? contract.components : DEFAULT_COMPONENTS;
+  const styled = [];
+  const generic = [];
+  for (const component of components) {
+    (COMPONENT_ALIASES[slug(component.name)] ? styled : generic).push(component.name);
+  }
+  return { styled, generic };
+}
+
+/** components.css (package root): the importable product component rules, nothing from the preview. */
+export function renderComponentsCss(contract) {
+  const { styled, generic } = componentStyleCoverage(contract);
+  const note = generic.length
+    ? ` * Without dedicated rules (build them from tokens, never from preview scaffolding): ${generic.join(', ')}.\n`
+    : '';
+  return `/*\n * ${contract.systemId} component styles · contract ${contract.sha256 ?? 'unsigned'}\n * Import after tokens.css. Classes: .btn .input .field-error .card .badge .alert .modal + state-* modifiers.\n * Styled components: ${styled.join(', ') || 'none'}.\n${note} */\n${componentCss()}`;
 }
 
 /** components.html (package root): all components, all states, both themes, straight from the contract. */
@@ -387,7 +427,11 @@ export function renderPreviewPages(contract) {
 /* ------------------------------------------------------------------ USAGE.md, manifests */
 
 export function renderUsageMarkdown(contract) {
-  return `# Using ${contract.systemId}\n\nContract \`${contract.sha256 ?? 'unsigned'}\` · engine ${contract.engine?.name}@${contract.engine?.version}\n\n## CSS\n\n\`\`\`html\n<link rel="stylesheet" href="tokens.css">\n<html data-theme="dark"> <!-- optional; omitted = follows prefers-color-scheme -->\n\`\`\`\n\n## Tailwind v4\n\n\`\`\`css\n@import "./tailwind-v4.css";\n\`\`\`\n\n## Rules\n\n- Use \`var(--token)\` only; the tokens are the TOKEN_SCHEMA names (plus the extensions \`--info\`, \`--*-text\`, \`--border-strong\`, \`--focus\`, \`--border-width\`, \`--control-h*\`).\n- Semantic colors as text use \`--success-text\`, \`--warn-text\`, \`--danger-text\`, \`--info-text\`.\n- Input borders use \`--border-strong\` (3:1); \`--border\` is decorative.\n- A new token requires a new Pensador version of this design system.\n\n## Files\n\n- \`design-contract.json\` (source of truth), \`tokens.css\`, \`design-tokens.json\` (DTCG), \`tailwind-v4.css\`, \`DESIGN.md\`, \`components.html\`, \`preview/\`.\n`;
+  const { generic } = componentStyleCoverage(contract);
+  const genericNote = generic.length
+    ? `\n\nComponents declared in the contract without dedicated rules in \`components.css\`: ${generic.map((name) => `\`${name}\``).join(', ')}. Build them from tokens only, and cover every state listed in \`components.manifest.json\`.`
+    : '';
+  return `# Using ${contract.systemId}\n\nContract \`${contract.sha256 ?? 'unsigned'}\` · engine ${contract.engine?.name}@${contract.engine?.version}\n\n## CSS\n\n\`\`\`html\n<link rel="stylesheet" href="tokens.css">\n<link rel="stylesheet" href="components.css">\n<html data-theme="dark"> <!-- optional; omitted = follows prefers-color-scheme -->\n\`\`\`\n\n## Tailwind v4\n\n\`\`\`css\n@import "./tailwind-v4.css";\n@import "./components.css";\n\`\`\`\n\n## Components\n\n\`components.css\` is the only component stylesheet to import. \`components.html\` and \`preview/\` are visual references: their scaffolding classes (\`.page\`, \`.scope\`, \`.grid\`, \`.state\`) collide with utility frameworks and must never be copied into the product. After a build, confirm the component classes reached the compiled CSS bundle.${genericNote}\n\n## Rules\n\n- Use \`var(--token)\` only; the tokens are the TOKEN_SCHEMA names (plus the extensions \`--info\`, \`--*-text\`, \`--border-strong\`, \`--focus\`, \`--border-width\`, \`--control-h*\`).\n- Semantic colors as text use \`--success-text\`, \`--warn-text\`, \`--danger-text\`, \`--info-text\`.\n- Input borders use \`--border-strong\` (3:1); \`--border\` is decorative.\n- A new token requires a new Pensador version of this design system.\n\n## Files\n\n- \`design-contract.json\` (source of truth), \`tokens.css\`, \`components.css\`, \`design-tokens.json\` (DTCG), \`tailwind-v4.css\`, \`DESIGN.md\`, \`components.html\`, \`preview/\`.\n`;
 }
 
 export function renderManifest(contract) {
@@ -398,7 +442,7 @@ export function renderManifest(contract) {
     category: 'Generated',
     description: `Design system generated from a brief by the Open Design brand engine (${contract.engine?.name}@${contract.engine?.version}).`,
     source: { type: 'generated', origin: 'cc-pensador brand engine', contractSha256: contract.sha256 ?? null },
-    files: { design: 'DESIGN.md', tokens: 'tokens.css', designTokens: 'design-tokens.json', tailwind: 'tailwind-v4.css', components: 'components.html', contract: 'design-contract.json' },
+    files: { design: 'DESIGN.md', tokens: 'tokens.css', componentsCss: 'components.css', designTokens: 'design-tokens.json', tailwind: 'tailwind-v4.css', components: 'components.html', contract: 'design-contract.json' },
     usage: 'USAGE.md',
     componentsManifest: 'components.manifest.json',
     importMode: 'normalized',
