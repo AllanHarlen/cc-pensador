@@ -37,7 +37,10 @@ const REALISTIC_PRD = `
 
 ## 7. Requisitos Não-Funcionais
 
-Algum texto de RNF aqui, sem tabela RF.
+| ID | Categoria | Requisito |
+|----|-----------|-----------|
+| RNF-01 | Desempenho | API com p95 < 500 ms para leituras paginadas. |
+| RNF-02 | Segurança | Isolamento por tenant com RLS fail-closed. |
 
 ---
 
@@ -56,7 +59,18 @@ Algum texto de RNF aqui, sem tabela RF.
 
 ## 15. Arquitetura
 
-Texto de arquitetura aqui.
+### Padrões de Arquitetura & Design
+
+| Padrão | Adoção | Aplicado em | Fonte oficial |
+|---|---|---|---|
+| Repository + UnitOfWork | current | Infrastructure | https://learn.microsoft.com/ef/core |
+| CQRS leve por casos de uso | experimental | Application | https://martinfowler.com/bliki/CQRS.html |
+
+### Anti-padrões Técnicos (desencorajados pelo ecossistema)
+
+| Anti-padrão | Substituído por | Fonte oficial |
+|---|---|---|
+| Active Record | Repository + UnitOfWork | https://learn.microsoft.com/ef/core |
 `;
 
 describe('extractRequirements — positive path', () => {
@@ -127,6 +141,17 @@ describe('extractRequirements — positive path', () => {
 - **CA-01** (RF-AUTH-01/02): DADO um operador autenticado, QUANDO cria o tenant, ENTAO o Admin inicial recebe acesso.
 - **CA-02** (RF-PUB-01): DADO o catalogo, QUANDO abre a vitrine, ENTAO uma imagem real aparece.
 - **CA-03** (RF-OS-02/02a): DADO uma ordem, QUANDO a variante e usada, ENTAO ambas as regras sao rastreadas.
+
+## 7. Requisitos Não-Funcionais
+| ID | Categoria | Requisito |
+|----|-----------|-----------|
+| RNF-01 | Disponibilidade | Uptime >= 99.9%. |
+
+## 15. Arquitetura
+### Padrões de Arquitetura & Design
+| Padrão | Adoção | Aplicado em | Fonte oficial |
+|---|---|---|---|
+| Multi-tenancy por discriminador | current | Infrastructure | https://learn.microsoft.com/ef/core |
 `;
     const result = extractRequirements(bulletPrd);
     expect(result.requirements.map((requirement) => requirement.id)).toEqual([
@@ -148,6 +173,22 @@ describe('extractRequirements — positive path', () => {
     expect(expandRequirementReferences('RF-ORC-01..11')).toEqual(
       Array.from({ length: 11 }, (_, index) => `RF-ORC-${String(index + 1).padStart(2, '0')}`),
     );
+  });
+
+  it('extracts every RNF row with id/category/text, from section 7 only', () => {
+    const result = extractRequirements(REALISTIC_PRD);
+    expect(result.nonFunctionalRequirements).toEqual([
+      { id: 'RNF-01', category: 'Desempenho', text: 'API com p95 < 500 ms para leituras paginadas.' },
+      { id: 'RNF-02', category: 'Segurança', text: 'Isolamento por tenant com RLS fail-closed.' },
+    ]);
+  });
+
+  it('synthesizes ARC-XX ids for architecture-pattern rows in appearance order, skipping the header/separator/anti-pattern table', () => {
+    const result = extractRequirements(REALISTIC_PRD);
+    expect(result.architecturePatterns).toEqual([
+      { id: 'ARC-01', pattern: 'Repository + UnitOfWork', adoption: 'current', appliedIn: 'Infrastructure', source: 'https://learn.microsoft.com/ef/core' },
+      { id: 'ARC-02', pattern: 'CQRS leve por casos de uso', adoption: 'experimental', appliedIn: 'Application', source: 'https://martinfowler.com/bliki/CQRS.html' },
+    ]);
   });
 });
 
@@ -189,6 +230,43 @@ describe('extractRequirements — negative path', () => {
     const prdWithDangling = REALISTIC_PRD.replace('| CA-04 | RF-03 |', '| CA-04 | RF-99 |');
     const result = extractRequirements(prdWithDangling);
     expect(result.warnings.some((w) => w.startsWith('DANGLING_REFERENCE') && w.includes('CA-04') && w.includes('RF-99'))).toBe(true);
+  });
+
+  it('degrades with a warning when "Requisitos Não-Funcionais" section is absent', () => {
+    const prdWithoutRNF = REALISTIC_PRD.replace(/## 7\. Requisitos N[ãa]o-Funcionais[\s\S]*?(?=---\n\n## 14)/, '');
+    const result = extractRequirements(prdWithoutRNF);
+    expect(result.nonFunctionalRequirements).toEqual([]);
+    expect(result.warnings.some((w) => w.startsWith('SECTION_NOT_FOUND') && w.includes('Requisitos Não-Funcionais'))).toBe(true);
+  });
+
+  it('warns (NO_NON_FUNCTIONAL_REQUIREMENTS_PARSED) when section 7 exists but has no parseable RNF row', () => {
+    const prdEmptyRnf = REALISTIC_PRD.replace(/\| RNF-01[\s\S]*?\| RNF-02[^\n]*\n/, 'Nenhum RNF ainda definido.\n');
+    const result = extractRequirements(prdEmptyRnf);
+    expect(result.nonFunctionalRequirements).toEqual([]);
+    expect(result.warnings.some((w) => w.startsWith('NO_NON_FUNCTIONAL_REQUIREMENTS_PARSED'))).toBe(true);
+  });
+
+  it('degrades with a warning when "Padrões de Arquitetura & Design" is absent', () => {
+    const prdWithoutArchitecture = REALISTIC_PRD.replace(/### Padr[õo]es de Arquitetura[\s\S]*?(?=### Anti-padr)/, '');
+    const result = extractRequirements(prdWithoutArchitecture);
+    expect(result.architecturePatterns).toEqual([]);
+    expect(result.warnings.some((w) => w.startsWith('SECTION_NOT_FOUND') && w.includes('Padrões de Arquitetura'))).toBe(true);
+  });
+
+  it('warns (NO_ARCHITECTURE_PATTERNS_PARSED) when the section exists but has no parseable pattern row (only the anti-pattern table)', () => {
+    const prdEmptyArchitecture = REALISTIC_PRD.replace(
+      /\| Repository \+ UnitOfWork \| current[\s\S]*?CQRS\.html \|\n/,
+      'Nenhum padrão ainda escolhido.\n',
+    );
+    const result = extractRequirements(prdEmptyArchitecture);
+    expect(result.architecturePatterns).toEqual([]);
+    expect(result.warnings.some((w) => w.startsWith('NO_ARCHITECTURE_PATTERNS_PARSED'))).toBe(true);
+  });
+
+  it('never confuses the anti-pattern table (3 columns) with the pattern table (4 columns, enum-gated)', () => {
+    const result = extractRequirements(REALISTIC_PRD);
+    expect(result.architecturePatterns.some((p) => p.pattern === 'Active Record')).toBe(false);
+    expect(result.architecturePatterns).toHaveLength(2);
   });
 
   it('ignores a malformed table row (wrong column count) instead of crashing or misparsing', () => {

@@ -82,6 +82,10 @@ export function designEvidence({ id = 'professional', over = {} } = {}) {
       status: 'PASS', contractSha256: contract.sha256, findings: [],
       checks: { structure: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' },
     }),
+    [`design-systems/${id}/resolved/design-review.json`]: JSON.stringify({
+      schemaVersion: 1, systemId: id, contractSha256: contract.sha256, verdict: 'PASS', reviewer: 'codex',
+      reviewedAt: '2026-09-19T09:50:00.000Z', report: null, blockingFindings: 0,
+    }),
     [`design-systems/${id}/source/engine-run.json`]: JSON.stringify({ status: 'ok', engine: 'clone', contractSha256: contract.sha256 }),
     'design-brief.json': JSON.stringify(approvedBrief),
     [APPROVAL_FILE]: JSON.stringify(buildApprovalRecord({ key: loadApprovalKey({ create: true }), systemId: 'professional', brief: approvedBrief, contractSha256: contract.sha256, approvedAt: approvedBrief.approvedAt })),

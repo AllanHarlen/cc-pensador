@@ -43,7 +43,7 @@ export const REGISTER_REASON = {
 export const VALIDATED_DAEMON_VERSIONS = ['0.22.1'];
 
 const REQUIRED_FILES = ['tokens.css', 'manifest.json', 'DESIGN.md'];
-const OPTIONAL_FILES = ['design-tokens.json', 'tailwind-v4.css', 'components.html', 'components.manifest.json', 'USAGE.md'];
+const OPTIONAL_FILES = ['design-tokens.json', 'tailwind-v4.css', 'components.css', 'components.html', 'components.manifest.json', 'USAGE.md'];
 const SYSTEM_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 

@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildBrandSystem } from '../scripts/od-brand-build.mjs';
 import { deriveWithEngine } from '../scripts/lib/brand-engine.mjs';
-import { renderDesignPackage } from '../scripts/design-package.mjs';
+import { recordDesignReview, renderDesignPackage } from '../scripts/design-package.mjs';
 import { approveCommand, buildCommand, seedCommand } from '../scripts/design-brief.mjs';
 import { DESIGN_APPROVAL_HEADER } from '../scripts/lib/design-approval.mjs';
 import { applyTransition, checkTransition } from '../scripts/lib/stage-gate.mjs';
@@ -67,7 +67,7 @@ describe.skipIf(!engineAvailable)('DESIGN stage, real brand engine', () => {
     const rendered = renderDesignPackage({ contractFile: join(resolvedDir, 'design-contract.json'), resolvedDir, briefFile: join(feature, 'design-brief.json'), strict: true });
     expect(rendered.audit?.status ?? rendered.status).toBe('PASS');
     const audit = readJson(join(resolvedDir, 'design-audit.json'));
-    expect(audit.checks).toEqual({ structure: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
+    expect(audit.checks).toEqual({ structure: 'PASS', componentCoverage: 'PASS', contrast: 'PASS', conformance: 'PASS', integrity: 'PASS', engineRun: 'PASS' });
 
     // the same seed through the engine again gives the same contract, byte for byte
     const again = buildBrandSystem({
@@ -81,6 +81,10 @@ describe.skipIf(!engineAvailable)('DESIGN stage, real brand engine', () => {
     expect(approveCommand({ feature, dir: systemDir }).issue).toBe('approval-question-not-observed');
     writeFileSync(join(feature, '.pensador-questions.jsonl'), `${JSON.stringify({ stage: 'DESIGN', count: 1, headers: [DESIGN_APPROVAL_HEADER] })}\n`);
     expect(approveCommand({ feature, dir: systemDir }).status).toBe('ok');
+
+    // without the recorded design review the gate refuses; a PASS review of this contract unlocks it
+    expect(checkTransition({ checkpoint: sealed, to: 'FINAL', env: fsEnv(feature), strict: true }).errors.map((e) => e.code)).toContain('DESIGN_REVIEW_MISSING');
+    expect(recordDesignReview({ resolvedDir, verdict: 'PASS', reviewer: 'codex' }).status).toBe('ok');
 
     const gate = checkTransition({ checkpoint: sealed, to: 'FINAL', env: fsEnv(feature), strict: true });
     expect(gate.errors).toEqual([]);

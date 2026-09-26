@@ -33,6 +33,13 @@ const RF_ROW_RE = new RegExp(`^\\|\\s*(${RF_ID_SOURCE})\\s*\\|\\s*(.+?)\\s*\\|\\
 const RF_BULLET_RE = new RegExp(`^-\\s+\\*\\*(${RF_ID_SOURCE})\\*\\*:\\s*(.+)$`, 'i');
 const CA_ROW_RE = /^\|\s*(CA-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/i;
 const CA_BULLET_RE = /^-\s+\*\*(CA-\d+)\*\*\s*\(([^)]+)\)\s*:\s*(.+)$/i;
+// | RNF-01 | Desempenho | {{REQUISITO_NF_DESEMPENHO}} | (prd-template.md section 7).
+const RNF_ROW_RE = /^\|\s*(RNF-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/i;
+// | {{PADRAO_1}} | current / experimental / legacy | {{ONDE_1}} | {{FONTE_1}} | (section 15,
+// "Padrões de Arquitetura & Design"). No stable ID column in the template — the enum-valued
+// adoption column is what tells a real row apart from the header/separator/unfilled placeholder
+// (whose own literal text is "current / experimental / legacy", which never matches the enum alone).
+const ARCHITECTURE_ROW_RE = /^\|\s*(.+?)\s*\|\s*(current|experimental|legacy)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/i;
 
 /** Matches the placeholder template row itself (e.g. `RF-N`, `CA-N`), never a real requirement. */
 const isTemplatePlaceholderId = (id) => /-N$/.test(id);
@@ -98,6 +105,67 @@ function extractSection(markdown, headingPattern) {
 }
 
 /**
+ * Extracts `RNF-XX` rows from the "Requisitos Não-Funcionais" section (PRD section 7):
+ * `| RNF-XX | Categoria | requisito |`. Same degrade-with-warning style as `extractRequirements`'s
+ * RF/CA parsing — a missing section or an empty table is a warning, never a thrown error.
+ */
+function extractNonFunctionalRequirements(text) {
+  const warnings = [];
+  const section = extractSection(text, /^\d*\.?\s*Requisitos\s*N[ãa]o[-\s]*Funcionais/i);
+  const nonFunctionalRequirements = [];
+  if (section == null) {
+    warnings.push('SECTION_NOT_FOUND: "Requisitos Não-Funcionais" (PRD section 7) not found');
+    return { nonFunctionalRequirements, warnings };
+  }
+  for (const line of section.split(/\r?\n/)) {
+    const match = line.match(RNF_ROW_RE);
+    if (!match) continue;
+    const [, rawId, category, reqText] = match;
+    const id = rawId.toUpperCase();
+    if (isTemplatePlaceholderId(id)) continue;
+    if (nonFunctionalRequirements.some((requirement) => requirement.id === id)) continue;
+    nonFunctionalRequirements.push({ id, category, text: reqText });
+  }
+  if (nonFunctionalRequirements.length === 0) {
+    warnings.push('NO_NON_FUNCTIONAL_REQUIREMENTS_PARSED: "Requisitos Não-Funcionais" section found but no RNF-XX row parsed');
+  }
+  return { nonFunctionalRequirements, warnings };
+}
+
+/**
+ * Extracts architecture-pattern rows from "Padrões de Arquitetura & Design" (PRD section 15):
+ * `| Padrão | Adoção (current/experimental/legacy) | Aplicado em | Fonte oficial |`. The template
+ * has no ID column here, so IDs are synthesized in row order (`ARC-01`, `ARC-02`, ...) — stable
+ * across re-parses of the same, unedited PRD, which is all the coverage gate needs.
+ *
+ * Audit finding: architecture rules the PRD itself commits to (Repository/UnitOfWork, testing
+ * stack, layering) had no machine-checkable representation anywhere downstream — a real run
+ * (OficinaAI, 2026-09) shipped a back-end with none of them (no Repository, Domain reduced to
+ * public setters) and nothing caught it before the human review.
+ */
+function extractArchitecturePatterns(text) {
+  const warnings = [];
+  const section = extractSection(text, /^Padr[õo]es de Arquitetura/i);
+  const architecturePatterns = [];
+  if (section == null) {
+    warnings.push('SECTION_NOT_FOUND: "Padrões de Arquitetura & Design" (PRD section 15) not found');
+    return { architecturePatterns, warnings };
+  }
+  let index = 0;
+  for (const line of section.split(/\r?\n/)) {
+    const match = line.match(ARCHITECTURE_ROW_RE);
+    if (!match) continue;
+    const [, pattern, adoption, appliedIn, source] = match;
+    index += 1;
+    architecturePatterns.push({ id: `ARC-${String(index).padStart(2, '0')}`, pattern, adoption: adoption.toLowerCase(), appliedIn, source });
+  }
+  if (architecturePatterns.length === 0) {
+    warnings.push('NO_ARCHITECTURE_PATTERNS_PARSED: "Padrões de Arquitetura & Design" section found but no pattern row parsed');
+  }
+  return { architecturePatterns, warnings };
+}
+
+/**
  * Parses a PRD (prd-template.md shape) and extracts its `RF-XX` requirements
  * (section 6, "Requisitos Funcionais") and `CA-XX` acceptance criteria
  * (section 14, "Critérios de Aceite"), including the CA -> RF link.
@@ -106,10 +174,19 @@ function extractSection(markdown, headingPattern) {
  * list plus a warning, so a caller can register the degradation (mirrors
  * the rest of the Pensador's fallback style: register, don't crash).
  *
+ * Also extracts `RNF-XX` non-functional requirements (section 7) and the architecture patterns
+ * table (section 15, "Padrões de Arquitetura & Design") into `nonFunctionalRequirements` and
+ * `architecturePatterns` — a separate concern from `requirements`/`acceptanceCriteria` (RF/CA),
+ * kept as sibling arrays so existing consumers of `requirements`/`acceptanceCriteria` see no shape
+ * change. `id` is present on every entry of every array, which is all the coverage gate needs to
+ * treat them uniformly (see cc-orchestrador-subagents's requirements-coverage.mjs).
+ *
  * @param {string} prdMarkdown
  * @returns {{
  *   requirements: Array<{ id: string, text: string, priority: string }>,
  *   acceptanceCriteria: Array<{ id: string, requirementId: string, requirementIds: string[], criterion: string }>,
+ *   nonFunctionalRequirements: Array<{ id: string, category: string, text: string }>,
+ *   architecturePatterns: Array<{ id: string, pattern: string, adoption: string, appliedIn: string, source: string }>,
  *   warnings: string[],
  * }}
  */
@@ -165,7 +242,17 @@ export function extractRequirements(prdMarkdown) {
     }
   }
 
-  return { requirements, acceptanceCriteria, warnings };
+  const nonFunctional = extractNonFunctionalRequirements(text);
+  const architecture = extractArchitecturePatterns(text);
+  warnings.push(...nonFunctional.warnings, ...architecture.warnings);
+
+  return {
+    requirements,
+    acceptanceCriteria,
+    nonFunctionalRequirements: nonFunctional.nonFunctionalRequirements,
+    architecturePatterns: architecture.architecturePatterns,
+    warnings,
+  };
 }
 
 /**

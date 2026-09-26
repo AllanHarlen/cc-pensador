@@ -220,6 +220,14 @@ function checkDesignAudit(env, fail, { strict = false, stage = 'DESIGN' } = {}) 
     }
     if (audit.contractSha256 !== sha) fail('DESIGN_AUDIT_STALE', `${base}/resolved/design-audit.json was produced for another contract (${audit.contractSha256 ?? 'no hash'}); re-run design-package.mjs audit`);
 
+    // The reviewer's verdict (Codex, read-only) must be recorded for THIS contract: a PASS audit next
+    // to a rejected review is exactly the contradiction a real handoff shipped (OficinaAI, 2026-09).
+    const reviewText = env.readText(`${base}/resolved/design-review.json`);
+    const review = reviewText === null ? null : parseJson(reviewText);
+    if (review === null) fail('DESIGN_REVIEW_MISSING', `${base}/resolved/design-review.json is required: record the read-only design review (Codex) with design-package.mjs review --dir ${base}/resolved --verdict PASS|FAIL --reviewer codex`);
+    else if (review.contractSha256 !== sha) fail('DESIGN_REVIEW_STALE', `${base}/resolved/design-review.json reviewed another contract (${review.contractSha256 ?? 'no hash'}); review the current package again`);
+    else if (review.verdict !== 'PASS') fail('DESIGN_REVIEW_NOT_PASS', `${base}/resolved/design-review.json verdict is ${JSON.stringify(review.verdict ?? null)}: fix the findings at the source (brief/seed), re-render, re-audit and review again`);
+
     const run = parseJson(env.readText(`${base}/source/engine-run.json`) ?? '');
     if (run === null) fail('ENGINE_RUN_MISSING', `${base}/source/engine-run.json is required: the tokens must come from the Open Design brand engine`);
     else if (run.status !== 'ok') fail('ENGINE_RUN_FAILED', `${base}/source/engine-run.json status is ${JSON.stringify(run.status ?? null)}${run.reasonCode ? ` (${run.reasonCode})` : ''}, not "ok"`);

@@ -33,7 +33,7 @@ describe('resolved design package (contract v2)', () => {
     expect(audit.findings).toEqual([]);
     expect(audit.status).toBe('PASS');
     expect(tree(data.resolvedDir)).toEqual(expect.arrayContaining([
-      'design-contract.json', 'tokens.css', 'design-tokens.json', 'tailwind-v4.css', 'DESIGN.md', 'components.html', 'components.manifest.json',
+      'design-contract.json', 'tokens.css', 'components.css', 'design-tokens.json', 'tailwind-v4.css', 'DESIGN.md', 'components.html', 'components.manifest.json',
       'USAGE.md', 'manifest.json', 'provenance.json', 'design-audit.json', 'assets/manifest.json',
       'preview/index.html', 'preview/colors.html', 'preview/typography.html', 'preview/spacing.html', 'preview/components.html', 'preview/app.html', 'preview/preview.css',
     ]));
@@ -78,7 +78,7 @@ describe('resolved design package (contract v2)', () => {
   it('uses only var(--token) in components and previews (no hex/rgb literal, no var() fallback)', () => {
     const data = setup();
     renderDesignPackage(data);
-    for (const file of ['components.html', 'preview/index.html', 'preview/typography.html', 'preview/spacing.html', 'preview/components.html', 'preview/app.html', 'preview/preview.css']) {
+    for (const file of ['components.css', 'components.html', 'preview/index.html', 'preview/typography.html', 'preview/spacing.html', 'preview/components.html', 'preview/app.html', 'preview/preview.css']) {
       const text = read(data.resolvedDir, file);
       expect(text, file).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
       expect(text, file).not.toMatch(/rgba?\(/);
@@ -87,6 +87,23 @@ describe('resolved design package (contract v2)', () => {
     expect(read(data.resolvedDir, 'components.html')).toContain('data-theme="dark"');
     expect(read(data.resolvedDir, 'components.html')).toContain('state-focus-visible');
     expect(read(data.resolvedDir, 'preview/app.html')).toContain('Novo cliente');
+  });
+
+  it('publishes components.css with product component rules only, never preview scaffolding', () => {
+    const data = setup();
+    renderDesignPackage(data);
+    const css = read(data.resolvedDir, 'components.css');
+    for (const selector of ['.btn {', '.btn:focus-visible', '.input {', '.input.state-error', '.field-error', '.card {', '.badge {', '.alert {', '.modal {']) {
+      expect(css, selector).toContain(selector);
+    }
+    // .grid do preview e flex e quebraria o utilitario grid do Tailwind no produto.
+    for (const scaffold of ['.grid {', '.page {', '.scope {', '.state {', '.swatch', '.component {', 'body {', '.app {']) {
+      expect(css, scaffold).not.toContain(scaffold);
+    }
+    expect(read(data.resolvedDir, 'preview/preview.css')).toContain(css.slice(css.indexOf('.btn {')));
+    const manifest = JSON.parse(read(data.resolvedDir, 'manifest.json'));
+    expect(manifest.files.componentsCss).toBe('components.css');
+    expect(read(data.resolvedDir, 'USAGE.md')).toContain('@import "./components.css";');
   });
 
   it('writes design-tokens.json as W3C DTCG with light and dark colors', () => {

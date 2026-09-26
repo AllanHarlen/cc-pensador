@@ -451,7 +451,9 @@ describe('buildArtifactList(state)', () => {
       // Provenance now lives under source/ (engine output), never original/.
       expect(dsf[0].sourcePath).toBe('design-systems/agentic/source/');
       // No I/O evidence recorded -> never a hardcoded PASS.
-      expect(dsf[0].validation).toEqual({ status: 'UNVERIFIED', audit: 'design-audit.json' });
+      expect(dsf[0].validation).toEqual({
+        status: 'UNVERIFIED', audit: 'design-audit.json', review: 'design-review.json', auditStatus: 'UNVERIFIED', reviewStatus: 'UNREVIEWED',
+      });
       expect(dsf[0].contractSha256).toBeNull();
       expect(dsf[0].themes).toEqual(['light', 'dark']);
       expect(dsf[0].designBriefPath).toBeNull();
@@ -463,13 +465,28 @@ describe('buildArtifactList(state)', () => {
       const state = {
         ...stateAt('FINAL', [frontendReq()]),
         designSystems: ['gestuor', 'outro'],
-        designPackages: { gestuor: { auditStatus: 'PASS', contractSha256: 'abc123' }, outro: { auditStatus: 'FAIL' } },
+        designPackages: {
+          gestuor: { auditStatus: 'PASS', contractSha256: 'abc123', reviewStatus: 'PASS', reviewContractSha256: 'abc123' },
+          outro: { auditStatus: 'FAIL' },
+        },
       };
       const [a, b] = buildArtifactList(state).filter((x) => x.kind === 'design-system-files');
       expect(a.validation.status).toBe('PASS');
       expect(a.contractSha256).toBe('abc123');
       expect(b.validation.status).toBe('FAIL');
       expect(b.contractSha256).toBeNull();
+    });
+
+    // A PASS audit is not a PASS package: the reviewer's verdict for the same contract must also pass
+    // (a real handoff said PASS while its summary said the Codex review had rejected it).
+    it('is PASS only with a PASS audit AND a PASS review of the same contract', () => {
+      const base = { ...stateAt('FINAL', [frontendReq()]), designSystems: ['a'] };
+      const status = (pkg) => buildArtifactList({ ...base, designPackages: { a: pkg } })
+        .find((x) => x.kind === 'design-system-files').validation.status;
+      expect(status({ auditStatus: 'PASS', contractSha256: 'h1' })).toBe('UNREVIEWED');
+      expect(status({ auditStatus: 'PASS', contractSha256: 'h1', reviewStatus: 'FAIL', reviewContractSha256: 'h1' })).toBe('FAIL');
+      expect(status({ auditStatus: 'PASS', contractSha256: 'h2', reviewStatus: 'PASS', reviewContractSha256: 'h1' })).toBe('UNREVIEWED');
+      expect(status({ auditStatus: 'BLOCKED', contractSha256: 'h1', reviewStatus: 'PASS', reviewContractSha256: 'h1' })).toBe('BLOCKED');
     });
 
     it('roots verbatim files under the concrete featurePath', () => {

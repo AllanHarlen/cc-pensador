@@ -687,7 +687,9 @@ describe('API contract (Spec-Driven Development)', () => {
     const plan = contractValidationPlan('rest');
     expect(plan.spec).toBe('openapi');
     expect(plan.mock).toContain('prism');
-    expect(plan.validate).toContain('schemathesis');
+    // Schemathesis CLI (`st`) needs the base URL of the running API for a file schema; the old
+    // `schemathesis run openapi.yaml` was never executable and so never ran (OficinaAI, 2026-09).
+    expect(plan.validate).toBe('st run openapi.yaml --url <base-url>');
     expect(() => contractValidationPlan(undefined)).not.toThrow();
   });
 

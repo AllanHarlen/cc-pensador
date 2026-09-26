@@ -344,6 +344,7 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
       { role: 'prd', path: 'prd.md', required: true },
       { role: 'design-system-files', path: 'design-systems/bmw/resolved', required: true, variant: 'resolved', authoritative: true },
       { role: 'brand-assets', path: 'assets/', required: true },
+      { role: 'design-prototype', path: 'prototypes/', required: true },
     ],
   });
 
@@ -379,6 +380,30 @@ describe('validateVisualCompleteness — DESIGN-stage gate for a DONE Pensador h
     const result = validateVisualCompleteness(handoff);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.code === 'MISSING_BRAND_ASSETS_FOR_DONE_STATUS')).toBe(true);
+  });
+
+  // design-prototype is mandatory whenever Open Design was actually used
+  // (design-system-files present) — agent selection has no skip option in
+  // that case, so a DONE handoff with a resolved design package and no
+  // prototype means the DESIGN stage was not actually completed.
+  it('rejects status DONE with design-system-files but missing design-prototype', () => {
+    const handoff = resolvedHandoff();
+    handoff.artifacts = handoff.artifacts.filter((a) => a.role !== 'design-prototype');
+    const result = validateVisualCompleteness(handoff);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.code === 'MISSING_DESIGN_PROTOTYPE_FOR_DONE_STATUS')).toBe(true);
+  });
+
+  it('does not require design-prototype for the inline fallback ("design-system" role, no Open Design)', () => {
+    const handoff = validPensadorHandoff({
+      artifacts: [
+        { role: 'design-system', path: 'design-system.md', required: true },
+        { role: 'brand-assets', path: 'assets/', required: true },
+      ],
+    });
+    const result = validateVisualCompleteness(handoff);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it('accepts status DONE with a complete resolved design package', () => {
@@ -548,6 +573,7 @@ describe('validate-handoff.mjs CLI', () => {
           { role: 'project-baseline', path: 'project-baseline.json', required: true },
           { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
           { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
+          { role: 'design-prototype', path: 'prototypes/', required: true },
         ],
       })));
       const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
@@ -579,6 +605,7 @@ describe('validate-handoff.mjs CLI', () => {
           { role: 'project-baseline', path: 'project-baseline.json', required: true },
           { role: 'design-system-files', path: 'design-systems/agentic/resolved', required: true, variant: 'resolved' },
           { role: 'brand-assets', path: 'assets/', manifest: 'assets/manifest.json', required: true },
+          { role: 'design-prototype', path: 'prototypes/', required: true },
         ],
       })));
       const result = spawnSync(process.execPath, [join(REPO_ROOT, 'scripts/validate-handoff.mjs'), '--file', file], { encoding: 'utf8' });
